@@ -113,7 +113,7 @@ export function InvoiceList({ type }: { type: 'invoice' | 'bill' }) {
               {
                 title: 'Nomor',
                 dataIndex: 'name',
-                render: (v, r) => (
+                render: (v: any, r: any) => (
                   <>
                     <b>{v}</b>
                     {r.moveType.endsWith('refund') && <span className="muted"> (nota kredit)</span>}
@@ -121,24 +121,25 @@ export function InvoiceList({ type }: { type: 'invoice' | 'bill' }) {
                 ),
               },
               { title: type === 'bill' ? 'Principal' : 'Pelanggan', dataIndex: 'partner' },
-              { title: 'Asal', dataIndex: 'invoiceOrigin', render: (v) => v || '-' },
+              { title: 'Asal', dataIndex: 'invoiceOrigin', render: (v: any) => v || '-' },
               { title: 'Tanggal', dataIndex: 'invoiceDate', render: tgl },
               {
                 title: 'Jatuh tempo',
                 dataIndex: 'invoiceDateDue',
-                render: (v, r) => <span className={r.overdue ? 'loss' : ''}>{tgl(v)}</span>,
+                render: (v: any, r: any) => <span className={r.overdue ? 'loss' : ''}>{tgl(v)}</span>,
               },
               { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => nf(v) },
               {
                 title: 'Sisa',
                 dataIndex: 'amountResidual',
                 align: 'right',
-                render: (v, r) => (r.state === 'posted' ? nf(v) : '-'),
+                render: (v: any, r: any) => (r.state === 'posted' ? nf(v) : '-'),
               },
               {
                 title: 'Status',
                 dataIndex: 'state',
-                render: (v, r) => (v === 'posted' ? <Pill v={r.paymentState} kind="pay" /> : <Pill v={v} kind="je" />),
+                render: (v: any, r: any) =>
+                  v === 'posted' ? <Pill v={r.paymentState} kind="pay" /> : <Pill v={v} kind="je" />,
               },
             ],
             ['amountTotal', 'amountResidual'],

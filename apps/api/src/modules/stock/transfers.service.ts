@@ -190,8 +190,9 @@ export class TransfersService {
     if (!todo.length) fail('Tidak ada sisa barang yang perlu dikirim');
     const byWh = new Map<number, typeof todo>();
     for (const x of todo) {
-      if (!x.l.mtppWarehouseId) fail(`Gudang asal untuk ${x.l.name} belum ditentukan`);
-      byWh.set(x.l.mtppWarehouseId, [...(byWh.get(x.l.mtppWarehouseId) || []), x]);
+      const wh = x.l.mtppWarehouseId;
+      if (!wh) return fail(`Gudang asal untuk ${x.l.name} belum ditentukan`);
+      byWh.set(wh, [...(byWh.get(wh) || []), x]);
     }
     const created: any[] = [];
     await this.db.$transaction(async (tx) => {

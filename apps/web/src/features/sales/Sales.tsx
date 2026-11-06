@@ -150,34 +150,34 @@ export function SalesList() {
           onRow={(r) => ({ onClick: () => !r.__group && nav(`/penjualan/${r.id}`), className: 'row-link' })}
           columns={groupCols(
             [
-              { title: 'Nomor', dataIndex: 'name', render: (v) => <b>{v}</b> },
+              { title: 'Nomor', dataIndex: 'name', render: (v: any) => <b>{v}</b> },
               { title: 'Tanggal', dataIndex: 'dateOrder', render: tgl },
               {
                 title: 'Pelanggan',
                 dataIndex: 'partner',
-                render: (v, r) => (
+                render: (v: any, r: any) => (
                   <>
                     {v} {r.isNewCustomer && <Tag color="gold">baru</Tag>}
                   </>
                 ),
               },
-              { title: 'PO Pelanggan', dataIndex: 'clientOrderRef', render: (v) => v || '-' },
+              { title: 'PO Pelanggan', dataIndex: 'clientOrderRef', render: (v: any) => v || '-' },
               {
                 title: 'Berlaku sampai',
                 dataIndex: 'validityDate',
-                render: (v, r) => (
+                render: (v: any, r: any) => (
                   <span className={r.expired ? 'loss' : ''}>
                     {tgl(v)}
                     {r.expired ? ' · kedaluwarsa' : ''}
                   </span>
                 ),
               },
-              { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v) => nf(v) },
-              { title: 'Status', dataIndex: 'state', render: (v) => <Pill v={v} kind="so" /> },
+              { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => nf(v) },
+              { title: 'Status', dataIndex: 'state', render: (v: any) => <Pill v={v} kind="so" /> },
               {
                 title: 'Penagihan',
                 dataIndex: 'invoiceStatus',
-                render: (v, r) =>
+                render: (v: any, r: any) =>
                   ['sale', 'done'].includes(r.state) ? (
                     <Pill v={v === 'invoiced' ? 'paid' : v === 'to_invoice' ? 'not_paid' : 'draft'}>
                       {LABEL.inv[v]}

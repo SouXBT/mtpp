@@ -14,7 +14,7 @@ export const addDays = (iso: string, days: number) => {
 };
 export const daysBetween = (a: string, b: string) =>
   Math.round((new Date(b + 'T00:00:00Z').getTime() - new Date(a + 'T00:00:00Z').getTime()) / 86400000);
-export const fail = (msg: string) => {
+export const fail: (msg: string) => never = (msg) => {
   throw new BadRequestException(msg);
 };
 // hasil query sudah dinormalkan db.module (date = string, numeric = number), berbeda dari tipe statis Prisma

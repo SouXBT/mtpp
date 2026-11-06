@@ -64,7 +64,7 @@ export class JournalService {
     const jr = await this.journal(j.journal, tx);
     const lines = [];
     for (const l of j.lines) {
-      const accountId = l.accountId || (l.key ? await this.map(l.key, tx) : await this.accId(l.account, tx));
+      const accountId = l.accountId || (l.key ? await this.map(l.key, tx) : await this.accId(l.account!, tx));
       const debit = round2(l.debit || 0),
         credit = round2(l.credit || 0);
       if (debit < 0 || credit < 0) fail('Debit dan kredit tidak boleh minus');

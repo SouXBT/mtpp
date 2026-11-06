@@ -38,7 +38,7 @@ export class DocumentsService {
   }
 
   async list(q: any) {
-    const where = [];
+    const where: any[] = [];
     if (q.type && DOC_TYPES[q.type]) where.push({ type: q.type });
     if (q.q)
       where.push({

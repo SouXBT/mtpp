@@ -59,7 +59,7 @@ export class PublicApiService {
       amountUntaxed: o.amountUntaxed,
       amountTax: o.amountTax,
       amountTotal: o.amountTotal,
-      lines: o.lines.map((l) => ({
+      lines: o.lines.map((l: any) => ({
         code: l.product.defaultCode,
         product: l.product.template.name,
         qty: l.productUomQty,
@@ -91,7 +91,7 @@ export class PublicApiService {
       name: e.name,
       date: e.invoiceDate,
       due: e.invoiceDateDue,
-      customer: e.partner.name,
+      customer: e.partner?.name,
       origin: e.invoiceOrigin,
       amountUntaxed: e.amountUntaxed,
       amountTax: e.amountTax,

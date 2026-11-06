@@ -41,7 +41,7 @@ export class ReportsController {
     const printed = `Dicetak ${tglIndo(today())} oleh ${u.name}`;
     const fname = `${rep.title.replace(/\W+/g, '_')}_${today()}`;
     const totalRow = rep.totals
-      ? rep.columns.map((c, i) => (i === 0 ? 'Total' : rep.totals[c.key] !== undefined ? rep.totals[c.key] : null))
+      ? rep.columns.map((c, i) => (i === 0 ? 'Total' : rep.totals![c.key] !== undefined ? rep.totals![c.key] : null))
       : null;
     if (q.format === 'pdf') {
       const rows = rep.rows.map((r) => rep.columns.map((c) => fmt(r[c.key], c)));
@@ -49,7 +49,10 @@ export class ReportsController {
       const buf = await this.pdf.table(
         rep.title,
         ['Periode: ' + rep.period, ...rep.filters, printed],
-        rep.columns.map((c) => ({ h: c.title, align: ['money', 'qty', 'pct'].includes(c.type) ? 'right' : 'left' })),
+        rep.columns.map((c) => ({
+          h: c.title,
+          align: ['money', 'qty', 'pct'].includes(c.type as string) ? 'right' : 'left',
+        })),
         rows,
         rep.columns.length > 6,
       );
@@ -75,7 +78,7 @@ export class ReportsController {
     for (const r of rep.rows)
       ws.addRow(
         rep.columns.map((c) =>
-          ['money', 'qty', 'pct'].includes(c.type)
+          ['money', 'qty', 'pct'].includes(c.type as string)
             ? Number(r[c.key] ?? 0)
             : c.type === 'date' && r[c.key]
               ? String(r[c.key]).slice(0, 10)

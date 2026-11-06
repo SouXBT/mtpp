@@ -137,30 +137,35 @@ export function POList() {
               {
                 title: 'Nomor',
                 dataIndex: 'name',
-                render: (v, r) => (
+                render: (v: any, r: any) => (
                   <>
                     <b>{v}</b> {r.isDropship && <Tag color="purple">dropship</Tag>}
                   </>
                 ),
               },
               { title: 'Principal', dataIndex: 'partner' },
-              { title: 'Sales order', dataIndex: 'sale', render: (v) => v || '-' },
+              { title: 'Sales order', dataIndex: 'sale', render: (v: any) => v || '-' },
               { title: 'Tanggal', dataIndex: 'dateOrder', render: tgl },
               {
                 title: 'Perkiraan tiba',
                 dataIndex: 'datePlanned',
-                render: (v, r) => (
+                render: (v: any, r: any) => (
                   <span className={r.state === 'purchase' && v && v < today() ? 'loss' : ''}>{tgl(v)}</span>
                 ),
               },
               { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => nf(v) },
-              { title: 'Status', dataIndex: 'state', render: (v) => <Pill v={v} kind="po" /> },
+              { title: 'Status', dataIndex: 'state', render: (v: any) => <Pill v={v} kind="po" /> },
               {
                 title: 'Status bayar',
                 dataIndex: 'mtppPaymentState',
-                render: (v, r) => (['purchase', 'done'].includes(r.state) ? <Pill v={v} /> : '-'),
+                render: (v: any, r: any) => (['purchase', 'done'].includes(r.state) ? <Pill v={v} /> : '-'),
               },
-              { title: 'Sisa utang', dataIndex: 'mtppAmountDue', align: 'right', render: (v) => (v ? nf(v) : '-') },
+              {
+                title: 'Sisa utang',
+                dataIndex: 'mtppAmountDue',
+                align: 'right',
+                render: (v: any) => (v ? nf(v) : '-'),
+              },
             ],
             ['amountTotal', 'mtppAmountDue'],
           )}

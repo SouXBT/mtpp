@@ -321,7 +321,7 @@ export class ImporterService {
 
   private async productBy(tx: any, code: string) {
     const [r] = (await tx.products.findMany({ where: { defaultCode: String(code) }, include: { template: true } })).map(
-      ({ template, ...p }) => ({ p, t: template }),
+      ({ template, ...p }: any) => ({ p, t: template }),
     );
     if (!r) bad(`Produk dengan kode ${code} tidak ditemukan`);
     return r;

@@ -215,7 +215,7 @@ export function TransferList({ kind }: { kind: 'incoming' | 'outgoing' }) {
               {
                 title: 'Nomor',
                 dataIndex: 'name',
-                render: (v, r) => (
+                render: (v: any, r: any) => (
                   <>
                     <b>{v}</b> {r.dropship && <Tag color="purple">dropship</Tag>} {r.backorderId && <Tag>susulan</Tag>}
                   </>
@@ -227,7 +227,7 @@ export function TransferList({ kind }: { kind: 'incoming' | 'outgoing' }) {
               {
                 title: kind === 'incoming' ? 'Perkiraan tiba' : 'Rencana kirim',
                 dataIndex: 'scheduledDate',
-                render: (v, r) => (
+                render: (v: any, r: any) => (
                   <span className={r.late ? 'loss' : ''}>
                     {tgl(v)}
                     {r.late ? ' · terlambat' : ''}
@@ -235,7 +235,7 @@ export function TransferList({ kind }: { kind: 'incoming' | 'outgoing' }) {
                 ),
               },
               { title: 'Selesai', dataIndex: 'dateDone', render: tgl },
-              { title: 'Status', dataIndex: 'state', render: (v) => <Pill v={v} kind="tr" /> },
+              { title: 'Status', dataIndex: 'state', render: (v: any) => <Pill v={v} kind="tr" /> },
             ],
             [],
           )}

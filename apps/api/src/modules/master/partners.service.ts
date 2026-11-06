@@ -56,7 +56,7 @@ export class PartnersService {
     const po = { n: await this.db.purchaseOrders.count({ where: { partnerId: id } }) };
     return {
       ...p,
-      addresses: p.children.filter((c) => c.type === 'delivery'),
+      addresses: p.children.filter((c: any) => c.type === 'delivery'),
       counts: { quotations: Number(so.n), orders: Number(sale.n), invoices: Number(inv.n), purchases: Number(po.n) },
     };
   }

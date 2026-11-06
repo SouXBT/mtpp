@@ -659,7 +659,7 @@ export class BillingService {
               name: e.name,
               moveId: e.id,
               journalId: jr.id,
-              partnerId: bill.partnerId,
+              partnerId: bill.partnerId!,
               invoiceId: bill.id,
               amount: x,
               date,
@@ -779,7 +779,7 @@ export class BillingService {
       await tx.payments.updateMany({ where: { id: id }, data: { state: 'cancel' } });
       const msg = `Pembayaran ${p.name} sebesar ${rupiah(p.amount)} dibatalkan dengan jurnal pembalik ${rv.name}`;
       if (p.invoiceId) {
-        const inv = await tx.journalEntries.findFirst({ where: { id: p.invoiceId } });
+        const inv = must(await tx.journalEntries.findFirst({ where: { id: p.invoiceId } }), 'Invoice');
         const residual = round2(Math.min(Number(inv.amountResidual) + Number(p.amount), Number(inv.amountTotal)));
         await tx.journalEntries.updateMany({
           where: { id: inv.id },

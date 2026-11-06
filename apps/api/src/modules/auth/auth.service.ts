@@ -6,7 +6,7 @@ import { DB, Db } from '../../db/db.module';
 import { AuthUser, clearAuthCache } from '../../shared/auth';
 import { REPORTS_BY_GROUP } from '../../shared/menus';
 import { FilesService } from '../../shared/files.service';
-import { fail } from '../../shared/util';
+import { fail, must } from '../../shared/util';
 
 // Login, profil, kata sandi, dan tanda tangan pengguna (fitur A.a dan A.j)
 @Injectable()
@@ -53,7 +53,7 @@ export class AuthService {
   }
 
   async password(user: AuthUser, b: { old: string; password: string; confirm: string }) {
-    const u = await this.db.users.findFirst({ where: { id: user.id } });
+    const u = must(await this.db.users.findFirst({ where: { id: user.id } }), 'Pengguna');
     if (!(await bcrypt.compare(b.old || '', u.password))) fail('Kata sandi lama salah');
     if ((b.password || '').length < 8) fail('Kata sandi baru minimal 8 karakter');
     if (b.password !== b.confirm) fail('Konfirmasi kata sandi tidak sama');
