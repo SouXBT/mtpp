@@ -116,13 +116,13 @@ Dengan kunci Brevo, atur webhook transactional di Brevo ke `https://<domain>/api
 | Menjalankan di komputer sendiri | `docker compose up -d --build` lalu buka http://localhost:8080 |
 | Pemeriksaan cepat: format, lint, tipe, uji unit | `npm install && npm run check` |
 | Pemeriksaan penuh di lingkungan uji port 8081 | `tests/run-check.sh` |
-| Menjalankan produksi | `docker compose -f docker-compose.yml -f infra/compose/production.yml up -d --build` |
+| Menjalankan produksi | isi `COMPOSE_FILE=docker-compose.yml:infra/compose/production.yml` di `.env`, lalu `docker compose up -d --build` |
 
-Produksi menolak berjalan bila `DB_PASSWORD`, `JWT_SECRET`, atau `WEBHOOK_TOKEN` belum diisi di `.env`, dan tidak mengisi data contoh.
+Produksi menolak berjalan bila `DB_PASSWORD`, `JWT_SECRET`, atau `WEBHOOK_TOKEN` kosong atau masih bawaan, tidak mengisi data contoh, dan aplikasinya hanya bisa diakses lewat Nginx di VM.
 
-`tests/run-check.sh` membandingkan hasil dengan rekaman di `tests/baseline/expected`. Rekaman itu tidak disimpan di git dan bergantung pada tanggal, jadi buat ulang bila perlu: `tests/baseline/fresh-run.sh tests/baseline/expected /tmp/log` dari kode yang sudah dipastikan benar.
+`tests/run-check.sh` membandingkan hasil dengan rekaman di `tests/baseline/expected` bila folder itu ada. Rekaman tidak disimpan di git dan bergantung pada tanggal, jadi buat dulu sebelum mengubah kode, pada hari yang sama: `tests/baseline/fresh-run.sh tests/baseline/expected /tmp/log`.
 
-Setelah mengubah kolom bertipe date di skema, jalankan `npm run db:gen-dates` di `apps/api`.
+Setelah mengubah skema, jalankan `npm run db:gen-columns` di `apps/api`.
 
 ## Struktur proyek
 
@@ -210,7 +210,7 @@ Contoh klien Node.js: `apps/api/scripts/examples/api-client.mjs`.
 ## Produksi di Google Cloud
 
 1. VM Compute Engine (e2-medium, Ubuntu 24.04, region asia-southeast2) dengan Docker + Docker Compose.
-2. `git clone` ke `/opt/mtpp`, isi `.env` (`APP_ENV=production`, `JWT_SECRET` panjang dan acak, `SEED_DEMO=false`), `docker compose up -d --build`. Dengan `APP_ENV=production` backend menolak berjalan bila `JWT_SECRET` kosong atau masih bawaan; `SEED_DEMO=false` menyembunyikan akun contoh pada halaman login.
+2. `git clone` ke `/opt/mtpp`, isi `.env` (`COMPOSE_FILE=docker-compose.yml:infra/compose/production.yml`, `JWT_SECRET` panjang dan acak, `SEED_DEMO=false`), `docker compose up -d --build`. Dengan `APP_ENV=production` backend menolak berjalan bila `JWT_SECRET` kosong atau masih bawaan; `SEED_DEMO=false` menyembunyikan akun contoh pada halaman login.
 3. Nginx di VM untuk HTTPS: `infra/nginx/nginx-https.conf` + `certbot --nginx -d <domain>`.
 4. Backup harian: buat bucket `gs://mtpp-backup`, beri service account VM akses tulis, lalu `crontab -e`:
    `15 1 * * * /opt/mtpp/infra/backup/backup.sh >> /var/log/mtpp-backup.log 2>&1`. Pemulihan: `docs/restore.md`.

@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { Prisma } from '@prisma/client';
-import { argsToDb, fromDb, fromRaw } from './convert';
+import { argsToDb, fieldsOf, fromDb, fromRaw } from './convert';
 
 const midnight = new Date('2026-11-06T00:00:00.000Z');
 const clock = new Date('2026-11-06T08:30:00.000Z');
@@ -53,9 +52,12 @@ test('SQL mentah tanpa model: tengah malam menjadi tanggal, angka menjadi number
     { d: '2026-11-06', t: clock.toISOString(), n: 1.5, c: 2 },
   ]);
 });
-test('date-columns.generated.ts sesuai skema', () => {
-  const file = 'src/db/date-columns.generated.ts';
-  const before = readFileSync(file, 'utf8');
-  execFileSync('node', ['scripts/gen/date-columns.mjs']);
-  assert.equal(readFileSync(file, 'utf8').replace(/\s/g, ''), before.replace(/\s/g, ''));
+test('columns.generated.ts sesuai skema', () => {
+  assert.doesNotThrow(() => execFileSync('node', ['scripts/gen/columns.mjs', '--check'], { stdio: 'pipe' }));
+});
+test('kolom wajib terbaca, kolom opsional tidak; nama akses client diterima', () => {
+  assert.equal(fieldsOf('partners').get('name')?.isRequired, true);
+  assert.equal(fieldsOf('Partners').get('vat')?.isRequired, false);
+  assert.equal(fieldsOf('salesOrders').get('partnerId')?.isRequired, true);
+  assert.throws(() => fieldsOf('tidakAda'));
 });

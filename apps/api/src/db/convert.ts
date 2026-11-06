@@ -1,16 +1,31 @@
 import { Prisma } from '@prisma/client';
-import { DATE_COLUMNS } from './date-columns.generated';
+import { DATE_COLUMNS, REQUIRED_COLUMNS } from './columns.generated';
 
 // Penyesuai tipe supaya kontrak API tetap sama bagi frontend: kolom date menjadi string YYYY-MM-DD,
 // numeric dan bigint menjadi number. Aturan dibaca per model dari skema, jadi nama kolom yang sama
 // di tabel lain tidak ikut terpengaruh.
-type Field = { kind: string; type: string };
+type Field = { kind: string; type: string; isRequired: boolean };
+const REQUIRED = new Map(Object.entries(REQUIRED_COLUMNS).map(([m, cols]) => [m, new Set(cols)]));
 const FIELDS = new Map<string, Map<string, Field>>(
   Prisma.dmmf.datamodel.models.map((m) => [
     m.name,
-    new Map(m.fields.map((f) => [f.name, { kind: f.kind, type: f.type } as Field])),
+    new Map(
+      m.fields.map((f) => [
+        f.name,
+        { kind: f.kind, type: f.type, isRequired: !!REQUIRED.get(m.name)?.has(f.name) } as Field,
+      ]),
+    ),
   ]),
 );
+const MODEL_NAMES = new Map([...FIELDS.keys()].map((m) => [m.toLowerCase(), m]));
+
+/** Kolom sebuah model; menerima nama model (SalesOrders) atau nama akses client (salesOrders). */
+export function fieldsOf(table: string): Map<string, Field> {
+  const fields = FIELDS.get(MODEL_NAMES.get(table.toLowerCase()) ?? '');
+  if (!fields) throw new Error(`Model tidak dikenal: ${table}`);
+  return fields;
+}
+
 const DATES = new Map(Object.entries(DATE_COLUMNS).map(([m, cols]) => [m, new Set(cols)]));
 const DATE_LIKE = /^\d{4}-\d{2}-\d{2}/;
 

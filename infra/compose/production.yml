@@ -1,9 +1,13 @@
 # Produksi: menolak berjalan bila rahasia belum diisi, dan tidak mengisi data contoh.
-# Jalankan: docker compose -f docker-compose.yml -f infra/compose/production.yml up -d --build
+# Isi COMPOSE_FILE=docker-compose.yml:infra/compose/production.yml di .env server, supaya setiap perintah
+# docker compose (termasuk pemulihan dan cadangan) selalu memakai berkas ini. Lalu: docker compose up -d --build
 services:
   db:
     environment:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Isi DB_PASSWORD di .env}
+  web:
+    # hanya Nginx di VM yang boleh mengakses; lihat infra/nginx/nginx-https.conf
+    ports: !override ['127.0.0.1:8080:80']
   api:
     environment:
       DATABASE_URL: postgresql://mtpp:${DB_PASSWORD:?Isi DB_PASSWORD di .env}@db:5432/mtpp

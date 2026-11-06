@@ -93,6 +93,33 @@ await ditolak(
   'kolom CRUD salah tipe',
 );
 
+await ditolak(
+  S,
+  'POST',
+  '/sales-orders',
+  { partnerId: partner.id, dateOrder: '2026-02-31' },
+  /dateOrder harus berupa tanggal/,
+  'tanggal yang tidak ada',
+);
+await ditolak(S, 'POST', '/sales-orders', { partnerId: 1.5 }, /partnerId harus berupa angka bulat/, 'ID desimal');
+await ditolak(
+  S,
+  'POST',
+  '/sales-orders',
+  { partnerId: 99999999999 },
+  /partnerId harus berupa angka bulat/,
+  'ID terlalu besar',
+);
+await ditolak(S, 'PATCH', '/auth/profile', { name: null }, /name harus berupa teks/, 'nama profil null');
+await ditolak(A, 'PATCH', '/users/1', { login: '' }, /login wajib diisi/, 'login kosong');
+await ditolak(A, 'PATCH', '/users/1', { name: null }, /name wajib diisi/, 'nama pengguna null');
+await ditolak(A, 'PATCH', `/partners/${partner.id}`, { name: '' }, /name wajib diisi/, 'nama pelanggan kosong');
+const tanpaTop = await call(S, 'POST', '/sales-orders', { partnerId: partner.id, paymentTermId: '', lines: [] });
+cek(
+  tanpaTop.status === 201,
+  `paymentTermId '' memakai bawaan pelanggan -> ${tanpaTop.status} ${tanpaTop.body.message || ''}`,
+);
+
 const longgar = await call(S, 'POST', '/sales-orders', {
   partnerId: String(partner.id),
   partnerShippingId: '',

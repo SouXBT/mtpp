@@ -1,9 +1,9 @@
-import { IsDateLike, IsNumeric, IsRows, IsText } from '../../shared/validation';
+import { IsDateLike, IsId, IsNumeric, IsRows, IsText } from '../../shared/validation';
 
 export class SaveSalesOrderDto {
-  @IsNumeric() partnerId?: number;
-  @IsNumeric() partnerShippingId?: number;
-  @IsNumeric() paymentTermId?: number;
+  @IsId() partnerId?: number;
+  @IsId() partnerShippingId?: number;
+  @IsId() paymentTermId?: number;
   @IsDateLike() dateOrder?: string;
   @IsDateLike() validityDate?: string;
   @IsDateLike() commitmentDate?: string;

@@ -27,6 +27,18 @@ if (
   process.exit(1);
 }
 
+// Nilai contoh dari .env.example diketahui siapa pun yang membaca repositori.
+const placeholder =
+  process.env.WEBHOOK_TOKEN === 'ganti-token-webhook'
+    ? 'WEBHOOK_TOKEN'
+    : /:(ganti-password-database|mtpp)@/.test(process.env.DATABASE_URL || '')
+      ? 'DB_PASSWORD'
+      : null;
+if (process.env.APP_ENV === 'production' && placeholder) {
+  console.error(`${placeholder} masih bawaan. Isi nilai yang panjang dan acak sebelum menjalankan produksi.`);
+  process.exit(1);
+}
+
 async function bootstrap() {
   const { db } = await import('./db/db.module');
   const log = new Logger('MTPP');

@@ -1,9 +1,9 @@
-import { IsDateLike, IsNumeric, IsText } from '../../shared/validation';
+import { IsDateLike, IsId, IsNumeric, IsText } from '../../shared/validation';
 
 export class PaymentDto {
-  @IsNumeric() invoiceId?: number;
-  @IsNumeric() saleId?: number;
-  @IsNumeric() purchaseId?: number;
+  @IsId() invoiceId?: number;
+  @IsId() saleId?: number;
+  @IsId() purchaseId?: number;
   @IsNumeric() amount!: number;
   @IsText() method?: 'BNK' | 'KAS';
   @IsDateLike() date?: string;

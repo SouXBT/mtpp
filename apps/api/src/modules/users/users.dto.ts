@@ -1,17 +1,17 @@
-import { IsFlag, IsNumeric, IsText } from '../../shared/validation';
+import { IsFilledText, IsId, IsPresentFlag, IsText } from '../../shared/validation';
 
 export class CreateUserDto {
   @IsText() name!: string;
   @IsText() login!: string;
   @IsText() password!: string;
-  @IsNumeric() groupId!: number;
+  @IsId() groupId!: number;
 }
 
 export class UpdateUserDto {
-  @IsText() name?: string;
-  @IsText() login?: string;
-  @IsFlag() active?: boolean;
-  @IsNumeric() groupId?: number;
+  @IsFilledText() name?: string;
+  @IsFilledText() login?: string;
+  @IsPresentFlag() active?: boolean;
+  @IsId() groupId?: number;
 }
 
 export class ResetPasswordDto {

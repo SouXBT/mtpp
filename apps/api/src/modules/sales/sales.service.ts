@@ -162,7 +162,7 @@ export class SalesService {
           partnerId: partner.id,
           partnerShippingId: b.partnerShippingId || null,
           userId: u.id,
-          paymentTermId: b.paymentTermId ?? partner.paymentTermId,
+          paymentTermId: b.paymentTermId || partner.paymentTermId,
           dateOrder: date,
           validityDate: b.validityDate || addDays(date, terms.validityDays || 30),
           commitmentDate: b.commitmentDate || null,

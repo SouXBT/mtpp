@@ -1,4 +1,4 @@
-import { IsDateLike, IsFlag, IsNumeric, IsRows, IsText } from '../../shared/validation';
+import { IsDateLike, IsFlag, IsId, IsNumeric, IsRows, IsText } from '../../shared/validation';
 
 export class JournalEntryDto {
   @IsDateLike() date?: string;
@@ -10,13 +10,13 @@ export class JournalEntryDto {
 
 export class CashDto {
   @IsText() type!: 'in' | 'out';
-  @IsNumeric() accountId!: number;
+  @IsId() accountId!: number;
   @IsNumeric() amount!: number;
   @IsDateLike() date?: string;
   @IsText() memo!: string;
-  @IsNumeric() partnerId?: number;
+  @IsId() partnerId?: number;
 }
 
 export class MatchBankLineDto {
-  @IsNumeric() paymentId!: number;
+  @IsId() paymentId!: number;
 }

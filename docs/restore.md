@@ -27,6 +27,8 @@ docker compose run --rm --no-deps -v /tmp/restore:/in --entrypoint sh api -c "rm
 ```
 
 ## 5. Nyalakan kembali dan periksa
+Pastikan `.env` berisi `COMPOSE_FILE=docker-compose.yml:infra/compose/production.yml`, supaya pengaturan produksi tetap dipakai.
+
 ```bash
 docker compose up -d
 docker compose logs -f api   # tunggu "API berjalan"

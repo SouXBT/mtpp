@@ -645,7 +645,6 @@ export class ReportsService {
         };
       }
     }
-    fail('Laporan tidak dikenal');
-    throw new ForbiddenException('Laporan tidak tersedia untuk grup Anda');
+    return fail('Laporan tidak dikenal');
   }
 }

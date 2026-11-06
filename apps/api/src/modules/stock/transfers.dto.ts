@@ -1,10 +1,10 @@
-import { IsDateLike, IsNumeric, IsRows, IsText } from '../../shared/validation';
+import { IsDateLike, IsId, IsRows, IsText } from '../../shared/validation';
 
 export class UpdateTransferDto {
   @IsDateLike() scheduledDate?: string;
   @IsText() note?: string;
-  @IsNumeric() partnerId?: number;
-  @IsNumeric() warehouseId?: number;
+  @IsId() partnerId?: number;
+  @IsId() warehouseId?: number;
   @IsRows() moves?: any[];
 }
 

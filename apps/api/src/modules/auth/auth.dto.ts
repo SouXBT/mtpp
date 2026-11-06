@@ -1,4 +1,4 @@
-import { IsText } from '../../shared/validation';
+import { IsPresentText, IsText } from '../../shared/validation';
 
 export class LoginDto {
   @IsText() login!: string;
@@ -6,7 +6,7 @@ export class LoginDto {
 }
 
 export class ProfileDto {
-  @IsText() name?: string;
+  @IsPresentText() name?: string;
   @IsText() email?: string;
   @IsText() phone?: string;
 }
