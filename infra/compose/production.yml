@@ -1,0 +1,13 @@
+# Produksi: menolak berjalan bila rahasia belum diisi, dan tidak mengisi data contoh.
+# Jalankan: docker compose -f docker-compose.yml -f infra/compose/production.yml up -d --build
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Isi DB_PASSWORD di .env}
+  api:
+    environment:
+      DATABASE_URL: postgresql://mtpp:${DB_PASSWORD:?Isi DB_PASSWORD di .env}@db:5432/mtpp
+      APP_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?Isi JWT_SECRET di .env}
+      WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:?Isi WEBHOOK_TOKEN di .env}
+      SEED_DEMO: 'false'

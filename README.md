@@ -109,6 +109,21 @@ Perubahan skema: ubah `apps/api/prisma/schema.prisma`, lalu `npm run db:migrate`
 Tanpa `BREVO_API_KEY`, email berjalan dalam **mode simulasi**: log email dibuat dan status `simulasi`, sehingga alur dapat diuji tanpa mengirim email sungguhan.
 Dengan kunci Brevo, atur webhook transactional di Brevo ke `https://<domain>/api/email/webhook/<WEBHOOK_TOKEN>` untuk event *delivered, hard bounce, soft bounce, blocked, invalid, error*. Status masuk ke menu **Pengaturan → Email Keluar** dan tampil pada setiap dokumen.
 
+## Perintah
+
+| Keperluan | Perintah |
+| --- | --- |
+| Menjalankan di komputer sendiri | `docker compose up -d --build` lalu buka http://localhost:8080 |
+| Pemeriksaan cepat: format, lint, tipe, uji unit | `npm install && npm run check` |
+| Pemeriksaan penuh di lingkungan uji port 8081 | `tests/run-check.sh` |
+| Menjalankan produksi | `docker compose -f docker-compose.yml -f infra/compose/production.yml up -d --build` |
+
+Produksi menolak berjalan bila `DB_PASSWORD`, `JWT_SECRET`, atau `WEBHOOK_TOKEN` belum diisi di `.env`, dan tidak mengisi data contoh.
+
+`tests/run-check.sh` membandingkan hasil dengan rekaman di `tests/baseline/expected`. Rekaman itu tidak disimpan di git dan bergantung pada tanggal, jadi buat ulang bila perlu: `tests/baseline/fresh-run.sh tests/baseline/expected /tmp/log` dari kode yang sudah dipastikan benar.
+
+Setelah mengubah kolom bertipe date di skema, jalankan `npm run db:gen-dates` di `apps/api`.
+
 ## Struktur proyek
 
 ```
