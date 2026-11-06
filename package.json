@@ -8,7 +8,7 @@
     "lint": "eslint .",
     "typecheck": "npm --prefix apps/api run typecheck && npm --prefix apps/web run typecheck",
     "test:unit": "npm --prefix apps/api test && npm --prefix apps/web test",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit"
+    "check": "npm run format:check && npm run lint && npm --prefix apps/api run db:check-columns && npm run typecheck && npm run test:unit"
   },
   "devDependencies": {
     "eslint": "^9.39.5",

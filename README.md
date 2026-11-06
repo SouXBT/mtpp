@@ -3,7 +3,7 @@
 Prototipe aplikasi capstone (224117136 · 224117139 · 222117029 · 222117008).
 Stack: **NestJS 10 (Node.js + TypeScript, Express)** · **React 18 + TypeScript (Vite, Ant Design)** · **PostgreSQL 16** · **Prisma ORM** · **Nginx** · **Docker** · **Brevo Email API** · Google Cloud Compute Engine (asia-southeast2, Jakarta).
 
-> Catatan: akses database memakai **Prisma ORM 7** dengan driver adapter `pg`. Skema ada di `apps/api/prisma/schema.prisma`, migrasi di `apps/api/prisma/migrations/`. CDM dan PDM di Lampiran C buku Revisi 16 digambar dari struktur tabel yang sama.
+> Catatan: akses database memakai **Prisma ORM 7** dengan driver adapter `pg`. Skema ada di `apps/api/prisma/schema/`, migrasi di `apps/api/prisma/migrations/`. CDM dan PDM di Lampiran C buku Revisi 16 digambar dari struktur tabel yang sama.
 
 Panduan langkah demi langkah, termasuk cadangan dan penanganan masalah: [`CARA-MENJALANKAN.txt`](CARA-MENJALANKAN.txt).
 
@@ -102,7 +102,7 @@ npm install
 npm run dev                     # http://localhost:5173  (proxy /api → :3000)
 ```
 
-Perubahan skema: ubah `apps/api/prisma/schema.prisma`, lalu `npm run db:migrate` (membuat migrasi baru di `apps/api/prisma/migrations/`). Dengan Docker, `prisma migrate deploy` dijalankan otomatis setiap backend dinyalakan.
+Perubahan skema: ubah berkas di `apps/api/prisma/schema/`, lalu `npm run db:migrate` (membuat migrasi baru di `apps/api/prisma/migrations/`). Dengan Docker, `prisma migrate deploy` dijalankan otomatis setiap backend dinyalakan.
 
 ## Email (Brevo)
 
