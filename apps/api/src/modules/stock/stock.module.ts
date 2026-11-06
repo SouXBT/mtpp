@@ -2,7 +2,7 @@ import { Body, Controller, Get, Module, Param, ParseIntPipe, Patch, Post, Query,
 import { Response } from 'express';
 import { Inject } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, CurrentUser, Perm } from '../../common/auth';
+import { AuthUser, CurrentUser, Perm } from '../../shared/auth';
 import { StockService } from './stock.service';
 import { TransfersService } from './transfers.service';
 

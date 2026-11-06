@@ -14,10 +14,10 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, CurrentUser, Public, clearAuthCache } from '../../common/auth';
-import { REPORTS_BY_GROUP } from '../../common/menus';
-import { FilesService } from '../../common/files.service';
-import { fail } from '../../common/util';
+import { AuthUser, CurrentUser, Public, clearAuthCache } from '../../shared/auth';
+import { REPORTS_BY_GROUP } from '../../shared/menus';
+import { FilesService } from '../../shared/files.service';
+import { fail } from '../../shared/util';
 
 // Login, profil, kata sandi, dan tanda tangan pengguna (fitur A.a dan A.j)
 @Controller('auth')

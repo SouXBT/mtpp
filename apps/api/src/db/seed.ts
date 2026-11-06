@@ -1,8 +1,8 @@
 // Data awal: grup + hak akses default, pengguna contoh, bagan akun, jurnal, dan master contoh.
 // Dijalankan otomatis saat database masih kosong, atau manual: npm run seed
 import * as bcrypt from 'bcryptjs';
-import { DEFAULT_MATRIX, MENUS } from '../common/menus';
-import { createWarehouse } from '../common/warehouse';
+import { DEFAULT_MATRIX, MENUS } from '../shared/menus';
+import { createWarehouse } from '../shared/warehouse';
 
 const GROUPS = [
   {

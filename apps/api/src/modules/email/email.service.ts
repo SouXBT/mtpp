@@ -1,8 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { FilesService } from '../../common/files.service';
-import { SettingsService } from '../../common/settings.service';
-import { must } from '../../common/util';
+import { FilesService } from '../../shared/files.service';
+import { SettingsService } from '../../shared/settings.service';
+import { must } from '../../shared/util';
 
 export interface SendInput {
   model: string;

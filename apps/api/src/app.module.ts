@@ -2,8 +2,8 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { DbModule } from './db/db.module';
-import { CommonModule } from './common/common.module';
-import { AuthGuard } from './common/auth';
+import { SharedModule } from './shared/shared.module';
+import { AuthGuard } from './shared/auth';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { MasterModule } from './modules/master/master.module';
@@ -29,7 +29,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
       signOptions: { expiresIn: '8h' },
     }),
     DbModule,
-    CommonModule,
+    SharedModule,
     EmailModule,
     AuthModule,
     UsersModule,

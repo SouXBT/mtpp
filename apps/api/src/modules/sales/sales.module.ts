@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Module, Param, ParseIntPipe, Patch, Post, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
-import { AuthUser, CurrentUser, Perm } from '../../common/auth';
-import { NumberingService } from '../../common/numbering.service';
-import { today } from '../../common/util';
+import { AuthUser, CurrentUser, Perm } from '../../shared/auth';
+import { NumberingService } from '../../shared/numbering.service';
+import { today } from '../../shared/util';
 import { MasterModule } from '../master/master.module';
 import { StockModule } from '../stock/stock.module';
 import { SalesService } from './sales.service';

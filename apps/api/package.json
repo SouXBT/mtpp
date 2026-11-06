@@ -7,7 +7,7 @@
     "start": "node dist/main.js",
     "dev": "nest start --watch",
     "seed": "node dist/db/seed.js",
-    "demo": "node scripts/demo-flow.mjs",
+    "demo": "node ../../tests/flows/demo-flow.mjs",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",

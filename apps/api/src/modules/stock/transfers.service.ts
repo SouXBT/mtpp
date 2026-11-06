@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, dataRule } from '../../common/auth';
-import { NumberingService } from '../../common/numbering.service';
-import { ChatterService } from '../../common/chatter.service';
-import { PdfService } from '../../common/pdf.service';
-import { graduateCustomer, refreshPurchase, refreshSale, salePayments } from '../../common/status';
-import { fail, must, num, round2, tglIndo, today } from '../../common/util';
+import { AuthUser, dataRule } from '../../shared/auth';
+import { NumberingService } from '../../shared/numbering.service';
+import { ChatterService } from '../../shared/chatter.service';
+import { PdfService } from '../../shared/pdf.service';
+import { graduateCustomer, refreshPurchase, refreshSale, salePayments } from '../../shared/status';
+import { fail, must, num, round2, tglIndo, today } from '../../shared/util';
 import { StockService } from './stock.service';
 import { Prisma } from '@prisma/client';
 

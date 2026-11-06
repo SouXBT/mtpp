@@ -4,7 +4,7 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$ROOT"
 OUT="$1"; LOG="$2"; mkdir -p "$LOG"
-TEST_FILE="${TEST_FILE:-e2e/compose.test.yml}"; FLOWS="${FLOWS:-apps/api/scripts}"; E2E="${E2E:-e2e}"
+TEST_FILE=infra/compose/test.yml; FLOWS=tests/flows; E2E=tests/e2e
 C="docker compose -p mtpp-nav -f docker-compose.yml -f $TEST_FILE"
 fail=0
 $C down -v >/dev/null 2>&1

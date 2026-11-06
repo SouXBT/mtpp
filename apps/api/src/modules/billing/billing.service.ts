@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, dataRule } from '../../common/auth';
-import { SettingsService } from '../../common/settings.service';
-import { ChatterService } from '../../common/chatter.service';
-import { PdfService } from '../../common/pdf.service';
-import { graduateCustomer, refreshPurchase, refreshSale, salePayments } from '../../common/status';
-import { addDays, fail, must, num, round2, rupiah, terbilang, terbilangEn, tglIndo, today } from '../../common/util';
+import { AuthUser, dataRule } from '../../shared/auth';
+import { SettingsService } from '../../shared/settings.service';
+import { ChatterService } from '../../shared/chatter.service';
+import { PdfService } from '../../shared/pdf.service';
+import { graduateCustomer, refreshPurchase, refreshSale, salePayments } from '../../shared/status';
+import { addDays, fail, must, num, round2, rupiah, terbilang, terbilangEn, tglIndo, today } from '../../shared/util';
 import { JournalService } from '../accounting/journal.service';
 import { EmailService } from '../email/email.service';
 import { Prisma } from '@prisma/client';

@@ -18,11 +18,11 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { createHash, randomBytes } from 'crypto';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, CurrentUser, Perm, Public, checkPerm } from '../../common/auth';
-import { DEFAULT_SETTINGS, SettingsService } from '../../common/settings.service';
-import { FilesService } from '../../common/files.service';
-import { NumberingService } from '../../common/numbering.service';
-import { fail, today } from '../../common/util';
+import { AuthUser, CurrentUser, Perm, Public, checkPerm } from '../../shared/auth';
+import { DEFAULT_SETTINGS, SettingsService } from '../../shared/settings.service';
+import { FilesService } from '../../shared/files.service';
+import { NumberingService } from '../../shared/numbering.service';
+import { fail, today } from '../../shared/util';
 
 export const hashKey = (k: string) => createHash('sha256').update(k).digest('hex');
 

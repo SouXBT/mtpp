@@ -1,8 +1,8 @@
 import { Body, Controller, Delete, Get, Inject, Module, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, CurrentUser, Perm, checkPerm, stripCost } from '../../common/auth';
-import { makeCrud, pick, safeDelete } from '../../common/crud';
-import { fail, must } from '../../common/util';
+import { AuthUser, CurrentUser, Perm, checkPerm, stripCost } from '../../shared/auth';
+import { makeCrud, pick, safeDelete } from '../../shared/crud';
+import { fail, must } from '../../shared/util';
 import { PricingService } from './pricing.service';
 import { Prisma } from '@prisma/client';
 

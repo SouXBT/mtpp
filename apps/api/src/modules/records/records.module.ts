@@ -18,10 +18,10 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, CurrentUser } from '../../common/auth';
-import { ChatterService } from '../../common/chatter.service';
-import { FilesService } from '../../common/files.service';
-import { fail, must, today } from '../../common/util';
+import { AuthUser, CurrentUser } from '../../shared/auth';
+import { ChatterService } from '../../shared/chatter.service';
+import { FilesService } from '../../shared/files.service';
+import { fail, must, today } from '../../shared/util';
 
 // model dokumen -> menu hak akses
 export const MODEL_MENU: Record<string, string[]> = {

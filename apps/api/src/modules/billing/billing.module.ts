@@ -12,7 +12,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { AuthUser, CurrentUser, Perm, checkPerm } from '../../common/auth';
+import { AuthUser, CurrentUser, Perm, checkPerm } from '../../shared/auth';
 import { AccountingModule } from '../accounting/accounting.module';
 import { BillingService } from './billing.service';
 

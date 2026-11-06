@@ -14,10 +14,10 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, CurrentUser, Perm } from '../../common/auth';
-import { makeCrud } from '../../common/crud';
-import { ChatterService } from '../../common/chatter.service';
-import { daysBetween, fail, must, round2, today } from '../../common/util';
+import { AuthUser, CurrentUser, Perm } from '../../shared/auth';
+import { makeCrud } from '../../shared/crud';
+import { ChatterService } from '../../shared/chatter.service';
+import { daysBetween, fail, must, round2, today } from '../../shared/util';
 import { JournalService } from './journal.service';
 import { Prisma } from '@prisma/client';
 

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { fail, round2 } from '../../common/util';
+import { fail, round2 } from '../../shared/util';
 import { Prisma } from '@prisma/client';
 
 const sql = Prisma.sql;

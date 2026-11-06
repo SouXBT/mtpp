@@ -14,11 +14,11 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, CurrentUser, Perm } from '../../common/auth';
-import { NumberingService } from '../../common/numbering.service';
-import { PdfService } from '../../common/pdf.service';
-import { SettingsService } from '../../common/settings.service';
-import { fail, must, today } from '../../common/util';
+import { AuthUser, CurrentUser, Perm } from '../../shared/auth';
+import { NumberingService } from '../../shared/numbering.service';
+import { PdfService } from '../../shared/pdf.service';
+import { SettingsService } from '../../shared/settings.service';
+import { fail, must, today } from '../../shared/util';
 import { DOC_TYPES, renderDocument } from './documents.templates';
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;

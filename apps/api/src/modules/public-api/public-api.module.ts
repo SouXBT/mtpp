@@ -13,8 +13,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { Public } from '../../common/auth';
-import { must } from '../../common/util';
+import { Public } from '../../shared/auth';
+import { must } from '../../shared/util';
 import { hashKey } from '../settings/settings.module';
 import { StockModule } from '../stock/stock.module';
 import { StockService } from '../stock/stock.service';

@@ -3,13 +3,13 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import * as ExcelJS from 'exceljs';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, CurrentUser, Perm } from '../../common/auth';
-import { round2, today } from '../../common/util';
+import { AuthUser, CurrentUser, Perm } from '../../shared/auth';
+import { round2, today } from '../../shared/util';
 import { StockModule } from '../stock/stock.module';
 import { StockService } from '../stock/stock.service';
 import { AccountingModule } from '../accounting/accounting.module';
 import { JournalService } from '../accounting/journal.service';
-import { createWarehouse } from '../../common/warehouse';
+import { createWarehouse } from '../../shared/warehouse';
 
 interface Field {
   key: string;

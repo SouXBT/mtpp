@@ -1,5 +1,5 @@
-import { PdfService } from '../../common/pdf.service';
-import { tglIndo } from '../../common/util';
+import { PdfService } from '../../shared/pdf.service';
+import { tglIndo } from '../../shared/util';
 
 // Empat jenis dokumen di luar alur transaksi. Isi dan urutannya mengikuti MTPP Docs.
 export const DOC_TYPES: Record<string, { code: string; label: string; labelEn: string }> = {

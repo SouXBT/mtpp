@@ -12,7 +12,7 @@ import {
   Global,
 } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, CurrentUser, Perm, Public } from '../../common/auth';
+import { AuthUser, CurrentUser, Perm, Public } from '../../shared/auth';
 import { EmailService } from './email.service';
 
 @Controller()

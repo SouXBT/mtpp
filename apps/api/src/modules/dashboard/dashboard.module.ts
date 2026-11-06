@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, Module } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, CurrentUser } from '../../common/auth';
-import { addDays, daysBetween, round2, today } from '../../common/util';
+import { AuthUser, CurrentUser } from '../../shared/auth';
+import { addDays, daysBetween, round2, today } from '../../shared/util';
 import { StockModule } from '../stock/stock.module';
 import { StockService } from '../stock/stock.service';
 import { SalesModule } from '../sales/sales.module';

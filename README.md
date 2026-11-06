@@ -52,7 +52,7 @@ Kata sandi semua akun contoh: `mtpp12345` (ganti setelah login lewat menu Profil
 Mengisi 49 produk dari katalog website MTPP, dengan harga, stok, kontak principal, dan transaksi contoh. Harga dan stoknya bukan data sungguhan. Produk dan principal contoh dasar diarsipkan. Skrip menolak berjalan dua kali pada database yang sama.
 
 ```bash
-API=http://localhost:8080/api node apps/api/scripts/mock-data.mjs
+API=http://localhost:8080/api node apps/api/scripts/seed/mock-data.mjs
 ```
 
 ## Pengujian
@@ -61,23 +61,23 @@ Skrip yang menulis data dijalankan pada lingkungan uji terpisah di port 8081, bu
 
 ```bash
 # nyalakan lingkungan uji dengan database bersih
-docker compose -p mtpp-nav -f docker-compose.yml -f e2e/compose.test.yml up -d --build
+docker compose -p mtpp-nav -f docker-compose.yml -f infra/compose/test.yml up -d --build
 
 # uji alur lewat API, berurutan pada database bersih
-API=http://localhost:8081/api node apps/api/scripts/demo-flow.mjs
-API=http://localhost:8081/api node apps/api/scripts/edge-flow.mjs
+API=http://localhost:8081/api node tests/flows/demo-flow.mjs
+API=http://localhost:8081/api node tests/flows/edge-flow.mjs
 
 # uji aturan menu dan langkah berikutnya
-cd apps/web && node --test src/nav.test.ts src/pages/nextSteps.test.ts && cd ../..
+cd apps/web && node --test src/app/nav.test.ts src/features/sales/nextSteps.test.ts && cd ../..
 
-# uji lewat browser (sekali: cd e2e && npm install)
-node e2e/nav-audit.mjs
-node e2e/alur-po-pelanggan.mjs
-node e2e/alur-surat-jalan.mjs
-node e2e/alur-berikutnya.mjs
+# uji lewat browser (sekali: cd tests/e2e && npm install)
+node tests/e2e/nav-audit.mjs
+node tests/e2e/alur-po-pelanggan.mjs
+node tests/e2e/alur-surat-jalan.mjs
+node tests/e2e/alur-berikutnya.mjs
 
 # matikan dan hapus lingkungan uji
-docker compose -p mtpp-nav -f docker-compose.yml -f e2e/compose.test.yml down -v
+docker compose -p mtpp-nav -f docker-compose.yml -f infra/compose/test.yml down -v
 ```
 
 `nav-audit.mjs` hanya membuka halaman, sehingga boleh dijalankan pada instance utama dengan `BASE=http://localhost:8080`.
@@ -114,15 +114,18 @@ Dengan kunci Brevo, atur webhook transactional di Brevo ke `https://<domain>/api
 ```
 apps/api        backend NestJS
   src/db          koneksi Prisma + penyesuai tipe, seed
-  src/common      auth & hak akses (group_permissions), penomoran, PPN, PDF, catatan/riwayat, file
+  src/shared      auth & hak akses (group_permissions), penomoran, PPN, PDF, catatan/riwayat, file
   src/modules     auth, users, master, sales, purchasing, stock, billing, accounting,
                   email, records, settings, reports, dashboard, importer, public-api, documents
-  prisma          schema.prisma dan migrasi SQL
-  scripts         demo-flow.mjs dan edge-flow.mjs (uji alur), mock-data.mjs (data contoh), api-client.mjs (contoh REST API)
+  prisma          schema dan migrasi SQL
+  scripts         seed/mock-data.mjs (data contoh), examples/api-client.mjs (contoh REST API)
 apps/web        frontend React (warna website MTPP: merah #90241D, kuning, putih; logo matahari MTPP; Inter)
-infra           nginx-https.conf (HTTPS di VM), backup.sh (harian ke Cloud Storage)
-docs            restore.md (prosedur pemulihan), superpowers (rancangan dan rencana kerja)
-e2e             uji otomatis lewat browser dan pengaturan lingkungan uji
+  src/app         titik masuk, Shell, login, menu, gaya
+  src/features    satu folder per bagian: home, sales, purchasing, billing, stock, accounting, master, settings, reports, documents
+  src/shared      komponen dan fungsi bersama: ui, Crud, Chart, Chatter, hooks, lib
+infra           nginx/ (HTTPS di VM), backup/ (harian ke Cloud Storage), compose/ (test, production)
+docs            restore.md (prosedur pemulihan), specs, plans, reports, screenshots
+tests           flows/ (uji alur API), e2e/ (uji browser), baseline/ (rekaman pembanding)
 ```
 
 ## Modul dan penanggung jawab
@@ -134,7 +137,7 @@ Sama dengan bagian "Modul dan pemilik" di rencana build (berdasarkan Tabel 1.1 b
 | auth, users | Login, 5 grup, hak akses CRUD, profil dan kata sandi, tanda tangan | auth, users | Home (login, profil), Settings (pengguna, grup) | Marco |
 | master | Pelanggan, alamat kirim, principal, gudang, produk, kategori, satuan, term of payment, pricelist jual, data perusahaan, impor data awal | master, importer, settings | Master, Settings (perusahaan, dokumen, impor) | Marco |
 | sales | Penawaran, sales order, margin, salin, masa berlaku, pembatalan, proforma | sales | Sales | Marco |
-| common | Penomoran, PDF, lampiran, catatan, riwayat perubahan, aktivitas | common, records | components (Chatter, Crud, ui) | Marco dan Brivio |
+| shared | Penomoran, PDF, lampiran, catatan, riwayat perubahan, aktivitas | shared, records | shared (Chatter, Crud, ui) | Marco dan Brivio |
 | purchasing | PO Principal dari SO, pricelist principal, penerimaan dan susulan, dropship | purchasing | Purchasing | Brivio |
 | stock | Stok per gudang, mutasi, stok minimum | stock (stock.service) | Stock (stok, minimum, mutasi) | Brivio |
 | delivery | Surat jalan 3 lembar, pengiriman bertahap, jadwal kirim, blokir pelanggan baru belum lunas | stock (transfers.service) | Stock (surat jalan) | Shannon |
@@ -150,7 +153,7 @@ Sama dengan bagian "Modul dan pemilik" di rencana build (berdasarkan Tabel 1.1 b
 
 **Pimpinan** — Term of payment pelanggan (data pelanggan) · Riwayat perubahan (tab Catatan dan Riwayat) · Pricelist penjualan · Laporan penjualan per periode/pelanggan/produk · margin · piutang jatuh tempo (belum JT, 1–30, 31–60, 61–90, >90) · pembelian dan utang principal · stok per gudang · kas · buku besar dan neraca saldo.
 
-**Admin** — Laporan pesanan belum diterima, stok per gudang, dan pengiriman · Akun dan grup (matriks Baca/Buat/Ubah/Hapus) · Master pelanggan + alamat kirim · Master principal + gudang otomatis · Master produk · Arsip master (hapus ditolak bila sudah dipakai) · Pengaturan PPN, syarat, dan penomoran `<kode>/MTPP/<tahun>/<bulan>/<urut>` · Pencadangan (`infra/backup.sh`, `docs/restore.md`) · Kategori dan satuan · Data perusahaan, logo, tanda tangan · Impor data awal (pelanggan, alamat, principal, produk, pricelist principal, stok awal, saldo awal akun, invoice & tagihan terbuka).
+**Admin** — Laporan pesanan belum diterima, stok per gudang, dan pengiriman · Akun dan grup (matriks Baca/Buat/Ubah/Hapus) · Master pelanggan + alamat kirim · Master principal + gudang otomatis · Master produk · Arsip master (hapus ditolak bila sudah dipakai) · Pengaturan PPN, syarat, dan penomoran `<kode>/MTPP/<tahun>/<bulan>/<urut>` · Pencadangan (`infra/backup/backup.sh`, `docs/restore.md`) · Kategori dan satuan · Data perusahaan, logo, tanda tangan · Impor data awal (pelanggan, alamat, principal, produk, pricelist principal, stok awal, saldo awal akun, invoice & tagihan terbuka).
 
 **Sales** — Surat penawaran · Margin (hanya Pimpinan/Sales/Finance, tidak tercetak) · Kirim email · Konfirmasi menjadi SO · Salin · Masa berlaku & tanda kedaluwarsa · Cetak PDF · Batal & kembali ke draf · Riwayat transaksi pelanggan · Status terkirim/tertagih per baris · PO Pelanggan dicatat di penawaran dan SO · teks Pembayaran bawaan penawaran baru: "DP 30% saat PO diterima, 70% sebelum barang dikirim" (tercetak saja, bukan tagihan DP; Sales dapat mengubahnya per penawaran) · keterangan "Berikutnya" di detail SO menunjukkan langkah yang menunggu (PO Principal, pembayaran, surat jalan, invoice).
 
@@ -187,12 +190,12 @@ curl -H "X-API-Key: mtpp_xxx" http://localhost:8080/api/v1/invoices?paymentState
 curl -H "X-API-Key: mtpp_xxx" http://localhost:8080/api/v1/stock
 ```
 
-Contoh klien Node.js: `apps/api/scripts/api-client.mjs`.
+Contoh klien Node.js: `apps/api/scripts/examples/api-client.mjs`.
 
 ## Produksi di Google Cloud
 
 1. VM Compute Engine (e2-medium, Ubuntu 24.04, region asia-southeast2) dengan Docker + Docker Compose.
 2. `git clone` ke `/opt/mtpp`, isi `.env` (`APP_ENV=production`, `JWT_SECRET` panjang dan acak, `SEED_DEMO=false`), `docker compose up -d --build`. Dengan `APP_ENV=production` backend menolak berjalan bila `JWT_SECRET` kosong atau masih bawaan; `SEED_DEMO=false` menyembunyikan akun contoh pada halaman login.
-3. Nginx di VM untuk HTTPS: `infra/nginx-https.conf` + `certbot --nginx -d <domain>`.
+3. Nginx di VM untuk HTTPS: `infra/nginx/nginx-https.conf` + `certbot --nginx -d <domain>`.
 4. Backup harian: buat bucket `gs://mtpp-backup`, beri service account VM akses tulis, lalu `crontab -e`:
-   `15 1 * * * /opt/mtpp/infra/backup.sh >> /var/log/mtpp-backup.log 2>&1`. Pemulihan: `docs/restore.md`.
+   `15 1 * * * /opt/mtpp/infra/backup/backup.sh >> /var/log/mtpp-backup.log 2>&1`. Pemulihan: `docs/restore.md`.

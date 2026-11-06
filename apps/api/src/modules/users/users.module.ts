@@ -13,12 +13,12 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { FilesService } from '../../common/files.service';
+import { FilesService } from '../../shared/files.service';
 import * as bcrypt from 'bcryptjs';
 import { DB, Db } from '../../db/db.module';
-import { Perm, clearAuthCache } from '../../common/auth';
-import { MENUS } from '../../common/menus';
-import { fail, must } from '../../common/util';
+import { Perm, clearAuthCache } from '../../shared/auth';
+import { MENUS } from '../../shared/menus';
+import { fail, must } from '../../shared/util';
 
 // Akun pengguna, grup, dan hak akses CRUD per grup (fitur C.a)
 @Controller()

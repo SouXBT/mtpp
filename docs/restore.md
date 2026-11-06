@@ -1,6 +1,6 @@
 # Prosedur Pemulihan Database dan Lampiran
 
-Salinan dibuat setiap hari pukul 01.15 WIB oleh `infra/backup.sh` dan disimpan di Cloud Storage
+Salinan dibuat setiap hari pukul 01.15 WIB oleh `infra/backup/backup.sh` dan disimpan di Cloud Storage
 (`gs://mtpp-backup/<tanggal-jam>/`), berisi `mtpp-<stamp>.dump` (database) dan `storage-<stamp>.tgz` (lampiran, PDF, logo, tanda tangan).
 
 ## 1. Pilih salinan

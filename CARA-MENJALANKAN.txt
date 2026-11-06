@@ -68,7 +68,7 @@ Ganti kata sandi lewat menu Profil sebelum dipakai sungguhan.
 Mengisi 49 produk dari katalog website MTPP, ditambah harga, stok, dan transaksi
 contoh. Harga dan stoknya bukan data sungguhan.
 
-    API=http://localhost:8080/api node apps/api/scripts/mock-data.mjs
+    API=http://localhost:8080/api node apps/api/scripts/seed/mock-data.mjs
 
 Skrip menolak berjalan dua kali pada database yang sama.
 Skrip memerlukan akun dan pelanggan contoh dari bagian 2 (SEED_DEMO jangan false).
@@ -132,4 +132,4 @@ docker compose down tanpa -v aman untuk data.
 ----------------
     README.md                     fitur, aturan bisnis, dan cara jalan tanpa Docker
     docs/restore.md               pemulihan dari cadangan harian di server
-    e2e/                          uji otomatis, untuk yang mengubah kode
+    tests/                        uji otomatis, untuk yang mengubah kode

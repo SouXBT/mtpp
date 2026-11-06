@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { NumberingService } from '../../common/numbering.service';
-import { SettingsService } from '../../common/settings.service';
-import { fail, must, round2, today } from '../../common/util';
+import { NumberingService } from '../../shared/numbering.service';
+import { SettingsService } from '../../shared/settings.service';
+import { fail, must, round2, today } from '../../shared/util';
 
 export interface JLine {
   key?: string;
