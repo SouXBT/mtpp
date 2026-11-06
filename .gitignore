@@ -6,3 +6,4 @@ tfix/
 storage/
 *.tsbuildinfo
 test-results/
+tests/baseline/expected/

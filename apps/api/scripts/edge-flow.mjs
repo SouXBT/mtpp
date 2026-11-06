@@ -6,6 +6,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// RUN_TAG tetap membuat nama data sama antar-jalan sehingga rekaman bisa dibandingkan
+const RUN_TAG = process.env.RUN_TAG || Date.now() % 100000;
 const API = process.env.API || 'http://localhost:3000/api';
 const PASS = process.env.DEMO_PASSWORD || 'mtpp12345';
 let passed = 0, failed = 0;
@@ -47,14 +49,14 @@ let seq = 0;
 // produk baru supaya setiap uji tidak terpengaruh stok uji lain
 async function newProduct({ cost = 100000, list = 150000, route } = {}) {
   seq++;
-  const c = `UJI-${Date.now() % 100000}-${seq}`;
+  const c = `UJI-${RUN_TAG}-${seq}`;
   const p = await call(A, 'POST', '/products', { code: c, defaultCode: c, name: `Produk Uji ${c}`, uomId: sample.uomId, categoryId: sample.categoryId, mainSupplierId: suppliers[0].id, listPrice: list, type: 'product', ...(route ? { mtppRoute: route } : {}) });
   const all = await call(S, 'GET', '/products');
   const row = all.find((x) => x.id === p.id);
   if (cost) await call(F, 'POST', '/supplier-prices', { partnerId: suppliers[0].id, productTmplId: row.tmplId, price: cost, discount: 0, minQty: 0, dateStart: '2026-01-01' });
   return { ...row, id: p.id };
 }
-const newCustomer = async () => call(A, 'POST', '/partners', { kind: 'customer', name: `PT Pelanggan Uji ${Date.now() % 100000}-${++seq}`, email: 'uji@contoh.id' });
+const newCustomer = async () => call(A, 'POST', '/partners', { kind: 'customer', name: `PT Pelanggan Uji ${RUN_TAG}-${++seq}`, email: 'uji@contoh.id' });
 const quote = (c, lines, extra = {}) => call(S, 'POST', '/sales-orders', { partnerId: c.id, lines, ...extra });
 const confirm = async (q) => { await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {}); return call(S, 'GET', `/sales-orders/${q.id}`); };
 const line = (p, qty, extra = {}) => ({ productId: p.id, productUomQty: qty, ...extra });
@@ -575,7 +577,7 @@ await test('T7 konfirmasi membawa PO Pelanggan dan tanggal kirim', async () => {
 
 await test('T7 ubah nomor penawaran manual', async () => {
   const p = await newProduct();
-  const stamp = Date.now() % 100000;
+  const stamp = RUN_TAG;
   const a = await quote(regular, [line(p, 1)]), b = await quote(regular, [line(p, 1)]);
   const manual = `PN/MANUAL/${stamp}`;
   const u = await call(S, 'PATCH', `/sales-orders/${a.id}`, { name: manual });
