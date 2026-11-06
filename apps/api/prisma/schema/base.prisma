@@ -1,0 +1,11 @@
+// Skema database Sistem Distribusi MTPP (Prisma ORM, PostgreSQL)
+// 30 tabel utama sesuai CDM/PDM Lampiran C + tabel pendukung. Model dikelompokkan per berkas di folder ini.
+// Kolom berawalan mtpp_ mengikuti aturan khusus perusahaan.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}

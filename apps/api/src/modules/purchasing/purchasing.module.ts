@@ -97,9 +97,11 @@ export class PurchasingService {
     const transfers = await this.db.stockTransfers.findMany({
       select: { id: true, name: true, state: true, scheduledDate: true },
       where: { purchaseId: id },
+      orderBy: { id: 'asc' },
     });
     const bills = await this.db.journalEntries.findMany({
       where: { AND: [{ purchaseId: id }, { moveType: { in: ['in_invoice', 'in_refund'] } }] },
+      orderBy: { id: 'asc' },
     });
     const dest = o.destAddressId ? await this.db.partners.findFirst({ where: { id: o.destAddressId } }) : null;
     return {

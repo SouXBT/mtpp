@@ -1,0 +1,65 @@
+// PO Principal
+
+model PurchaseOrders {
+  id                          Int                  @id @default(autoincrement())
+  name                        String               @unique(map: "purchase_orders_name_unique") @db.VarChar(40)
+  partnerId                   Int                  @map("partner_id")
+  warehouseId                 Int?                 @map("warehouse_id")
+  saleId                      Int?                 @map("mtpp_sale_order_id")
+  destAddressId               Int?                 @map("dest_address_id")
+  isDropship                  Boolean              @default(false) @map("mtpp_is_dropship")
+  dateOrder                   DateTime             @map("date_order") @db.Date
+  datePlanned                 DateTime?            @map("date_planned") @db.Date
+  state                       String               @default("draft") @db.VarChar(20)
+  amountUntaxed               Decimal              @default(0) @map("amount_untaxed") @db.Decimal(18, 2)
+  amountTax                   Decimal              @default(0) @map("amount_tax") @db.Decimal(18, 2)
+  amountTotal                 Decimal              @default(0) @map("amount_total") @db.Decimal(18, 2)
+  note                        String?              @db.Text
+  mtppPaymentState            String               @default("menunggu barang") @map("mtpp_payment_state") @db.VarChar(40)
+  mtppAmountDue               Decimal              @default(0) @map("mtpp_amount_due") @db.Decimal(18, 2)
+  createUid                   Int?                 @map("create_uid")
+  createDate                  DateTime             @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                    Int?                 @map("write_uid")
+  writeDate                   DateTime             @default(now()) @map("write_date") @db.Timestamp(6)
+  partner                     Partners             @relation("purchaseOrders_partnerId", fields: [partnerId], references: [id], map: "purchase_orders_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  warehouse                   Warehouses?          @relation("purchaseOrders_warehouseId", fields: [warehouseId], references: [id], map: "purchase_orders_warehouse_id_warehouses_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  sale                        SalesOrders?         @relation("purchaseOrders_saleId", fields: [saleId], references: [id], map: "purchase_orders_mtpp_sale_order_id_sales_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  destAddress                 Partners?            @relation("purchaseOrders_destAddressId", fields: [destAddressId], references: [id], map: "purchase_orders_dest_address_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  lines                       PurchaseOrderLines[] @relation("purchaseOrderLines_orderId")
+  revStockTransfersPurchaseId StockTransfers[]     @relation("stockTransfers_purchaseId")
+  revJournalEntriesPurchaseId JournalEntries[]     @relation("journalEntries_purchaseId")
+
+  @@index([saleId], map: "purchase_orders_mtpp_sale_order_id_idx")
+  @@index([destAddressId], map: "purchase_orders_dest_address_id_idx")
+  @@index([warehouseId], map: "purchase_orders_warehouse_id_idx")
+  @@index([partnerId], map: "purchase_orders_partner_id_idx")
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLines {
+  id                                 Int                 @id @default(autoincrement())
+  orderId                            Int                 @map("order_id")
+  productId                          Int                 @map("product_id")
+  name                               String              @db.Text
+  productQty                         Decimal             @map("product_qty") @db.Decimal(12, 2)
+  qtyReceived                        Decimal             @default(0) @map("qty_received") @db.Decimal(12, 2)
+  qtyInvoiced                        Decimal             @default(0) @map("qty_invoiced") @db.Decimal(12, 2)
+  priceUnit                          Decimal             @map("price_unit") @db.Decimal(18, 2)
+  priceSubtotal                      Decimal             @default(0) @map("price_subtotal") @db.Decimal(18, 2)
+  datePlanned                        DateTime?           @map("date_planned") @db.Date
+  mtppSaleLineId                     Int?                @map("mtpp_sale_line_id")
+  createUid                          Int?                @map("create_uid")
+  createDate                         DateTime            @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                           Int?                @map("write_uid")
+  writeDate                          DateTime            @default(now()) @map("write_date") @db.Timestamp(6)
+  order                              PurchaseOrders      @relation("purchaseOrderLines_orderId", fields: [orderId], references: [id], map: "purchase_order_lines_order_id_purchase_orders_id_fk", onDelete: Cascade, onUpdate: NoAction)
+  product                            Products            @relation("purchaseOrderLines_productId", fields: [productId], references: [id], map: "purchase_order_lines_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  mtppSaleLine                       SalesOrderLines?    @relation("purchaseOrderLines_mtppSaleLineId", fields: [mtppSaleLineId], references: [id], map: "purchase_order_lines_mtpp_sale_line_id_sales_order_lines_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revStockMovesPurchaseLineId        StockMoves[]        @relation("stockMoves_purchaseLineId")
+  revJournalEntryLinesPurchaseLineId JournalEntryLines[] @relation("journalEntryLines_purchaseLineId")
+
+  @@index([orderId], map: "purchase_order_lines_order_id_idx")
+  @@index([mtppSaleLineId], map: "purchase_order_lines_mtpp_sale_line_id_idx")
+  @@index([productId], map: "purchase_order_lines_product_id_idx")
+  @@map("purchase_order_lines")
+}

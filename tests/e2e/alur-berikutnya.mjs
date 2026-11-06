@@ -108,8 +108,13 @@ try {
   );
 
   const sjUrl = ops.url();
+  // tunggu server selesai memvalidasi; tanpa ini keterangan bisa terbaca sebelum transaksinya selesai
+  const tervalidasi = ops.waitForResponse(
+    (x) => /\/transfers\/\d+\/validate/.test(x.url()) && x.request().method() === 'POST',
+  );
   await ops.getByRole('button', { name: 'Validasi', exact: true }).click();
   await klikModal(ops);
+  await tervalidasi;
   r = await catat(adm, '3 surat jalan tervalidasi');
   cek(
     !r.teks.includes('surat jalan') && r.teks.includes('Finance membuat invoice'),

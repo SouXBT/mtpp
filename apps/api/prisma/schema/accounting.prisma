@@ -1,0 +1,177 @@
+// Akun, jurnal, invoice, pembayaran, rekonsiliasi bank
+
+model Accounts {
+  id                            Int                 @id @default(autoincrement())
+  code                          String              @unique(map: "accounts_code_store_unique") @map("code_store") @db.VarChar(20)
+  name                          String              @db.VarChar(120)
+  accountType                   String              @map("account_type") @db.VarChar(20)
+  active                        Boolean             @default(true)
+  createUid                     Int?                @map("create_uid")
+  createDate                    DateTime            @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                      Int?                @map("write_uid")
+  writeDate                     DateTime            @default(now()) @map("write_date") @db.Timestamp(6)
+  revJournalsDefaultAccountId   Journals[]          @relation("journals_defaultAccountId")
+  revJournalEntryLinesAccountId JournalEntryLines[] @relation("journalEntryLines_accountId")
+
+  @@map("accounts")
+}
+
+model Journals {
+  id                             Int                  @id @default(autoincrement())
+  name                           String               @db.VarChar(80)
+  code                           String               @unique(map: "journals_code_unique") @db.VarChar(10)
+  type                           String               @db.VarChar(20)
+  defaultAccountId               Int?                 @map("default_account_id")
+  active                         Boolean              @default(true)
+  mtppLegacy                     Boolean              @default(false) @map("mtpp_legacy")
+  createUid                      Int?                 @map("create_uid")
+  createDate                     DateTime             @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                       Int?                 @map("write_uid")
+  writeDate                      DateTime             @default(now()) @map("write_date") @db.Timestamp(6)
+  defaultAccount                 Accounts?            @relation("journals_defaultAccountId", fields: [defaultAccountId], references: [id], map: "journals_default_account_id_accounts_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revJournalEntriesJournalId     JournalEntries[]     @relation("journalEntries_journalId")
+  revPaymentsJournalId           Payments[]           @relation("payments_journalId")
+  revBankStatementLinesJournalId BankStatementLines[] @relation("bankStatementLines_journalId")
+
+  @@index([defaultAccountId], map: "journals_default_account_id_idx")
+  @@map("journals")
+}
+
+model JournalEntries {
+  id                   Int                 @id @default(autoincrement())
+  name                 String              @unique(map: "journal_entries_name_unique") @db.VarChar(40)
+  journalId            Int                 @map("journal_id")
+  partnerId            Int?                @map("partner_id")
+  moveType             String              @default("entry") @map("move_type") @db.VarChar(20)
+  date                 DateTime            @db.Date
+  invoiceDate          DateTime?           @map("invoice_date") @db.Date
+  invoiceDateDue       DateTime?           @map("invoice_date_due") @db.Date
+  state                String              @default("draft") @db.VarChar(20)
+  paymentState         String              @default("not_paid") @map("payment_state") @db.VarChar(20)
+  amountUntaxed        Decimal             @default(0) @map("amount_untaxed") @db.Decimal(18, 2)
+  amountTax            Decimal             @default(0) @map("amount_tax") @db.Decimal(18, 2)
+  amountTotal          Decimal             @default(0) @map("amount_total") @db.Decimal(18, 2)
+  amountResidual       Decimal             @default(0) @map("amount_residual") @db.Decimal(18, 2)
+  reversedEntryId      Int?                @map("reversed_entry_id")
+  saleId               Int?                @map("mtpp_sale_order_id")
+  purchaseId           Int?                @map("mtpp_purchase_order_id")
+  invoiceOrigin        String?             @map("invoice_origin") @db.VarChar(80)
+  ref                  String?             @db.VarChar(120)
+  narration            String?             @db.Text
+  createUid            Int?                @map("create_uid")
+  createDate           DateTime            @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid             Int?                @map("write_uid")
+  writeDate            DateTime            @default(now()) @map("write_date") @db.Timestamp(6)
+  journal              Journals            @relation("journalEntries_journalId", fields: [journalId], references: [id], map: "journal_entries_journal_id_journals_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  partner              Partners?           @relation("journalEntries_partnerId", fields: [partnerId], references: [id], map: "journal_entries_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  sale                 SalesOrders?        @relation("journalEntries_saleId", fields: [saleId], references: [id], map: "journal_entries_mtpp_sale_order_id_sales_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  purchase             PurchaseOrders?     @relation("journalEntries_purchaseId", fields: [purchaseId], references: [id], map: "journal_entries_mtpp_purchase_order_id_purchase_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  lines                JournalEntryLines[] @relation("journalEntryLines_moveId")
+  revPaymentsMoveId    Payments[]          @relation("payments_moveId")
+  revPaymentsInvoiceId Payments[]          @relation("payments_invoiceId")
+  reversedEntry        JournalEntries?     @relation("journalEntries_reversedEntryId", fields: [reversedEntryId], references: [id], map: "journal_entries_reversed_entry_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revReversals         JournalEntries[]    @relation("journalEntries_reversedEntryId")
+
+  @@index([journalId], map: "journal_entries_journal_id_idx")
+  @@index([partnerId], map: "journal_entries_partner_id_idx")
+  @@index([saleId], map: "journal_entries_mtpp_sale_order_id_idx")
+  @@index([purchaseId], map: "journal_entries_mtpp_purchase_order_id_idx")
+  @@index([reversedEntryId], map: "journal_entries_reversed_entry_id_idx")
+  @@map("journal_entries")
+}
+
+model JournalEntryLines {
+  id             Int                 @id @default(autoincrement())
+  moveId         Int                 @map("move_id")
+  accountId      Int                 @map("account_id")
+  partnerId      Int?                @map("partner_id")
+  productId      Int?                @map("product_id")
+  name           String?             @db.Text
+  displayType    String              @default("line") @map("display_type") @db.VarChar(20)
+  quantity       Decimal             @default(0) @db.Decimal(12, 2)
+  priceUnit      Decimal             @default(0) @map("price_unit") @db.Decimal(18, 2)
+  debit          Decimal             @default(0) @db.Decimal(18, 2)
+  credit         Decimal             @default(0) @db.Decimal(18, 2)
+  balance        Decimal             @default(0) @db.Decimal(18, 2)
+  date           DateTime            @db.Date
+  dateMaturity   DateTime?           @map("date_maturity") @db.Date
+  reconciled     Boolean             @default(false)
+  saleLineId     Int?                @map("sale_line_id")
+  purchaseLineId Int?                @map("purchase_line_id")
+  createUid      Int?                @map("create_uid")
+  createDate     DateTime            @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid       Int?                @map("write_uid")
+  writeDate      DateTime            @default(now()) @map("write_date") @db.Timestamp(6)
+  move           JournalEntries      @relation("journalEntryLines_moveId", fields: [moveId], references: [id], map: "journal_entry_lines_move_id_journal_entries_id_fk", onDelete: Cascade, onUpdate: NoAction)
+  account        Accounts            @relation("journalEntryLines_accountId", fields: [accountId], references: [id], map: "journal_entry_lines_account_id_accounts_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  partner        Partners?           @relation("journalEntryLines_partnerId", fields: [partnerId], references: [id], map: "journal_entry_lines_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  product        Products?           @relation("journalEntryLines_productId", fields: [productId], references: [id], map: "journal_entry_lines_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  saleLine       SalesOrderLines?    @relation("journalEntryLines_saleLineId", fields: [saleLineId], references: [id], map: "journal_entry_lines_sale_line_id_sales_order_lines_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  purchaseLine   PurchaseOrderLines? @relation("journalEntryLines_purchaseLineId", fields: [purchaseLineId], references: [id], map: "journal_entry_lines_purchase_line_id_purchase_order_lines_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([accountId], map: "journal_entry_lines_account_id_idx")
+  @@index([partnerId], map: "journal_entry_lines_partner_id_idx")
+  @@index([saleLineId], map: "journal_entry_lines_sale_line_id_idx")
+  @@index([productId], map: "journal_entry_lines_product_id_idx")
+  @@index([moveId], map: "journal_entry_lines_move_id_idx")
+  @@index([purchaseLineId], map: "journal_entry_lines_purchase_line_id_idx")
+  @@map("journal_entry_lines")
+}
+
+model Payments {
+  id                             Int                  @id @default(autoincrement())
+  name                           String               @unique(map: "payments_name_unique") @db.VarChar(40)
+  moveId                         Int?                 @map("move_id")
+  journalId                      Int                  @map("journal_id")
+  partnerId                      Int                  @map("partner_id")
+  invoiceId                      Int?                 @map("invoice_id")
+  mtppSaleOrderId                Int?                 @map("mtpp_sale_order_id")
+  amount                         Decimal              @db.Decimal(18, 2)
+  amountApplied                  Decimal              @default(0) @map("mtpp_amount_applied") @db.Decimal(18, 2)
+  date                           DateTime             @db.Date
+  paymentType                    String               @map("payment_type") @db.VarChar(20)
+  partnerType                    String               @map("partner_type") @db.VarChar(20)
+  memo                           String?              @db.Text
+  state                          String               @default("posted") @db.VarChar(20)
+  createUid                      Int?                 @map("create_uid")
+  createDate                     DateTime             @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                       Int?                 @map("write_uid")
+  writeDate                      DateTime             @default(now()) @map("write_date") @db.Timestamp(6)
+  move                           JournalEntries?      @relation("payments_moveId", fields: [moveId], references: [id], map: "payments_move_id_journal_entries_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  journal                        Journals             @relation("payments_journalId", fields: [journalId], references: [id], map: "payments_journal_id_journals_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  partner                        Partners             @relation("payments_partnerId", fields: [partnerId], references: [id], map: "payments_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  invoice                        JournalEntries?      @relation("payments_invoiceId", fields: [invoiceId], references: [id], map: "payments_invoice_id_journal_entries_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  mtppSaleOrder                  SalesOrders?         @relation("payments_mtppSaleOrderId", fields: [mtppSaleOrderId], references: [id], map: "payments_mtpp_sale_order_id_sales_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revBankStatementLinesPaymentId BankStatementLines[] @relation("bankStatementLines_paymentId")
+
+  @@index([invoiceId], map: "payments_invoice_id_idx")
+  @@index([journalId], map: "payments_journal_id_idx")
+  @@index([mtppSaleOrderId], map: "payments_mtpp_sale_order_id_idx")
+  @@index([moveId], map: "payments_move_id_idx")
+  @@index([partnerId], map: "payments_partner_id_idx")
+  @@map("payments")
+}
+
+model BankStatementLines {
+  id           Int       @id @default(autoincrement())
+  journalId    Int       @map("journal_id")
+  date         DateTime  @db.Date
+  paymentRef   String    @map("payment_ref") @db.Text
+  amount       Decimal   @db.Decimal(18, 2)
+  partnerId    Int?      @map("partner_id")
+  isReconciled Boolean   @default(false) @map("is_reconciled")
+  paymentId    Int?      @map("payment_id")
+  importBatch  String?   @map("import_batch") @db.VarChar(60)
+  createUid    Int?      @map("create_uid")
+  createDate   DateTime  @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid     Int?      @map("write_uid")
+  writeDate    DateTime  @default(now()) @map("write_date") @db.Timestamp(6)
+  journal      Journals  @relation("bankStatementLines_journalId", fields: [journalId], references: [id], map: "bank_statement_lines_journal_id_journals_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  partner      Partners? @relation("bankStatementLines_partnerId", fields: [partnerId], references: [id], map: "bank_statement_lines_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  payment      Payments? @relation("bankStatementLines_paymentId", fields: [paymentId], references: [id], map: "bank_statement_lines_payment_id_payments_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([journalId], map: "bank_statement_lines_journal_id_idx")
+  @@index([partnerId], map: "bank_statement_lines_partner_id_idx")
+  @@index([paymentId], map: "bank_statement_lines_payment_id_idx")
+  @@map("bank_statement_lines")
+}

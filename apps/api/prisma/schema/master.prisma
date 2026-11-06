@@ -1,0 +1,184 @@
+// Data master: pelanggan, principal, produk, pricelist
+
+model Partners {
+  id                                Int                  @id @default(autoincrement())
+  parentId                          Int?                 @map("parent_id")
+  type                              String               @default("company") @db.VarChar(20)
+  name                              String               @db.VarChar(200)
+  vat                               String?              @db.VarChar(40)
+  email                             String?              @db.VarChar(200)
+  phone                             String?              @db.VarChar(60)
+  street                            String?              @db.Text
+  city                              String?              @db.VarChar(80)
+  customerRank                      Int                  @default(0) @map("customer_rank")
+  supplierRank                      Int                  @default(0) @map("supplier_rank")
+  paymentTermId                     Int?                 @map("property_payment_term_id")
+  category                          String?              @db.VarChar(80)
+  supplierNote                      String?              @map("mtpp_supplier_note") @db.Text
+  mtppIsNewCustomer                 Boolean              @default(false) @map("mtpp_is_new_customer")
+  salesPricelistId                  Int?                 @map("sales_pricelist_id")
+  active                            Boolean              @default(true)
+  createUid                         Int?                 @map("create_uid")
+  createDate                        DateTime             @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                          Int?                 @map("write_uid")
+  writeDate                         DateTime             @default(now()) @map("write_date") @db.Timestamp(6)
+  paymentTerm                       PaymentTerms?        @relation("partners_paymentTermId", fields: [paymentTermId], references: [id], map: "partners_property_payment_term_id_payment_terms_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  pricelist                         SalesPricelists?     @relation("partners_salesPricelistId", fields: [salesPricelistId], references: [id], map: "partners_sales_pricelist_id_sales_pricelists_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revProductTemplatesMainSupplierId ProductTemplates[]   @relation("productTemplates_mainSupplierId")
+  revSupplierPricesPartnerId        SupplierPrices[]     @relation("supplierPrices_partnerId")
+  warehouses                        Warehouses[]         @relation("warehouses_partnerId")
+  revSalesOrdersPartnerId           SalesOrders[]        @relation("salesOrders_partnerId")
+  revSalesOrdersPartnerShippingId   SalesOrders[]        @relation("salesOrders_partnerShippingId")
+  revPurchaseOrdersPartnerId        PurchaseOrders[]     @relation("purchaseOrders_partnerId")
+  revPurchaseOrdersDestAddressId    PurchaseOrders[]     @relation("purchaseOrders_destAddressId")
+  revStockTransfersPartnerId        StockTransfers[]     @relation("stockTransfers_partnerId")
+  revJournalEntriesPartnerId        JournalEntries[]     @relation("journalEntries_partnerId")
+  revJournalEntryLinesPartnerId     JournalEntryLines[]  @relation("journalEntryLines_partnerId")
+  revPaymentsPartnerId              Payments[]           @relation("payments_partnerId")
+  revBankStatementLinesPartnerId    BankStatementLines[] @relation("bankStatementLines_partnerId")
+  revDocumentsPartnerId             Documents[]          @relation("documents_partnerId")
+  revUsersPartnerId                 Users[]              @relation("users_partnerId")
+  parent                            Partners?            @relation("partners_parentId", fields: [parentId], references: [id], map: "partners_parent_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  children                          Partners[]           @relation("partners_parentId")
+
+  @@index([salesPricelistId], map: "partners_sales_pricelist_id_idx")
+  @@index([parentId], map: "partners_parent_id_idx")
+  @@index([paymentTermId], map: "partners_property_payment_term_id_idx")
+  @@map("partners")
+}
+
+model PaymentTerms {
+  id                          Int           @id @default(autoincrement())
+  name                        String        @db.VarChar(80)
+  days                        Int           @default(0)
+  note                        String?       @db.Text
+  active                      Boolean       @default(true)
+  createUid                   Int?          @map("create_uid")
+  createDate                  DateTime      @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                    Int?          @map("write_uid")
+  writeDate                   DateTime      @default(now()) @map("write_date") @db.Timestamp(6)
+  revPartnersPaymentTermId    Partners[]    @relation("partners_paymentTermId")
+  revSalesOrdersPaymentTermId SalesOrders[] @relation("salesOrders_paymentTermId")
+
+  @@map("payment_terms")
+}
+
+model SalesPricelists {
+  id                          Int                   @id @default(autoincrement())
+  name                        String                @db.VarChar(120)
+  active                      Boolean               @default(true)
+  revPartnersSalesPricelistId Partners[]            @relation("partners_salesPricelistId")
+  items                       SalesPricelistItems[] @relation("salesPricelistItems_pricelistId")
+
+  @@map("sales_pricelists")
+}
+
+model SalesPricelistItems {
+  id          Int             @id @default(autoincrement())
+  pricelistId Int             @map("pricelist_id")
+  productId   Int             @map("product_id")
+  fixedPrice  Decimal?        @map("fixed_price") @db.Decimal(18, 2)
+  discount    Decimal         @default(0) @db.Decimal(5, 2)
+  minQty      Decimal         @default(0) @map("min_qty") @db.Decimal(12, 2)
+  dateStart   DateTime?       @map("date_start") @db.Date
+  dateEnd     DateTime?       @map("date_end") @db.Date
+  pricelist   SalesPricelists @relation("salesPricelistItems_pricelistId", fields: [pricelistId], references: [id], map: "sales_pricelist_items_pricelist_id_sales_pricelists_id_fk", onDelete: Cascade, onUpdate: NoAction)
+  product     Products        @relation("salesPricelistItems_productId", fields: [productId], references: [id], map: "sales_pricelist_items_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([pricelistId], map: "sales_pricelist_items_pricelist_id_idx")
+  @@index([productId], map: "sales_pricelist_items_product_id_idx")
+  @@map("sales_pricelist_items")
+}
+
+model Units {
+  id                       Int                @id @default(autoincrement())
+  name                     String             @db.VarChar(40)
+  relativeFactor           Decimal            @default(1) @map("relative_factor") @db.Decimal(12, 4)
+  active                   Boolean            @default(true)
+  createUid                Int?               @map("create_uid")
+  createDate               DateTime           @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                 Int?               @map("write_uid")
+  writeDate                DateTime           @default(now()) @map("write_date") @db.Timestamp(6)
+  revProductTemplatesUomId ProductTemplates[] @relation("productTemplates_uomId")
+
+  @@map("units")
+}
+
+model ProductCategories {
+  id                            Int                @id @default(autoincrement())
+  name                          String             @db.VarChar(80)
+  active                        Boolean            @default(true)
+  revProductTemplatesCategoryId ProductTemplates[] @relation("productTemplates_categoryId")
+
+  @@map("product_categories")
+}
+
+model ProductTemplates {
+  id              Int                @id @default(autoincrement())
+  uomId           Int                @map("uom_id")
+  categoryId      Int?               @map("category_id")
+  mainSupplierId  Int?               @map("main_supplier_id")
+  name            String             @db.VarChar(200)
+  type            String             @default("product") @db.VarChar(20)
+  listPrice       Decimal            @default(0) @map("list_price") @db.Decimal(18, 2)
+  descriptionSale String?            @map("description_sale") @db.Text
+  mtppRoute       String             @default("stock") @map("mtpp_route") @db.VarChar(20)
+  active          Boolean            @default(true)
+  createUid       Int?               @map("create_uid")
+  createDate      DateTime           @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid        Int?               @map("write_uid")
+  writeDate       DateTime           @default(now()) @map("write_date") @db.Timestamp(6)
+  uom             Units              @relation("productTemplates_uomId", fields: [uomId], references: [id], map: "product_templates_uom_id_units_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  category        ProductCategories? @relation("productTemplates_categoryId", fields: [categoryId], references: [id], map: "product_templates_category_id_product_categories_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  mainSupplier    Partners?          @relation("productTemplates_mainSupplierId", fields: [mainSupplierId], references: [id], map: "product_templates_main_supplier_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  products        Products[]         @relation("products_productTmplId")
+  supplierPrices  SupplierPrices[]   @relation("supplierPrices_productTmplId")
+
+  @@index([categoryId], map: "product_templates_category_id_idx")
+  @@index([mainSupplierId], map: "product_templates_main_supplier_id_idx")
+  @@index([uomId], map: "product_templates_uom_id_idx")
+  @@map("product_templates")
+}
+
+model Products {
+  id                              Int                   @id @default(autoincrement())
+  productTmplId                   Int                   @map("product_tmpl_id")
+  defaultCode                     String                @unique(map: "products_default_code_unique") @map("default_code") @db.VarChar(40)
+  active                          Boolean               @default(true)
+  createUid                       Int?                  @map("create_uid")
+  createDate                      DateTime              @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                        Int?                  @map("write_uid")
+  writeDate                       DateTime              @default(now()) @map("write_date") @db.Timestamp(6)
+  template                        ProductTemplates      @relation("products_productTmplId", fields: [productTmplId], references: [id], map: "products_product_tmpl_id_product_templates_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revSalesOrderLinesProductId     SalesOrderLines[]     @relation("salesOrderLines_productId")
+  revPurchaseOrderLinesProductId  PurchaseOrderLines[]  @relation("purchaseOrderLines_productId")
+  revStockMovesProductId          StockMoves[]          @relation("stockMoves_productId")
+  revStockBalancesProductId       StockBalances[]       @relation("stockBalances_productId")
+  revJournalEntryLinesProductId   JournalEntryLines[]   @relation("journalEntryLines_productId")
+  revSalesPricelistItemsProductId SalesPricelistItems[] @relation("salesPricelistItems_productId")
+  revStockRulesProductId          StockRules[]          @relation("stockRules_productId")
+
+  @@index([productTmplId], map: "products_product_tmpl_id_idx")
+  @@map("products")
+}
+
+model SupplierPrices {
+  id            Int              @id @default(autoincrement())
+  partnerId     Int              @map("partner_id")
+  productTmplId Int              @map("product_tmpl_id")
+  price         Decimal          @db.Decimal(18, 2)
+  discount      Decimal          @default(0) @db.Decimal(5, 2)
+  minQty        Decimal          @default(0) @map("min_qty") @db.Decimal(12, 2)
+  dateStart     DateTime?        @map("date_start") @db.Date
+  dateEnd       DateTime?        @map("date_end") @db.Date
+  createUid     Int?             @map("create_uid")
+  createDate    DateTime         @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid      Int?             @map("write_uid")
+  writeDate     DateTime         @default(now()) @map("write_date") @db.Timestamp(6)
+  partner       Partners         @relation("supplierPrices_partnerId", fields: [partnerId], references: [id], map: "supplier_prices_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  template      ProductTemplates @relation("supplierPrices_productTmplId", fields: [productTmplId], references: [id], map: "supplier_prices_product_tmpl_id_product_templates_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([productTmplId], map: "supplier_prices_product_tmpl_id_idx")
+  @@index([partnerId], map: "supplier_prices_partner_id_idx")
+  @@map("supplier_prices")
+}

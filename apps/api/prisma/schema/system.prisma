@@ -1,0 +1,161 @@
+// Catatan, email, lampiran, pengaturan, penomoran, dokumen
+
+model Messages {
+  id                     Int          @id @default(autoincrement())
+  authorId               Int?         @map("author_id")
+  model                  String       @db.VarChar(60)
+  resId                  Int          @map("res_id")
+  messageType            String       @default("note") @map("message_type") @db.VarChar(20)
+  body                   String       @db.Text
+  date                   DateTime     @default(now()) @db.Timestamp(6)
+  createUid              Int?         @map("create_uid")
+  createDate             DateTime     @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid               Int?         @map("write_uid")
+  writeDate              DateTime     @default(now()) @map("write_date") @db.Timestamp(6)
+  revChangeLogsMessageId ChangeLogs[] @relation("changeLogs_messageId")
+  author                 Users?       @relation("messages_authorId", fields: [authorId], references: [id], map: "messages_author_id_users_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([model, resId], map: "messages_res_idx")
+  @@index([authorId], map: "messages_author_id_idx")
+  @@map("messages")
+}
+
+model ChangeLogs {
+  id            Int      @id @default(autoincrement())
+  messageId     Int      @map("message_id")
+  field         String   @map("field_id") @db.VarChar(60)
+  oldValueChar  String?  @map("old_value_char") @db.Text
+  newValueChar  String?  @map("new_value_char") @db.Text
+  oldValueFloat Decimal? @map("old_value_float") @db.Decimal(18, 2)
+  newValueFloat Decimal? @map("new_value_float") @db.Decimal(18, 2)
+  createUid     Int?     @map("create_uid")
+  createDate    DateTime @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid      Int?     @map("write_uid")
+  writeDate     DateTime @default(now()) @map("write_date") @db.Timestamp(6)
+  message       Messages @relation("changeLogs_messageId", fields: [messageId], references: [id], map: "change_logs_message_id_messages_id_fk", onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([messageId], map: "change_logs_message_id_idx")
+  @@map("change_logs")
+}
+
+model EmailLogs {
+  id                 Int       @id @default(autoincrement())
+  model              String    @db.VarChar(60)
+  resId              Int       @map("res_id")
+  documentName       String    @map("document_name") @db.VarChar(60)
+  emailTo            String    @map("email_to") @db.VarChar(200)
+  subject            String    @db.VarChar(250)
+  state              String    @default("diproses") @db.VarChar(20)
+  failureReason      String?   @map("failure_reason") @db.Text
+  mtppProviderRef    String?   @map("mtpp_provider_ref") @db.VarChar(200)
+  mtppDeliveryStatus String?   @map("mtpp_delivery_status") @db.VarChar(40)
+  attachmentId       Int?      @map("attachment_id")
+  sentAt             DateTime  @default(now()) @map("sent_at") @db.Timestamp(6)
+  statusAt           DateTime? @map("status_at") @db.Timestamp(6)
+  createUid          Int?      @map("create_uid")
+  createDate         DateTime  @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid           Int?      @map("write_uid")
+  writeDate          DateTime  @default(now()) @map("write_date") @db.Timestamp(6)
+
+  @@map("email_logs")
+}
+
+model Attachments {
+  id                  Int      @id @default(autoincrement())
+  name                String   @db.VarChar(250)
+  resModel            String   @map("res_model") @db.VarChar(60)
+  resId               Int      @map("res_id")
+  mimetype            String   @db.VarChar(120)
+  storeFname          String   @map("store_fname") @db.VarChar(250)
+  fileSize            Int      @map("file_size")
+  createUid           Int?     @map("create_uid")
+  createDate          DateTime @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid            Int?     @map("write_uid")
+  writeDate           DateTime @default(now()) @map("write_date") @db.Timestamp(6)
+  revUsersSignatureId Users[]  @relation("users_signatureId")
+
+  @@map("attachments")
+}
+
+model Activities {
+  id           Int      @id @default(autoincrement())
+  resModel     String   @map("res_model") @db.VarChar(60)
+  resId        Int      @map("res_id")
+  resName      String?  @map("res_name") @db.VarChar(80)
+  activityType String   @map("activity_type") @db.VarChar(30)
+  summary      String   @db.VarChar(200)
+  note         String?  @db.Text
+  dateDeadline DateTime @map("date_deadline") @db.Date
+  userId       Int      @map("user_id")
+  done         Boolean  @default(false)
+  createUid    Int?     @map("create_uid")
+  createDate   DateTime @default(now()) @map("create_date") @db.Timestamp(6)
+  user         Users    @relation("activities_userId", fields: [userId], references: [id], map: "activities_user_id_users_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([userId], map: "activities_user_id_idx")
+  @@map("activities")
+}
+
+model Settings {
+  key   String @id @db.VarChar(60)
+  value Json
+
+  @@map("settings")
+}
+
+model DocumentSequences {
+  id         Int    @id @default(autoincrement())
+  code       String @db.VarChar(10)
+  year       Int
+  month      Int
+  lastNumber Int    @default(0) @map("last_number")
+
+  @@unique([code, year, month], map: "doc_seq_uq")
+  @@map("document_sequences")
+}
+
+model SavedFilters {
+  id       Int    @id @default(autoincrement())
+  userId   Int    @map("user_id")
+  resource String @db.VarChar(60)
+  name     String @db.VarChar(80)
+  filter   Json
+  user     Users  @relation("savedFilters_userId", fields: [userId], references: [id], map: "saved_filters_user_id_users_id_fk", onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId], map: "saved_filters_user_id_idx")
+  @@map("saved_filters")
+}
+
+model ApiKeys {
+  id         Int       @id @default(autoincrement())
+  name       String    @db.VarChar(80)
+  keyHash    String    @unique(map: "api_keys_key_hash_unique") @map("key_hash") @db.VarChar(128)
+  prefix     String    @db.VarChar(12)
+  active     Boolean   @default(true)
+  lastUsed   DateTime? @map("last_used") @db.Timestamp(6)
+  createDate DateTime  @default(now()) @map("create_date") @db.Timestamp(6)
+
+  @@map("api_keys")
+}
+
+model Documents {
+  id          Int          @id @default(autoincrement())
+  type        String       @db.VarChar(20)
+  number      String       @unique(map: "documents_number_unique") @db.VarChar(60)
+  date        DateTime     @db.Date
+  partnerId   Int?         @map("partner_id")
+  saleOrderId Int?         @map("sale_order_id")
+  title       String?      @db.VarChar(250)
+  data        Json
+  createUid   Int?         @map("create_uid")
+  createDate  DateTime     @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid    Int?         @map("write_uid")
+  writeDate   DateTime     @default(now()) @map("write_date") @db.Timestamp(6)
+  partner     Partners?    @relation("documents_partnerId", fields: [partnerId], references: [id], map: "documents_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  saleOrder   SalesOrders? @relation("documents_saleOrderId", fields: [saleOrderId], references: [id], map: "documents_sale_order_id_sales_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([type], map: "documents_type_idx")
+  @@index([partnerId], map: "documents_partner_id_idx")
+  @@index([saleOrderId], map: "documents_sale_order_id_idx")
+  @@map("documents")
+}

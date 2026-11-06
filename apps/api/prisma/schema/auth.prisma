@@ -1,0 +1,75 @@
+// Pengguna, grup, dan hak akses
+
+model Users {
+  id                    Int            @id @default(autoincrement())
+  partnerId             Int            @map("partner_id")
+  login                 String         @unique(map: "users_login_unique") @db.VarChar(120)
+  password              String         @db.VarChar(200)
+  active                Boolean        @default(true)
+  loginDate             DateTime?      @map("login_date") @db.Timestamp(6)
+  signatureId           Int?           @map("signature_attachment_id")
+  createUid             Int?           @map("create_uid")
+  createDate            DateTime       @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid              Int?           @map("write_uid")
+  writeDate             DateTime       @default(now()) @map("write_date") @db.Timestamp(6)
+  groups                GroupUsers[]   @relation("groupUsers_uid")
+  revActivitiesUserId   Activities[]   @relation("activities_userId")
+  revSavedFiltersUserId SavedFilters[] @relation("savedFilters_userId")
+  partner               Partners       @relation("users_partnerId", fields: [partnerId], references: [id], map: "users_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revSalesOrdersUserId  SalesOrders[]  @relation("salesOrders_userId")
+  revMessagesAuthorId   Messages[]     @relation("messages_authorId")
+  signature             Attachments?   @relation("users_signatureId", fields: [signatureId], references: [id], map: "users_signature_attachment_id_attachments_id_fk", onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([partnerId], map: "users_partner_id_idx")
+  @@index([signatureId], map: "users_signature_attachment_id_idx")
+  @@map("users")
+}
+
+model Groups {
+  id          Int                @id @default(autoincrement())
+  code        String             @unique(map: "groups_code_unique") @db.VarChar(30)
+  name        String             @db.VarChar(80)
+  comment     String?            @db.Text
+  createUid   Int?               @map("create_uid")
+  createDate  DateTime           @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid    Int?               @map("write_uid")
+  writeDate   DateTime           @default(now()) @map("write_date") @db.Timestamp(6)
+  users       GroupUsers[]       @relation("groupUsers_gid")
+  permissions GroupPermissions[] @relation("groupPermissions_groupId")
+
+  @@map("groups")
+}
+
+model GroupUsers {
+  id         Int      @id @default(autoincrement())
+  gid        Int
+  uid        Int
+  createUid  Int?     @map("create_uid")
+  createDate DateTime @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid   Int?     @map("write_uid")
+  writeDate  DateTime @default(now()) @map("write_date") @db.Timestamp(6)
+  group      Groups   @relation("groupUsers_gid", fields: [gid], references: [id], map: "group_users_gid_groups_id_fk", onDelete: Cascade, onUpdate: NoAction)
+  user       Users    @relation("groupUsers_uid", fields: [uid], references: [id], map: "group_users_uid_users_id_fk", onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([gid, uid], map: "group_user_uq")
+  @@index([uid], map: "group_users_uid_idx")
+  @@map("group_users")
+}
+
+model GroupPermissions {
+  id         Int      @id @default(autoincrement())
+  groupId    Int      @map("group_id")
+  menu       String   @db.VarChar(60)
+  permRead   Boolean  @default(false) @map("perm_read")
+  permCreate Boolean  @default(false) @map("perm_create")
+  permWrite  Boolean  @default(false) @map("perm_write")
+  permDelete Boolean  @default(false) @map("perm_delete")
+  createUid  Int?     @map("create_uid")
+  createDate DateTime @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid   Int?     @map("write_uid")
+  writeDate  DateTime @default(now()) @map("write_date") @db.Timestamp(6)
+  group      Groups   @relation("groupPermissions_groupId", fields: [groupId], references: [id], map: "group_permissions_group_id_groups_id_fk", onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([groupId, menu], map: "group_menu_uq")
+  @@map("group_permissions")
+}

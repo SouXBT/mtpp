@@ -1,0 +1,86 @@
+// Penawaran dan sales order
+
+model SalesOrders {
+  id                         Int               @id @default(autoincrement())
+  name                       String            @unique(map: "sales_orders_name_unique") @db.VarChar(40)
+  quotationNumber            String?           @unique(map: "sales_orders_quotation_number_unique") @map("mtpp_quotation_number") @db.VarChar(40)
+  partnerId                  Int               @map("partner_id")
+  partnerShippingId          Int?              @map("partner_shipping_id")
+  userId                     Int?              @map("user_id")
+  paymentTermId              Int?              @map("payment_term_id")
+  dateOrder                  DateTime          @map("date_order") @db.Date
+  dateConfirm                DateTime?         @map("date_confirm") @db.Date
+  validityDate               DateTime?         @map("validity_date") @db.Date
+  commitmentDate             DateTime?         @map("commitment_date") @db.Date
+  state                      String            @default("draft") @db.VarChar(20)
+  clientOrderRef             String?           @map("client_order_ref") @db.VarChar(80)
+  amountUntaxed              Decimal           @default(0) @map("amount_untaxed") @db.Decimal(18, 2)
+  amountTax                  Decimal           @default(0) @map("amount_tax") @db.Decimal(18, 2)
+  amountTotal                Decimal           @default(0) @map("amount_total") @db.Decimal(18, 2)
+  invoiceStatus              String            @default("no") @map("invoice_status") @db.VarChar(20)
+  mtppProformaNumber         String?           @map("mtpp_proforma_number") @db.VarChar(40)
+  mtppProformaDate           DateTime?         @map("mtpp_proforma_date") @db.Date
+  mtppProformaNote           String?           @map("mtpp_proforma_note") @db.Text
+  mtppDpMode                 String?           @map("mtpp_dp_mode") @db.VarChar(10)
+  mtppDpPercent              Decimal?          @map("mtpp_dp_percent") @db.Decimal(6, 2)
+  mtppDpAmount               Decimal?          @map("mtpp_dp_amount") @db.Decimal(18, 2)
+  mtppTermPayment            String?           @map("mtpp_term_payment") @db.Text
+  mtppTermDelivery           String?           @map("mtpp_term_delivery") @db.Text
+  mtppTermValidity           String?           @map("mtpp_term_validity") @db.Text
+  mtppTermWarranty           String?           @map("mtpp_term_warranty") @db.Text
+  mtppTermHandover           String?           @map("mtpp_term_handover") @db.Text
+  mtppTermStandard           String?           @map("mtpp_term_standard") @db.Text
+  createUid                  Int?              @map("create_uid")
+  createDate                 DateTime          @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                   Int?              @map("write_uid")
+  writeDate                  DateTime          @default(now()) @map("write_date") @db.Timestamp(6)
+  partner                    Partners          @relation("salesOrders_partnerId", fields: [partnerId], references: [id], map: "sales_orders_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  partnerShipping            Partners?         @relation("salesOrders_partnerShippingId", fields: [partnerShippingId], references: [id], map: "sales_orders_partner_shipping_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  paymentTerm                PaymentTerms?     @relation("salesOrders_paymentTermId", fields: [paymentTermId], references: [id], map: "sales_orders_payment_term_id_payment_terms_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  lines                      SalesOrderLines[] @relation("salesOrderLines_orderId")
+  revPurchaseOrdersSaleId    PurchaseOrders[]  @relation("purchaseOrders_saleId")
+  revStockTransfersSaleId    StockTransfers[]  @relation("stockTransfers_saleId")
+  revJournalEntriesSaleId    JournalEntries[]  @relation("journalEntries_saleId")
+  revPaymentsMtppSaleOrderId Payments[]        @relation("payments_mtppSaleOrderId")
+  revDocumentsSaleOrderId    Documents[]       @relation("documents_saleOrderId")
+  salesperson                Users?            @relation("salesOrders_userId", fields: [userId], references: [id], map: "sales_orders_user_id_users_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([partnerShippingId], map: "sales_orders_partner_shipping_id_idx")
+  @@index([partnerId], map: "sales_orders_partner_id_idx")
+  @@index([paymentTermId], map: "sales_orders_payment_term_id_idx")
+  @@index([userId], map: "sales_orders_user_id_idx")
+  @@map("sales_orders")
+}
+
+model SalesOrderLines {
+  id                                  Int                  @id @default(autoincrement())
+  orderId                             Int                  @map("order_id")
+  productId                           Int                  @map("product_id")
+  name                                String               @db.Text
+  productUomQty                       Decimal              @map("product_uom_qty") @db.Decimal(12, 2)
+  qtyDelivered                        Decimal              @default(0) @map("qty_delivered") @db.Decimal(12, 2)
+  qtyInvoiced                         Decimal              @default(0) @map("qty_invoiced") @db.Decimal(12, 2)
+  priceUnit                           Decimal              @map("price_unit") @db.Decimal(18, 2)
+  discount                            Decimal              @default(0) @db.Decimal(5, 2)
+  priceSubtotal                       Decimal              @default(0) @map("price_subtotal") @db.Decimal(18, 2)
+  purchasePrice                       Decimal              @default(0) @map("purchase_price") @db.Decimal(18, 2)
+  margin                              Decimal              @default(0) @db.Decimal(18, 2)
+  mtppWarehouseId                     Int?                 @map("mtpp_warehouse_id")
+  mtppIsDropship                      Boolean              @default(false) @map("mtpp_is_dropship")
+  sequence                            Int                  @default(10)
+  createUid                           Int?                 @map("create_uid")
+  createDate                          DateTime             @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                            Int?                 @map("write_uid")
+  writeDate                           DateTime             @default(now()) @map("write_date") @db.Timestamp(6)
+  order                               SalesOrders          @relation("salesOrderLines_orderId", fields: [orderId], references: [id], map: "sales_order_lines_order_id_sales_orders_id_fk", onDelete: Cascade, onUpdate: NoAction)
+  product                             Products             @relation("salesOrderLines_productId", fields: [productId], references: [id], map: "sales_order_lines_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  warehouse                           Warehouses?          @relation("salesOrderLines_mtppWarehouseId", fields: [mtppWarehouseId], references: [id], map: "sales_order_lines_mtpp_warehouse_id_warehouses_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revPurchaseOrderLinesMtppSaleLineId PurchaseOrderLines[] @relation("purchaseOrderLines_mtppSaleLineId")
+  revStockMovesSaleLineId             StockMoves[]         @relation("stockMoves_saleLineId")
+  revJournalEntryLinesSaleLineId      JournalEntryLines[]  @relation("journalEntryLines_saleLineId")
+
+  @@index([mtppWarehouseId], map: "sales_order_lines_mtpp_warehouse_id_idx")
+  @@index([orderId], map: "sales_order_lines_order_id_idx")
+  @@index([productId], map: "sales_order_lines_product_id_idx")
+  @@map("sales_order_lines")
+}
