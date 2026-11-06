@@ -1,0 +1,283 @@
+MTPP DISTRIBUSI - CHANGE REPORT
+Date: 5 November 2026
+Project: ~/Downloads/mtpp
+For: the team, and whoever updates the book (Revisi 16)
+Related: docs/flow-review-2026-11-05.txt (the review that listed the problems)
+
+
+1. SUMMARY
+----------
+All points from the flow review are handled: A1-A11, B1-B6, C1-C5 and the deployment items.
+The normal flow is unchanged. The fixes cover what happens off the normal path: cancellations,
+reversals, short deliveries, and orders competing for the same stock.
+
+Test result (fresh build, empty test database):
+  - demo-flow: 85 of 85 checks passed
+  - edge-flow (new): 22 of 22 tests passed, 114 checks
+  - No TypeScript errors in the API or the web app
+
+Database: no tables or columns changed, so the CDM and PDM in Lampiran C stay as they are.
+Two data-only migrations were added (see section 4).
+
+
+2. WHAT THE TEAM NEEDS TO DO
+----------------------------
+- This project is not a git repo. Everyone needs a new copy of the project folder.
+- Run: docker compose up -d --build
+  The migrations run on their own when the backend starts.
+- Hard refresh the browser after rebuilding. A browser can keep loading the old page.
+- Optional for local use: add APP_ENV=development to .env. It is already the default.
+- Before real deployment, set in .env:
+    APP_ENV=production
+    JWT_SECRET=<long random value>
+    SEED_DEMO=false
+  With APP_ENV=production, the backend refuses to start if JWT_SECRET is missing or a default.
+- To test (these write data, so never use the main database):
+    cd apps/api
+    API=<test API address>/api node scripts/demo-flow.mjs
+    API=<test API address>/api node scripts/edge-flow.mjs
+  Run them in that order on a fresh test database. edge-flow needs pdftotext installed.
+
+Please try these by hand before the demo. Their API behaviour is tested, but nobody has
+clicked them on screen yet:
+  - Batalkan Pembayaran
+  - Tutup sisa PO
+  - Kembalikan Uang Muka
+  - The Siap Dikirim page (its data list is tested)
+
+
+3. CHANGES BY MODULE
+--------------------
+Module owners are from the README table.
+
+SALES (Marco)
+  - Quotation form: the price is looked up again when quantity or customer changes.
+    A price or discount typed by hand is kept, and the list price shows as a hint.
+    Lines from an already saved quotation are also kept, with the same hint.
+  - Sending a quotation now needs write permission on Penjualan.
+    Pimpinan, Operasional and Finance can no longer send one.
+  - SO cancel is refused while a PO is still running or an advance is unused.
+    Finished POs do not block the cancel.
+  - Reopened SO: changing lines is refused with a clear message if a non-cancelled PO still
+    uses them. It used to crash with error 500.
+  - Expired quotation: Konfirmasi still works, but the dialog warns about it.
+  - Product with no valid principal price: the line shows "harga pokok belum ada".
+  - Button renamed: "Catat Uang Muka / Pelunasan".
+  - Buat Surat Jalan is hidden when nothing is left to deliver from stock.
+
+MASTER (Marco)
+  - Admin can now set "pelanggan baru" when creating or editing a customer.
+  - The flag switches off automatically when the customer's SO is fully delivered and fully
+    paid. This is logged on the customer. Pimpinan can still change it by hand.
+
+PURCHASING AND STOCK (Brivio)
+  - Delivery orders are limited to free stock, checked at Siap Kirim and at Validasi.
+    The order confirmed first gets the stock first.
+  - Shortage uses the same rule, so two orders no longer both ask for the same goods.
+  - New action "Tutup sisa PO": cancels the open receipt and lowers the PO quantity to what
+    was received. The rest can be ordered again.
+  - PO creation is refused when a product has no valid principal price. A PO line can't be
+    saved with price 0.
+  - PO for a new customer who has paid nothing: allowed, with a warning.
+  - New page "Perlu Pesanan Principal".
+  - PO PDF title is now "PESANAN PRINCIPAL". The English line stays "Purchase Order". The PO
+    email subject was changed to match.
+
+DELIVERY, EMAIL, INFRA (Shannon)
+  - A delivery order can't move to a warehouse other than where its stock is reserved. The
+    warehouse selector on screen is now display only.
+  - New page "Siap Dikirim".
+  - Follow-up documents show "Susulan dari DO/..." on screen and on the PDF.
+  - Without BREVO_API_KEY, email status is "simulasi" instead of "terkirim".
+  - New setting APP_ENV (production check above). docker-compose.yml and .env.example updated.
+  - The login page shows demo accounts only when SEED_DEMO is on.
+  - The signature image no longer puts the login token in its URL.
+
+BILLING AND ACCOUNTING (Bryant)
+  - New action "Batalkan Pembayaran": reverses the journal and returns the amount to the
+    invoice, bill or SO advance. An advance already used must have its invoice reversed first.
+    A payment matched in bank reconciliation must be unmatched first.
+  - The Jurnal menu now refuses to reverse payment journals and advance-use journals.
+  - New action "Kembalikan Uang Muka": money back to the customer from bank or cash.
+    A refund can't be cancelled afterwards.
+  - An invoice paid only from an advance can now be reversed, and the money returns to the SO
+    advance. An invoice with a real customer payment is refused until that payment is cancelled.
+  - The reversal button is hidden when the reversal would be refused.
+  - Reversing an unpaid principal bill now gives "menunggu tagihan" (or "menunggu barang"),
+    not "lunas". A finished PO goes back to open if its bill is reversed.
+  - A principal credit note now reduces open bills straight away, oldest due date first.
+  - Rp 1 PPN rounding on split deliveries is cleared on the last invoice of an SO that has an
+    advance. A leftover advance goes to 4-2000 Pendapatan Lain-lain. A short receivable goes to
+    6-9000 Beban Lain.
+  - A reversed invoice shows "Dibalik" instead of "Lunas".
+  - The invoice payment tab shows only the advance used by that invoice.
+  - Consistent names: "Posting" for bills, "Batalkan (jurnal pembalik)" for reversals.
+
+REPORTS AND DASHBOARD (All)
+  - Finance Beranda: new figure "Perlu Pesanan Principal".
+  - Operasional Beranda: new figure "Siap Dikirim".
+  - Admin now has 3 reports with no prices: pesanan_belum_diterima, stok_gudang, pengiriman.
+    The total is still 12 reports.
+
+MENUS
+  - Removed from module menus: Pelanggan and Pricelist (Penjualan), Principal (Pengadaan).
+    They now appear only in Master. Old URLs still open.
+  - Pricelist Principal stays in Pengadaan, because it was never in Master.
+
+DOCUMENT NOTES AND SEED
+  - PO note now says prices are before PPN, because the PDF adds PPN on top.
+  - Invoice and PO notes now agree that the system has no return process.
+  - PT Daya Pompa note now reads "Pembayaran 30 hari setelah tagihan".
+
+
+4. TECHNICAL ADDITIONS
+----------------------
+New API routes:
+  POST /api/payments/:id/cancel
+  POST /api/sales-orders/:id/refund-advance
+  POST /api/purchase-orders/:id/close-remaining
+  GET  /api/sales-orders/worklist/need-po
+  GET  /api/sales-orders/worklist/ready
+  GET  /api/auth/config  (public, returns only whether demo mode is on)
+
+New screen routes:
+  /pengadaan/perlu-pesanan
+  /stok/siap-dikirim
+
+Migrations (data only, and they only replace text still equal to the old default):
+  20261105090000_po_note_ppn
+  20261105100000_doc_notes_no_returns
+
+New settings keys: accounts.roundingIncome (4-2000), accounts.roundingExpense (6-9000)
+New test script: apps/api/scripts/edge-flow.mjs
+
+Two design points to know:
+  - Advance use is recognised from the UMM journal description (the ref field), so don't change
+    that wording (REF_USE, REF_ROUND and REF_ROUND_AR in billing.service.ts).
+  - A refund is stored as a row in payments with paymentType outbound and partnerType customer,
+    linked to the SO.
+
+
+5. UPDATES FOR THE BOOK
+-----------------------
+I don't have the book, so the "where" column is my guess at the topic, not a section number.
+The Indonesian text is a suggestion to adjust to the book's style.
+
+5a. Must update: these change a rule the book may describe
+
+B1 - Pelanggan baru
+  Where: customer rules, feature list, Admin and Pimpinan role tables
+  Text:  "Penanda pelanggan baru ditetapkan oleh Admin atau Pimpinan dan berakhir otomatis saat
+         sales order pelanggan tersebut terkirim seluruhnya dan lunas."
+
+B2 - Tutup sisa PO
+  Where: purchasing flow, Finance features
+  Text:  "Bila principal tidak mengirim sisa barang, Finance dapat menutup sisa pesanan.
+         Penerimaan yang belum datang dibatalkan, kuantitas pesanan menjadi sebesar yang sudah
+         diterima, dan sisanya dapat dipesan ulang dari sales order."
+
+B3 - Pembatalan SO dan pengembalian uang muka
+  Where: sales flow, billing flow, Finance features, journal examples
+  Text:  "Sales order tidak dapat dibatalkan selama masih ada pesanan principal yang berjalan
+         atau uang muka yang belum dikembalikan. Pengembalian uang muka dicatat dengan jurnal
+         Debit Uang Muka Pelanggan, Kredit Bank atau Kas."
+
+A1 - Stok bebas pada surat jalan
+  Where: stock rules, stock and shortage calculation
+  Text:  "Surat jalan dibatasi stok bebas. Sales order yang lebih dulu dikonfirmasi berhak atas
+         stok lebih dulu."
+  Note:  The shortage formula is the same, but "stok bebas" per order now only subtracts orders
+         confirmed earlier. The Stok page still subtracts all orders, so it can show a negative
+         figure when orders exceed stock.
+
+A3 - Pembatalan pembayaran
+  Where: billing flow, journal rules
+  Text:  "Pembayaran dibatalkan dari menu Penagihan: jurnal dibalik dan jumlahnya kembali ke sisa
+         tagihan. Jurnal pembayaran tidak dapat dibalik dari menu Jurnal."
+
+A8 - Pembalikan invoice
+  Where: invoice rules
+  Text:  "Invoice yang dibayar dari uang muka dapat dibalik, dan uang muka tersedia kembali.
+         Invoice dengan pembayaran pelanggan harus dibatalkan pembayarannya lebih dulu."
+
+A5 - Nota kredit principal
+  Where: principal bill flow, Algoritma 3.3 if it mentions credit notes
+  Text:  "Nota kredit principal langsung mengurangi tagihan terbuka, dimulai dari jatuh tempo
+         terlama."
+
+A9 - Selisih pembulatan
+  Where: PPN rules, journal examples
+  Text:  "Selisih pembulatan PPN antara sales order dan invoice dibukukan pada invoice terakhir:
+         sisa uang muka ke Pendapatan Lain-lain, kekurangan piutang ke Beban Lain."
+
+B6e - Gudang surat jalan
+  Where: delivery flow, Operasional features
+  Text:  "Surat jalan tetap di gudang tempat stoknya terikat dan tidak dapat dipindahkan ke
+         gudang lain."
+  Note:  If the book says the source warehouse can be changed, remove that.
+
+C5 - Laporan Admin
+  Where: report-by-group table
+  New counts: Pimpinan 12, Finance 7, Sales 5, Operasional 3, Admin 3. The total is still 12.
+
+A7 - Hak akses kirim email
+  Where: permission rules
+  Text:  "Mengirim email dokumen membutuhkan hak Ubah pada menu dokumen tersebut."
+
+5b. Check these three algorithms
+
+The fix plan said not to change the 6 algorithms, but some fixes touch their behaviour. Please
+compare the book's text:
+  - Algoritma 3.3 (status bayar PO): reversed bills are now ignored, and a PO can go from
+    Selesai back to Pesanan. A5 and A2 asked for this.
+  - Algoritma 3.4 (email): the new status "simulasi" when there is no Brevo key.
+  - The shortage formula, if the book gives it as an algorithm or calculation: see A1 above.
+Algoritma 3.1, 3.2, 3.5 and 3.6 were not changed in meaning.
+
+5c. Names to update everywhere in the book
+
+  Old                              New
+  Catat Uang Muka                  Catat Uang Muka / Pelunasan
+  Konfirmasi tagihan               Posting
+  Batalkan (pembalik)              Batalkan (jurnal pembalik)
+  Jurnal pembalik (button)         Batalkan (jurnal pembalik)
+  PESANAN PEMBELIAN (PDF, email)   PESANAN PRINCIPAL
+  Dokumen susulan                  Susulan dari DO/...
+  Email status terkirim (no key)   simulasi
+
+5d. Menu structure (C4)
+  - Pelanggan, Principal and Pricelist Penjualan now appear only in Master.
+  - New items: Pengadaan > Perlu Pesanan Principal, Stok > Siap Dikirim.
+  - New Beranda figures for Finance and Operasional.
+
+5e. Screenshots and figures to retake
+  - Menus: Penjualan, Pengadaan, Stok
+  - Beranda: Finance, Operasional
+  - Penawaran form, Sales Order toolbar, Purchase Order detail, Surat Jalan detail
+  - Invoice detail, Pembayaran list
+  - PO PDF, follow-up Surat Jalan PDF, invoice and PO notes
+  - Laporan page for Admin
+  - Login page, if it is shown with demo mode off
+
+5f. Add to testing chapter, if the book has one
+  New off-path scenarios from edge-flow: all 22 tests are named in apps/api/scripts/edge-flow.mjs.
+
+5g. Do not change in the book
+  - Number format <kode>/MTPP/<tahun>/<bulan>/<urut>
+  - Tabel 3.1. RCV is gone from the numbering preview. I only have the team's note that the
+    table has no RCV, so please compare the other 14 codes against the table.
+  - The quotation keeps its SO/... number
+  - The 5 groups and the total of 12 reports
+  - CDM and PDM in Lampiran C
+  - Returns and stock count stay out of scope
+  - Siap Kirim stays optional
+  - Proforma and advance payment stay for new customers only
+
+
+6. STILL OPEN
+-------------
+- PDF and spreadsheet links still put the login token in the URL (apps/web/src/lib.ts:31). The
+  plan only covered the signature image. Fix this before real deployment.
+- After a rebuild, a browser can keep the old index.html. A no-cache header for index.html in
+  nginx would stop this.
+- The buttons listed in section 2 still need a hand test on screen.

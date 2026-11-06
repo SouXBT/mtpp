@@ -1,0 +1,834 @@
+// Skema database Sistem Distribusi MTPP (Prisma ORM, PostgreSQL)
+// 30 tabel utama sesuai CDM/PDM Lampiran C + tabel pendukung.
+// Kolom berawalan mtpp_ mengikuti aturan khusus perusahaan.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Users {
+  id                    Int            @id @default(autoincrement())
+  partnerId             Int            @map("partner_id")
+  login                 String         @unique(map: "users_login_unique") @db.VarChar(120)
+  password              String         @db.VarChar(200)
+  active                Boolean        @default(true)
+  loginDate             DateTime?      @map("login_date") @db.Timestamp(6)
+  signatureId           Int?           @map("signature_attachment_id")
+  createUid             Int?           @map("create_uid")
+  createDate            DateTime       @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid              Int?           @map("write_uid")
+  writeDate             DateTime       @default(now()) @map("write_date") @db.Timestamp(6)
+  groups                GroupUsers[]   @relation("groupUsers_uid")
+  revActivitiesUserId   Activities[]   @relation("activities_userId")
+  revSavedFiltersUserId SavedFilters[] @relation("savedFilters_userId")
+  partner               Partners       @relation("users_partnerId", fields: [partnerId], references: [id], map: "users_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("users")
+}
+
+model Groups {
+  id          Int                @id @default(autoincrement())
+  code        String             @unique(map: "groups_code_unique") @db.VarChar(30)
+  name        String             @db.VarChar(80)
+  comment     String?            @db.Text
+  createUid   Int?               @map("create_uid")
+  createDate  DateTime           @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid    Int?               @map("write_uid")
+  writeDate   DateTime           @default(now()) @map("write_date") @db.Timestamp(6)
+  users       GroupUsers[]       @relation("groupUsers_gid")
+  permissions GroupPermissions[] @relation("groupPermissions_groupId")
+
+  @@map("groups")
+}
+
+model GroupUsers {
+  id         Int      @id @default(autoincrement())
+  gid        Int
+  uid        Int
+  createUid  Int?     @map("create_uid")
+  createDate DateTime @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid   Int?     @map("write_uid")
+  writeDate  DateTime @default(now()) @map("write_date") @db.Timestamp(6)
+  group      Groups   @relation("groupUsers_gid", fields: [gid], references: [id], map: "group_users_gid_groups_id_fk", onDelete: Cascade, onUpdate: NoAction)
+  user       Users    @relation("groupUsers_uid", fields: [uid], references: [id], map: "group_users_uid_users_id_fk", onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([gid, uid], map: "group_user_uq")
+  @@map("group_users")
+}
+
+model GroupPermissions {
+  id         Int      @id @default(autoincrement())
+  groupId    Int      @map("group_id")
+  menu       String   @db.VarChar(60)
+  permRead   Boolean  @default(false) @map("perm_read")
+  permCreate Boolean  @default(false) @map("perm_create")
+  permWrite  Boolean  @default(false) @map("perm_write")
+  permDelete Boolean  @default(false) @map("perm_delete")
+  createUid  Int?     @map("create_uid")
+  createDate DateTime @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid   Int?     @map("write_uid")
+  writeDate  DateTime @default(now()) @map("write_date") @db.Timestamp(6)
+  group      Groups   @relation("groupPermissions_groupId", fields: [groupId], references: [id], map: "group_permissions_group_id_groups_id_fk", onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([groupId, menu], map: "group_menu_uq")
+  @@map("group_permissions")
+}
+
+model Messages {
+  id                     Int          @id @default(autoincrement())
+  authorId               Int?         @map("author_id")
+  model                  String       @db.VarChar(60)
+  resId                  Int          @map("res_id")
+  messageType            String       @default("note") @map("message_type") @db.VarChar(20)
+  body                   String       @db.Text
+  date                   DateTime     @default(now()) @db.Timestamp(6)
+  createUid              Int?         @map("create_uid")
+  createDate             DateTime     @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid               Int?         @map("write_uid")
+  writeDate              DateTime     @default(now()) @map("write_date") @db.Timestamp(6)
+  revChangeLogsMessageId ChangeLogs[] @relation("changeLogs_messageId")
+
+  @@index([model, resId], map: "messages_res_idx")
+  @@map("messages")
+}
+
+model ChangeLogs {
+  id            Int      @id @default(autoincrement())
+  messageId     Int      @map("message_id")
+  field         String   @map("field_id") @db.VarChar(60)
+  oldValueChar  String?  @map("old_value_char") @db.Text
+  newValueChar  String?  @map("new_value_char") @db.Text
+  oldValueFloat Decimal? @map("old_value_float") @db.Decimal(18, 2)
+  newValueFloat Decimal? @map("new_value_float") @db.Decimal(18, 2)
+  createUid     Int?     @map("create_uid")
+  createDate    DateTime @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid      Int?     @map("write_uid")
+  writeDate     DateTime @default(now()) @map("write_date") @db.Timestamp(6)
+  message       Messages @relation("changeLogs_messageId", fields: [messageId], references: [id], map: "change_logs_message_id_messages_id_fk", onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("change_logs")
+}
+
+model EmailLogs {
+  id                 Int       @id @default(autoincrement())
+  model              String    @db.VarChar(60)
+  resId              Int       @map("res_id")
+  documentName       String    @map("document_name") @db.VarChar(60)
+  emailTo            String    @map("email_to") @db.VarChar(200)
+  subject            String    @db.VarChar(250)
+  state              String    @default("diproses") @db.VarChar(20)
+  failureReason      String?   @map("failure_reason") @db.Text
+  mtppProviderRef    String?   @map("mtpp_provider_ref") @db.VarChar(200)
+  mtppDeliveryStatus String?   @map("mtpp_delivery_status") @db.VarChar(40)
+  attachmentId       Int?      @map("attachment_id")
+  sentAt             DateTime  @default(now()) @map("sent_at") @db.Timestamp(6)
+  statusAt           DateTime? @map("status_at") @db.Timestamp(6)
+  createUid          Int?      @map("create_uid")
+  createDate         DateTime  @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid           Int?      @map("write_uid")
+  writeDate          DateTime  @default(now()) @map("write_date") @db.Timestamp(6)
+
+  @@map("email_logs")
+}
+
+model Attachments {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(250)
+  resModel   String   @map("res_model") @db.VarChar(60)
+  resId      Int      @map("res_id")
+  mimetype   String   @db.VarChar(120)
+  storeFname String   @map("store_fname") @db.VarChar(250)
+  fileSize   Int      @map("file_size")
+  createUid  Int?     @map("create_uid")
+  createDate DateTime @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid   Int?     @map("write_uid")
+  writeDate  DateTime @default(now()) @map("write_date") @db.Timestamp(6)
+
+  @@map("attachments")
+}
+
+model PaymentTerms {
+  id                          Int           @id @default(autoincrement())
+  name                        String        @db.VarChar(80)
+  days                        Int           @default(0)
+  note                        String?       @db.Text
+  active                      Boolean       @default(true)
+  createUid                   Int?          @map("create_uid")
+  createDate                  DateTime      @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                    Int?          @map("write_uid")
+  writeDate                   DateTime      @default(now()) @map("write_date") @db.Timestamp(6)
+  revPartnersPaymentTermId    Partners[]    @relation("partners_paymentTermId")
+  revSalesOrdersPaymentTermId SalesOrders[] @relation("salesOrders_paymentTermId")
+
+  @@map("payment_terms")
+}
+
+model SalesPricelists {
+  id                          Int                   @id @default(autoincrement())
+  name                        String                @db.VarChar(120)
+  active                      Boolean               @default(true)
+  revPartnersSalesPricelistId Partners[]            @relation("partners_salesPricelistId")
+  items                       SalesPricelistItems[] @relation("salesPricelistItems_pricelistId")
+
+  @@map("sales_pricelists")
+}
+
+model Partners {
+  id                                Int                  @id @default(autoincrement())
+  parentId                          Int?                 @map("parent_id")
+  type                              String               @default("company") @db.VarChar(20)
+  name                              String               @db.VarChar(200)
+  vat                               String?              @db.VarChar(40)
+  email                             String?              @db.VarChar(200)
+  phone                             String?              @db.VarChar(60)
+  street                            String?              @db.Text
+  city                              String?              @db.VarChar(80)
+  customerRank                      Int                  @default(0) @map("customer_rank")
+  supplierRank                      Int                  @default(0) @map("supplier_rank")
+  paymentTermId                     Int?                 @map("property_payment_term_id")
+  category                          String?              @db.VarChar(80)
+  supplierNote                      String?              @map("mtpp_supplier_note") @db.Text
+  mtppIsNewCustomer                 Boolean              @default(false) @map("mtpp_is_new_customer")
+  salesPricelistId                  Int?                 @map("sales_pricelist_id")
+  active                            Boolean              @default(true)
+  createUid                         Int?                 @map("create_uid")
+  createDate                        DateTime             @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                          Int?                 @map("write_uid")
+  writeDate                         DateTime             @default(now()) @map("write_date") @db.Timestamp(6)
+  paymentTerm                       PaymentTerms?        @relation("partners_paymentTermId", fields: [paymentTermId], references: [id], map: "partners_property_payment_term_id_payment_terms_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  pricelist                         SalesPricelists?     @relation("partners_salesPricelistId", fields: [salesPricelistId], references: [id], map: "partners_sales_pricelist_id_sales_pricelists_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revProductTemplatesMainSupplierId ProductTemplates[]   @relation("productTemplates_mainSupplierId")
+  revSupplierPricesPartnerId        SupplierPrices[]     @relation("supplierPrices_partnerId")
+  warehouses                        Warehouses[]         @relation("warehouses_partnerId")
+  revSalesOrdersPartnerId           SalesOrders[]        @relation("salesOrders_partnerId")
+  revSalesOrdersPartnerShippingId   SalesOrders[]        @relation("salesOrders_partnerShippingId")
+  revPurchaseOrdersPartnerId        PurchaseOrders[]     @relation("purchaseOrders_partnerId")
+  revPurchaseOrdersDestAddressId    PurchaseOrders[]     @relation("purchaseOrders_destAddressId")
+  revStockTransfersPartnerId        StockTransfers[]     @relation("stockTransfers_partnerId")
+  revJournalEntriesPartnerId        JournalEntries[]     @relation("journalEntries_partnerId")
+  revJournalEntryLinesPartnerId     JournalEntryLines[]  @relation("journalEntryLines_partnerId")
+  revPaymentsPartnerId              Payments[]           @relation("payments_partnerId")
+  revBankStatementLinesPartnerId    BankStatementLines[] @relation("bankStatementLines_partnerId")
+  revDocumentsPartnerId             Documents[]          @relation("documents_partnerId")
+  revUsersPartnerId                 Users[]              @relation("users_partnerId")
+  parent                            Partners?            @relation("partners_parentId", fields: [parentId], references: [id], map: "partners_parent_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  children                          Partners[]           @relation("partners_parentId")
+
+  @@map("partners")
+}
+
+model Units {
+  id                       Int                @id @default(autoincrement())
+  name                     String             @db.VarChar(40)
+  relativeFactor           Decimal            @default(1) @map("relative_factor") @db.Decimal(12, 4)
+  active                   Boolean            @default(true)
+  createUid                Int?               @map("create_uid")
+  createDate               DateTime           @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                 Int?               @map("write_uid")
+  writeDate                DateTime           @default(now()) @map("write_date") @db.Timestamp(6)
+  revProductTemplatesUomId ProductTemplates[] @relation("productTemplates_uomId")
+
+  @@map("units")
+}
+
+model ProductCategories {
+  id                            Int                @id @default(autoincrement())
+  name                          String             @db.VarChar(80)
+  active                        Boolean            @default(true)
+  revProductTemplatesCategoryId ProductTemplates[] @relation("productTemplates_categoryId")
+
+  @@map("product_categories")
+}
+
+model ProductTemplates {
+  id              Int                @id @default(autoincrement())
+  uomId           Int                @map("uom_id")
+  categoryId      Int?               @map("category_id")
+  mainSupplierId  Int?               @map("main_supplier_id")
+  name            String             @db.VarChar(200)
+  type            String             @default("product") @db.VarChar(20)
+  listPrice       Decimal            @default(0) @map("list_price") @db.Decimal(18, 2)
+  descriptionSale String?            @map("description_sale") @db.Text
+  mtppRoute       String             @default("stock") @map("mtpp_route") @db.VarChar(20)
+  active          Boolean            @default(true)
+  createUid       Int?               @map("create_uid")
+  createDate      DateTime           @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid        Int?               @map("write_uid")
+  writeDate       DateTime           @default(now()) @map("write_date") @db.Timestamp(6)
+  uom             Units              @relation("productTemplates_uomId", fields: [uomId], references: [id], map: "product_templates_uom_id_units_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  category        ProductCategories? @relation("productTemplates_categoryId", fields: [categoryId], references: [id], map: "product_templates_category_id_product_categories_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  mainSupplier    Partners?          @relation("productTemplates_mainSupplierId", fields: [mainSupplierId], references: [id], map: "product_templates_main_supplier_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  products        Products[]         @relation("products_productTmplId")
+  supplierPrices  SupplierPrices[]   @relation("supplierPrices_productTmplId")
+
+  @@map("product_templates")
+}
+
+model Products {
+  id                              Int                   @id @default(autoincrement())
+  productTmplId                   Int                   @map("product_tmpl_id")
+  defaultCode                     String                @unique(map: "products_default_code_unique") @map("default_code") @db.VarChar(40)
+  active                          Boolean               @default(true)
+  createUid                       Int?                  @map("create_uid")
+  createDate                      DateTime              @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                        Int?                  @map("write_uid")
+  writeDate                       DateTime              @default(now()) @map("write_date") @db.Timestamp(6)
+  template                        ProductTemplates      @relation("products_productTmplId", fields: [productTmplId], references: [id], map: "products_product_tmpl_id_product_templates_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revSalesOrderLinesProductId     SalesOrderLines[]     @relation("salesOrderLines_productId")
+  revPurchaseOrderLinesProductId  PurchaseOrderLines[]  @relation("purchaseOrderLines_productId")
+  revStockMovesProductId          StockMoves[]          @relation("stockMoves_productId")
+  revStockBalancesProductId       StockBalances[]       @relation("stockBalances_productId")
+  revJournalEntryLinesProductId   JournalEntryLines[]   @relation("journalEntryLines_productId")
+  revSalesPricelistItemsProductId SalesPricelistItems[] @relation("salesPricelistItems_productId")
+  revStockRulesProductId          StockRules[]          @relation("stockRules_productId")
+
+  @@map("products")
+}
+
+model SupplierPrices {
+  id            Int              @id @default(autoincrement())
+  partnerId     Int              @map("partner_id")
+  productTmplId Int              @map("product_tmpl_id")
+  price         Decimal          @db.Decimal(18, 2)
+  discount      Decimal          @default(0) @db.Decimal(5, 2)
+  minQty        Decimal          @default(0) @map("min_qty") @db.Decimal(12, 2)
+  dateStart     DateTime?        @map("date_start") @db.Date
+  dateEnd       DateTime?        @map("date_end") @db.Date
+  createUid     Int?             @map("create_uid")
+  createDate    DateTime         @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid      Int?             @map("write_uid")
+  writeDate     DateTime         @default(now()) @map("write_date") @db.Timestamp(6)
+  partner       Partners         @relation("supplierPrices_partnerId", fields: [partnerId], references: [id], map: "supplier_prices_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  template      ProductTemplates @relation("supplierPrices_productTmplId", fields: [productTmplId], references: [id], map: "supplier_prices_product_tmpl_id_product_templates_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("supplier_prices")
+}
+
+model Warehouses {
+  id                                Int               @id @default(autoincrement())
+  partnerId                         Int               @map("partner_id")
+  name                              String            @db.VarChar(120)
+  code                              String            @unique(map: "warehouses_code_unique") @db.VarChar(20)
+  active                            Boolean           @default(true)
+  createUid                         Int?              @map("create_uid")
+  createDate                        DateTime          @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                          Int?              @map("write_uid")
+  writeDate                         DateTime          @default(now()) @map("write_date") @db.Timestamp(6)
+  partner                           Partners          @relation("warehouses_partnerId", fields: [partnerId], references: [id], map: "warehouses_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  locations                         Locations[]       @relation("locations_warehouseId")
+  revSalesOrderLinesMtppWarehouseId SalesOrderLines[] @relation("salesOrderLines_mtppWarehouseId")
+  revPurchaseOrdersWarehouseId      PurchaseOrders[]  @relation("purchaseOrders_warehouseId")
+  revTransferTypesWarehouseId       TransferTypes[]   @relation("transferTypes_warehouseId")
+  revStockRulesWarehouseId          StockRules[]      @relation("stockRules_warehouseId")
+
+  @@map("warehouses")
+}
+
+model Locations {
+  id                              Int              @id @default(autoincrement())
+  warehouseId                     Int?             @map("warehouse_id")
+  name                            String           @db.VarChar(120)
+  completeName                    String           @map("complete_name") @db.VarChar(200)
+  usage                           String           @db.VarChar(20)
+  active                          Boolean          @default(true)
+  createUid                       Int?             @map("create_uid")
+  createDate                      DateTime         @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                        Int?             @map("write_uid")
+  writeDate                       DateTime         @default(now()) @map("write_date") @db.Timestamp(6)
+  warehouse                       Warehouses?      @relation("locations_warehouseId", fields: [warehouseId], references: [id], map: "locations_warehouse_id_warehouses_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revStockTransfersLocationId     StockTransfers[] @relation("stockTransfers_locationId")
+  revStockTransfersLocationDestId StockTransfers[] @relation("stockTransfers_locationDestId")
+  revStockMovesLocationId         StockMoves[]     @relation("stockMoves_locationId")
+  revStockMovesLocationDestId     StockMoves[]     @relation("stockMoves_locationDestId")
+  revStockBalancesLocationId      StockBalances[]  @relation("stockBalances_locationId")
+
+  @@map("locations")
+}
+
+model SalesOrders {
+  id                         Int               @id @default(autoincrement())
+  name                       String            @unique(map: "sales_orders_name_unique") @db.VarChar(40)
+  quotationNumber            String?           @unique(map: "sales_orders_quotation_number_unique") @map("mtpp_quotation_number") @db.VarChar(40)
+  partnerId                  Int               @map("partner_id")
+  partnerShippingId          Int?              @map("partner_shipping_id")
+  userId                     Int?              @map("user_id")
+  paymentTermId              Int?              @map("payment_term_id")
+  dateOrder                  DateTime          @map("date_order") @db.Date
+  dateConfirm                DateTime?         @map("date_confirm") @db.Date
+  validityDate               DateTime?         @map("validity_date") @db.Date
+  commitmentDate             DateTime?         @map("commitment_date") @db.Date
+  state                      String            @default("draft") @db.VarChar(20)
+  clientOrderRef             String?           @map("client_order_ref") @db.VarChar(80)
+  amountUntaxed              Decimal           @default(0) @map("amount_untaxed") @db.Decimal(18, 2)
+  amountTax                  Decimal           @default(0) @map("amount_tax") @db.Decimal(18, 2)
+  amountTotal                Decimal           @default(0) @map("amount_total") @db.Decimal(18, 2)
+  invoiceStatus              String            @default("no") @map("invoice_status") @db.VarChar(20)
+  mtppProformaNumber         String?           @map("mtpp_proforma_number") @db.VarChar(40)
+  mtppProformaDate           DateTime?         @map("mtpp_proforma_date") @db.Date
+  mtppProformaNote           String?           @map("mtpp_proforma_note") @db.Text
+  mtppDpMode                 String?           @map("mtpp_dp_mode") @db.VarChar(10)
+  mtppDpPercent              Decimal?          @map("mtpp_dp_percent") @db.Decimal(6, 2)
+  mtppDpAmount               Decimal?          @map("mtpp_dp_amount") @db.Decimal(18, 2)
+  mtppTermPayment            String?           @map("mtpp_term_payment") @db.Text
+  mtppTermDelivery           String?           @map("mtpp_term_delivery") @db.Text
+  mtppTermValidity           String?           @map("mtpp_term_validity") @db.Text
+  mtppTermWarranty           String?           @map("mtpp_term_warranty") @db.Text
+  mtppTermHandover           String?           @map("mtpp_term_handover") @db.Text
+  mtppTermStandard           String?           @map("mtpp_term_standard") @db.Text
+  createUid                  Int?              @map("create_uid")
+  createDate                 DateTime          @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                   Int?              @map("write_uid")
+  writeDate                  DateTime          @default(now()) @map("write_date") @db.Timestamp(6)
+  partner                    Partners          @relation("salesOrders_partnerId", fields: [partnerId], references: [id], map: "sales_orders_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  partnerShipping            Partners?         @relation("salesOrders_partnerShippingId", fields: [partnerShippingId], references: [id], map: "sales_orders_partner_shipping_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  paymentTerm                PaymentTerms?     @relation("salesOrders_paymentTermId", fields: [paymentTermId], references: [id], map: "sales_orders_payment_term_id_payment_terms_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  lines                      SalesOrderLines[] @relation("salesOrderLines_orderId")
+  revPurchaseOrdersSaleId    PurchaseOrders[]  @relation("purchaseOrders_saleId")
+  revStockTransfersSaleId    StockTransfers[]  @relation("stockTransfers_saleId")
+  revJournalEntriesSaleId    JournalEntries[]  @relation("journalEntries_saleId")
+  revPaymentsMtppSaleOrderId Payments[]        @relation("payments_mtppSaleOrderId")
+  revDocumentsSaleOrderId    Documents[]       @relation("documents_saleOrderId")
+
+  @@map("sales_orders")
+}
+
+model SalesOrderLines {
+  id                                  Int                  @id @default(autoincrement())
+  orderId                             Int                  @map("order_id")
+  productId                           Int                  @map("product_id")
+  name                                String               @db.Text
+  productUomQty                       Decimal              @map("product_uom_qty") @db.Decimal(12, 2)
+  qtyDelivered                        Decimal              @default(0) @map("qty_delivered") @db.Decimal(12, 2)
+  qtyInvoiced                         Decimal              @default(0) @map("qty_invoiced") @db.Decimal(12, 2)
+  priceUnit                           Decimal              @map("price_unit") @db.Decimal(18, 2)
+  discount                            Decimal              @default(0) @db.Decimal(5, 2)
+  priceSubtotal                       Decimal              @default(0) @map("price_subtotal") @db.Decimal(18, 2)
+  purchasePrice                       Decimal              @default(0) @map("purchase_price") @db.Decimal(18, 2)
+  margin                              Decimal              @default(0) @db.Decimal(18, 2)
+  mtppWarehouseId                     Int?                 @map("mtpp_warehouse_id")
+  mtppIsDropship                      Boolean              @default(false) @map("mtpp_is_dropship")
+  sequence                            Int                  @default(10)
+  createUid                           Int?                 @map("create_uid")
+  createDate                          DateTime             @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                            Int?                 @map("write_uid")
+  writeDate                           DateTime             @default(now()) @map("write_date") @db.Timestamp(6)
+  order                               SalesOrders          @relation("salesOrderLines_orderId", fields: [orderId], references: [id], map: "sales_order_lines_order_id_sales_orders_id_fk", onDelete: Cascade, onUpdate: NoAction)
+  product                             Products             @relation("salesOrderLines_productId", fields: [productId], references: [id], map: "sales_order_lines_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  warehouse                           Warehouses?          @relation("salesOrderLines_mtppWarehouseId", fields: [mtppWarehouseId], references: [id], map: "sales_order_lines_mtpp_warehouse_id_warehouses_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revPurchaseOrderLinesMtppSaleLineId PurchaseOrderLines[] @relation("purchaseOrderLines_mtppSaleLineId")
+  revStockMovesSaleLineId             StockMoves[]         @relation("stockMoves_saleLineId")
+  revJournalEntryLinesSaleLineId      JournalEntryLines[]  @relation("journalEntryLines_saleLineId")
+
+  @@map("sales_order_lines")
+}
+
+model PurchaseOrders {
+  id                          Int                  @id @default(autoincrement())
+  name                        String               @unique(map: "purchase_orders_name_unique") @db.VarChar(40)
+  partnerId                   Int                  @map("partner_id")
+  warehouseId                 Int?                 @map("warehouse_id")
+  saleId                      Int?                 @map("mtpp_sale_order_id")
+  destAddressId               Int?                 @map("dest_address_id")
+  isDropship                  Boolean              @default(false) @map("mtpp_is_dropship")
+  dateOrder                   DateTime             @map("date_order") @db.Date
+  datePlanned                 DateTime?            @map("date_planned") @db.Date
+  state                       String               @default("draft") @db.VarChar(20)
+  amountUntaxed               Decimal              @default(0) @map("amount_untaxed") @db.Decimal(18, 2)
+  amountTax                   Decimal              @default(0) @map("amount_tax") @db.Decimal(18, 2)
+  amountTotal                 Decimal              @default(0) @map("amount_total") @db.Decimal(18, 2)
+  note                        String?              @db.Text
+  mtppPaymentState            String               @default("menunggu barang") @map("mtpp_payment_state") @db.VarChar(40)
+  mtppAmountDue               Decimal              @default(0) @map("mtpp_amount_due") @db.Decimal(18, 2)
+  createUid                   Int?                 @map("create_uid")
+  createDate                  DateTime             @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                    Int?                 @map("write_uid")
+  writeDate                   DateTime             @default(now()) @map("write_date") @db.Timestamp(6)
+  partner                     Partners             @relation("purchaseOrders_partnerId", fields: [partnerId], references: [id], map: "purchase_orders_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  warehouse                   Warehouses?          @relation("purchaseOrders_warehouseId", fields: [warehouseId], references: [id], map: "purchase_orders_warehouse_id_warehouses_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  sale                        SalesOrders?         @relation("purchaseOrders_saleId", fields: [saleId], references: [id], map: "purchase_orders_mtpp_sale_order_id_sales_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  destAddress                 Partners?            @relation("purchaseOrders_destAddressId", fields: [destAddressId], references: [id], map: "purchase_orders_dest_address_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  lines                       PurchaseOrderLines[] @relation("purchaseOrderLines_orderId")
+  revStockTransfersPurchaseId StockTransfers[]     @relation("stockTransfers_purchaseId")
+  revJournalEntriesPurchaseId JournalEntries[]     @relation("journalEntries_purchaseId")
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLines {
+  id                                 Int                 @id @default(autoincrement())
+  orderId                            Int                 @map("order_id")
+  productId                          Int                 @map("product_id")
+  name                               String              @db.Text
+  productQty                         Decimal             @map("product_qty") @db.Decimal(12, 2)
+  qtyReceived                        Decimal             @default(0) @map("qty_received") @db.Decimal(12, 2)
+  qtyInvoiced                        Decimal             @default(0) @map("qty_invoiced") @db.Decimal(12, 2)
+  priceUnit                          Decimal             @map("price_unit") @db.Decimal(18, 2)
+  priceSubtotal                      Decimal             @default(0) @map("price_subtotal") @db.Decimal(18, 2)
+  datePlanned                        DateTime?           @map("date_planned") @db.Date
+  mtppSaleLineId                     Int?                @map("mtpp_sale_line_id")
+  createUid                          Int?                @map("create_uid")
+  createDate                         DateTime            @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                           Int?                @map("write_uid")
+  writeDate                          DateTime            @default(now()) @map("write_date") @db.Timestamp(6)
+  order                              PurchaseOrders      @relation("purchaseOrderLines_orderId", fields: [orderId], references: [id], map: "purchase_order_lines_order_id_purchase_orders_id_fk", onDelete: Cascade, onUpdate: NoAction)
+  product                            Products            @relation("purchaseOrderLines_productId", fields: [productId], references: [id], map: "purchase_order_lines_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  mtppSaleLine                       SalesOrderLines?    @relation("purchaseOrderLines_mtppSaleLineId", fields: [mtppSaleLineId], references: [id], map: "purchase_order_lines_mtpp_sale_line_id_sales_order_lines_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revStockMovesPurchaseLineId        StockMoves[]        @relation("stockMoves_purchaseLineId")
+  revJournalEntryLinesPurchaseLineId JournalEntryLines[] @relation("journalEntryLines_purchaseLineId")
+
+  @@map("purchase_order_lines")
+}
+
+model TransferTypes {
+  id                             Int              @id @default(autoincrement())
+  warehouseId                    Int?             @map("warehouse_id")
+  name                           String           @db.VarChar(80)
+  code                           String           @db.VarChar(20)
+  sequenceCode                   String           @map("sequence_code") @db.VarChar(10)
+  createUid                      Int?             @map("create_uid")
+  createDate                     DateTime         @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                       Int?             @map("write_uid")
+  writeDate                      DateTime         @default(now()) @map("write_date") @db.Timestamp(6)
+  warehouse                      Warehouses?      @relation("transferTypes_warehouseId", fields: [warehouseId], references: [id], map: "transfer_types_warehouse_id_warehouses_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revStockTransfersPickingTypeId StockTransfers[] @relation("stockTransfers_pickingTypeId")
+
+  @@map("transfer_types")
+}
+
+model StockTransfers {
+  id             Int             @id @default(autoincrement())
+  name           String          @unique(map: "stock_transfers_name_unique") @db.VarChar(40)
+  pickingTypeId  Int             @map("picking_type_id")
+  partnerId      Int?            @map("partner_id")
+  saleId         Int?            @map("sale_id")
+  purchaseId     Int?            @map("purchase_id")
+  locationId     Int             @map("location_id")
+  locationDestId Int             @map("location_dest_id")
+  backorderId    Int?            @map("backorder_id")
+  origin         String?         @db.VarChar(80)
+  scheduledDate  DateTime?       @map("scheduled_date") @db.Date
+  dateDone       DateTime?       @map("date_done") @db.Timestamp(6)
+  state          String          @default("draft") @db.VarChar(20)
+  note           String?         @db.Text
+  createUid      Int?            @map("create_uid")
+  createDate     DateTime        @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid       Int?            @map("write_uid")
+  writeDate      DateTime        @default(now()) @map("write_date") @db.Timestamp(6)
+  pickingType    TransferTypes   @relation("stockTransfers_pickingTypeId", fields: [pickingTypeId], references: [id], map: "stock_transfers_picking_type_id_transfer_types_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  partner        Partners?       @relation("stockTransfers_partnerId", fields: [partnerId], references: [id], map: "stock_transfers_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  sale           SalesOrders?    @relation("stockTransfers_saleId", fields: [saleId], references: [id], map: "stock_transfers_sale_id_sales_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  purchase       PurchaseOrders? @relation("stockTransfers_purchaseId", fields: [purchaseId], references: [id], map: "stock_transfers_purchase_id_purchase_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  location       Locations       @relation("stockTransfers_locationId", fields: [locationId], references: [id], map: "stock_transfers_location_id_locations_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  locationDest   Locations       @relation("stockTransfers_locationDestId", fields: [locationDestId], references: [id], map: "stock_transfers_location_dest_id_locations_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  moves          StockMoves[]    @relation("stockMoves_pickingId")
+
+  @@map("stock_transfers")
+}
+
+model StockMoves {
+  id             Int                 @id @default(autoincrement())
+  pickingId      Int?                @map("picking_id")
+  productId      Int                 @map("product_id")
+  locationId     Int                 @map("location_id")
+  locationDestId Int                 @map("location_dest_id")
+  saleLineId     Int?                @map("sale_line_id")
+  purchaseLineId Int?                @map("purchase_line_id")
+  productUomQty  Decimal             @map("product_uom_qty") @db.Decimal(12, 2)
+  quantity       Decimal             @default(0) @db.Decimal(12, 2)
+  state          String              @default("draft") @db.VarChar(20)
+  date           DateTime            @default(now()) @db.Timestamp(6)
+  createUid      Int?                @map("create_uid")
+  createDate     DateTime            @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid       Int?                @map("write_uid")
+  writeDate      DateTime            @default(now()) @map("write_date") @db.Timestamp(6)
+  picking        StockTransfers?     @relation("stockMoves_pickingId", fields: [pickingId], references: [id], map: "stock_moves_picking_id_stock_transfers_id_fk", onDelete: Cascade, onUpdate: NoAction)
+  product        Products            @relation("stockMoves_productId", fields: [productId], references: [id], map: "stock_moves_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  location       Locations           @relation("stockMoves_locationId", fields: [locationId], references: [id], map: "stock_moves_location_id_locations_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  locationDest   Locations           @relation("stockMoves_locationDestId", fields: [locationDestId], references: [id], map: "stock_moves_location_dest_id_locations_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  saleLine       SalesOrderLines?    @relation("stockMoves_saleLineId", fields: [saleLineId], references: [id], map: "stock_moves_sale_line_id_sales_order_lines_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  purchaseLine   PurchaseOrderLines? @relation("stockMoves_purchaseLineId", fields: [purchaseLineId], references: [id], map: "stock_moves_purchase_line_id_purchase_order_lines_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("stock_moves")
+}
+
+model StockBalances {
+  id               Int       @id @default(autoincrement())
+  productId        Int       @map("product_id")
+  locationId       Int       @map("location_id")
+  quantity         Decimal   @default(0) @db.Decimal(12, 2)
+  reservedQuantity Decimal   @default(0) @map("reserved_quantity") @db.Decimal(12, 2)
+  inDate           DateTime  @default(now()) @map("in_date") @db.Timestamp(6)
+  createUid        Int?      @map("create_uid")
+  createDate       DateTime  @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid         Int?      @map("write_uid")
+  writeDate        DateTime  @default(now()) @map("write_date") @db.Timestamp(6)
+  product          Products  @relation("stockBalances_productId", fields: [productId], references: [id], map: "stock_balances_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  location         Locations @relation("stockBalances_locationId", fields: [locationId], references: [id], map: "stock_balances_location_id_locations_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([productId, locationId], map: "stock_balance_uq")
+  @@map("stock_balances")
+}
+
+model Accounts {
+  id                            Int                 @id @default(autoincrement())
+  code                          String              @unique(map: "accounts_code_store_unique") @map("code_store") @db.VarChar(20)
+  name                          String              @db.VarChar(120)
+  accountType                   String              @map("account_type") @db.VarChar(20)
+  active                        Boolean             @default(true)
+  createUid                     Int?                @map("create_uid")
+  createDate                    DateTime            @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                      Int?                @map("write_uid")
+  writeDate                     DateTime            @default(now()) @map("write_date") @db.Timestamp(6)
+  revJournalsDefaultAccountId   Journals[]          @relation("journals_defaultAccountId")
+  revJournalEntryLinesAccountId JournalEntryLines[] @relation("journalEntryLines_accountId")
+
+  @@map("accounts")
+}
+
+model Journals {
+  id                             Int                  @id @default(autoincrement())
+  name                           String               @db.VarChar(80)
+  code                           String               @unique(map: "journals_code_unique") @db.VarChar(10)
+  type                           String               @db.VarChar(20)
+  defaultAccountId               Int?                 @map("default_account_id")
+  active                         Boolean              @default(true)
+  mtppLegacy                     Boolean              @default(false) @map("mtpp_legacy")
+  createUid                      Int?                 @map("create_uid")
+  createDate                     DateTime             @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                       Int?                 @map("write_uid")
+  writeDate                      DateTime             @default(now()) @map("write_date") @db.Timestamp(6)
+  defaultAccount                 Accounts?            @relation("journals_defaultAccountId", fields: [defaultAccountId], references: [id], map: "journals_default_account_id_accounts_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revJournalEntriesJournalId     JournalEntries[]     @relation("journalEntries_journalId")
+  revPaymentsJournalId           Payments[]           @relation("payments_journalId")
+  revBankStatementLinesJournalId BankStatementLines[] @relation("bankStatementLines_journalId")
+
+  @@map("journals")
+}
+
+model JournalEntries {
+  id                   Int                 @id @default(autoincrement())
+  name                 String              @unique(map: "journal_entries_name_unique") @db.VarChar(40)
+  journalId            Int                 @map("journal_id")
+  partnerId            Int?                @map("partner_id")
+  moveType             String              @default("entry") @map("move_type") @db.VarChar(20)
+  date                 DateTime            @db.Date
+  invoiceDate          DateTime?           @map("invoice_date") @db.Date
+  invoiceDateDue       DateTime?           @map("invoice_date_due") @db.Date
+  state                String              @default("draft") @db.VarChar(20)
+  paymentState         String              @default("not_paid") @map("payment_state") @db.VarChar(20)
+  amountUntaxed        Decimal             @default(0) @map("amount_untaxed") @db.Decimal(18, 2)
+  amountTax            Decimal             @default(0) @map("amount_tax") @db.Decimal(18, 2)
+  amountTotal          Decimal             @default(0) @map("amount_total") @db.Decimal(18, 2)
+  amountResidual       Decimal             @default(0) @map("amount_residual") @db.Decimal(18, 2)
+  reversedEntryId      Int?                @map("reversed_entry_id")
+  saleId               Int?                @map("mtpp_sale_order_id")
+  purchaseId           Int?                @map("mtpp_purchase_order_id")
+  invoiceOrigin        String?             @map("invoice_origin") @db.VarChar(80)
+  ref                  String?             @db.VarChar(120)
+  narration            String?             @db.Text
+  createUid            Int?                @map("create_uid")
+  createDate           DateTime            @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid             Int?                @map("write_uid")
+  writeDate            DateTime            @default(now()) @map("write_date") @db.Timestamp(6)
+  journal              Journals            @relation("journalEntries_journalId", fields: [journalId], references: [id], map: "journal_entries_journal_id_journals_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  partner              Partners?           @relation("journalEntries_partnerId", fields: [partnerId], references: [id], map: "journal_entries_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  sale                 SalesOrders?        @relation("journalEntries_saleId", fields: [saleId], references: [id], map: "journal_entries_mtpp_sale_order_id_sales_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  purchase             PurchaseOrders?     @relation("journalEntries_purchaseId", fields: [purchaseId], references: [id], map: "journal_entries_mtpp_purchase_order_id_purchase_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  lines                JournalEntryLines[] @relation("journalEntryLines_moveId")
+  revPaymentsMoveId    Payments[]          @relation("payments_moveId")
+  revPaymentsInvoiceId Payments[]          @relation("payments_invoiceId")
+
+  @@map("journal_entries")
+}
+
+model JournalEntryLines {
+  id             Int                 @id @default(autoincrement())
+  moveId         Int                 @map("move_id")
+  accountId      Int                 @map("account_id")
+  partnerId      Int?                @map("partner_id")
+  productId      Int?                @map("product_id")
+  name           String?             @db.Text
+  displayType    String              @default("line") @map("display_type") @db.VarChar(20)
+  quantity       Decimal             @default(0) @db.Decimal(12, 2)
+  priceUnit      Decimal             @default(0) @map("price_unit") @db.Decimal(18, 2)
+  debit          Decimal             @default(0) @db.Decimal(18, 2)
+  credit         Decimal             @default(0) @db.Decimal(18, 2)
+  balance        Decimal             @default(0) @db.Decimal(18, 2)
+  date           DateTime            @db.Date
+  dateMaturity   DateTime?           @map("date_maturity") @db.Date
+  reconciled     Boolean             @default(false)
+  saleLineId     Int?                @map("sale_line_id")
+  purchaseLineId Int?                @map("purchase_line_id")
+  createUid      Int?                @map("create_uid")
+  createDate     DateTime            @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid       Int?                @map("write_uid")
+  writeDate      DateTime            @default(now()) @map("write_date") @db.Timestamp(6)
+  move           JournalEntries      @relation("journalEntryLines_moveId", fields: [moveId], references: [id], map: "journal_entry_lines_move_id_journal_entries_id_fk", onDelete: Cascade, onUpdate: NoAction)
+  account        Accounts            @relation("journalEntryLines_accountId", fields: [accountId], references: [id], map: "journal_entry_lines_account_id_accounts_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  partner        Partners?           @relation("journalEntryLines_partnerId", fields: [partnerId], references: [id], map: "journal_entry_lines_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  product        Products?           @relation("journalEntryLines_productId", fields: [productId], references: [id], map: "journal_entry_lines_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  saleLine       SalesOrderLines?    @relation("journalEntryLines_saleLineId", fields: [saleLineId], references: [id], map: "journal_entry_lines_sale_line_id_sales_order_lines_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  purchaseLine   PurchaseOrderLines? @relation("journalEntryLines_purchaseLineId", fields: [purchaseLineId], references: [id], map: "journal_entry_lines_purchase_line_id_purchase_order_lines_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("journal_entry_lines")
+}
+
+model Payments {
+  id                             Int                  @id @default(autoincrement())
+  name                           String               @unique(map: "payments_name_unique") @db.VarChar(40)
+  moveId                         Int?                 @map("move_id")
+  journalId                      Int                  @map("journal_id")
+  partnerId                      Int                  @map("partner_id")
+  invoiceId                      Int?                 @map("invoice_id")
+  mtppSaleOrderId                Int?                 @map("mtpp_sale_order_id")
+  amount                         Decimal              @db.Decimal(18, 2)
+  amountApplied                  Decimal              @default(0) @map("mtpp_amount_applied") @db.Decimal(18, 2)
+  date                           DateTime             @db.Date
+  paymentType                    String               @map("payment_type") @db.VarChar(20)
+  partnerType                    String               @map("partner_type") @db.VarChar(20)
+  memo                           String?              @db.Text
+  state                          String               @default("posted") @db.VarChar(20)
+  createUid                      Int?                 @map("create_uid")
+  createDate                     DateTime             @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid                       Int?                 @map("write_uid")
+  writeDate                      DateTime             @default(now()) @map("write_date") @db.Timestamp(6)
+  move                           JournalEntries?      @relation("payments_moveId", fields: [moveId], references: [id], map: "payments_move_id_journal_entries_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  journal                        Journals             @relation("payments_journalId", fields: [journalId], references: [id], map: "payments_journal_id_journals_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  partner                        Partners             @relation("payments_partnerId", fields: [partnerId], references: [id], map: "payments_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  invoice                        JournalEntries?      @relation("payments_invoiceId", fields: [invoiceId], references: [id], map: "payments_invoice_id_journal_entries_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  mtppSaleOrder                  SalesOrders?         @relation("payments_mtppSaleOrderId", fields: [mtppSaleOrderId], references: [id], map: "payments_mtpp_sale_order_id_sales_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  revBankStatementLinesPaymentId BankStatementLines[] @relation("bankStatementLines_paymentId")
+
+  @@map("payments")
+}
+
+model BankStatementLines {
+  id           Int       @id @default(autoincrement())
+  journalId    Int       @map("journal_id")
+  date         DateTime  @db.Date
+  paymentRef   String    @map("payment_ref") @db.Text
+  amount       Decimal   @db.Decimal(18, 2)
+  partnerId    Int?      @map("partner_id")
+  isReconciled Boolean   @default(false) @map("is_reconciled")
+  paymentId    Int?      @map("payment_id")
+  importBatch  String?   @map("import_batch") @db.VarChar(60)
+  createUid    Int?      @map("create_uid")
+  createDate   DateTime  @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid     Int?      @map("write_uid")
+  writeDate    DateTime  @default(now()) @map("write_date") @db.Timestamp(6)
+  journal      Journals  @relation("bankStatementLines_journalId", fields: [journalId], references: [id], map: "bank_statement_lines_journal_id_journals_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  partner      Partners? @relation("bankStatementLines_partnerId", fields: [partnerId], references: [id], map: "bank_statement_lines_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  payment      Payments? @relation("bankStatementLines_paymentId", fields: [paymentId], references: [id], map: "bank_statement_lines_payment_id_payments_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("bank_statement_lines")
+}
+
+model SalesPricelistItems {
+  id          Int             @id @default(autoincrement())
+  pricelistId Int             @map("pricelist_id")
+  productId   Int             @map("product_id")
+  fixedPrice  Decimal?        @map("fixed_price") @db.Decimal(18, 2)
+  discount    Decimal         @default(0) @db.Decimal(5, 2)
+  minQty      Decimal         @default(0) @map("min_qty") @db.Decimal(12, 2)
+  dateStart   DateTime?       @map("date_start") @db.Date
+  dateEnd     DateTime?       @map("date_end") @db.Date
+  pricelist   SalesPricelists @relation("salesPricelistItems_pricelistId", fields: [pricelistId], references: [id], map: "sales_pricelist_items_pricelist_id_sales_pricelists_id_fk", onDelete: Cascade, onUpdate: NoAction)
+  product     Products        @relation("salesPricelistItems_productId", fields: [productId], references: [id], map: "sales_pricelist_items_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("sales_pricelist_items")
+}
+
+model StockRules {
+  id          Int        @id @default(autoincrement())
+  productId   Int        @map("product_id")
+  warehouseId Int        @map("warehouse_id")
+  minQty      Decimal    @map("min_qty") @db.Decimal(12, 2)
+  product     Products   @relation("stockRules_productId", fields: [productId], references: [id], map: "stock_rules_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  warehouse   Warehouses @relation("stockRules_warehouseId", fields: [warehouseId], references: [id], map: "stock_rules_warehouse_id_warehouses_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([productId, warehouseId], map: "stock_rule_uq")
+  @@map("stock_rules")
+}
+
+model Activities {
+  id           Int      @id @default(autoincrement())
+  resModel     String   @map("res_model") @db.VarChar(60)
+  resId        Int      @map("res_id")
+  resName      String?  @map("res_name") @db.VarChar(80)
+  activityType String   @map("activity_type") @db.VarChar(30)
+  summary      String   @db.VarChar(200)
+  note         String?  @db.Text
+  dateDeadline DateTime @map("date_deadline") @db.Date
+  userId       Int      @map("user_id")
+  done         Boolean  @default(false)
+  createUid    Int?     @map("create_uid")
+  createDate   DateTime @default(now()) @map("create_date") @db.Timestamp(6)
+  user         Users    @relation("activities_userId", fields: [userId], references: [id], map: "activities_user_id_users_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("activities")
+}
+
+model Settings {
+  key   String @id @db.VarChar(60)
+  value Json
+
+  @@map("settings")
+}
+
+model DocumentSequences {
+  id         Int    @id @default(autoincrement())
+  code       String @db.VarChar(10)
+  year       Int
+  month      Int
+  lastNumber Int    @default(0) @map("last_number")
+
+  @@unique([code, year, month], map: "doc_seq_uq")
+  @@map("document_sequences")
+}
+
+model SavedFilters {
+  id       Int    @id @default(autoincrement())
+  userId   Int    @map("user_id")
+  resource String @db.VarChar(60)
+  name     String @db.VarChar(80)
+  filter   Json
+  user     Users  @relation("savedFilters_userId", fields: [userId], references: [id], map: "saved_filters_user_id_users_id_fk", onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("saved_filters")
+}
+
+model ApiKeys {
+  id         Int       @id @default(autoincrement())
+  name       String    @db.VarChar(80)
+  keyHash    String    @unique(map: "api_keys_key_hash_unique") @map("key_hash") @db.VarChar(128)
+  prefix     String    @db.VarChar(12)
+  active     Boolean   @default(true)
+  lastUsed   DateTime? @map("last_used") @db.Timestamp(6)
+  createDate DateTime  @default(now()) @map("create_date") @db.Timestamp(6)
+
+  @@map("api_keys")
+}
+
+model Documents {
+  id          Int          @id @default(autoincrement())
+  type        String       @db.VarChar(20)
+  number      String       @unique(map: "documents_number_unique") @db.VarChar(60)
+  date        DateTime     @db.Date
+  partnerId   Int?         @map("partner_id")
+  saleOrderId Int?         @map("sale_order_id")
+  title       String?      @db.VarChar(250)
+  data        Json
+  createUid   Int?         @map("create_uid")
+  createDate  DateTime     @default(now()) @map("create_date") @db.Timestamp(6)
+  writeUid    Int?         @map("write_uid")
+  writeDate   DateTime     @default(now()) @map("write_date") @db.Timestamp(6)
+  partner     Partners?    @relation("documents_partnerId", fields: [partnerId], references: [id], map: "documents_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  saleOrder   SalesOrders? @relation("documents_saleOrderId", fields: [saleOrderId], references: [id], map: "documents_sale_order_id_sales_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([type], map: "documents_type_idx")
+  @@map("documents")
+}

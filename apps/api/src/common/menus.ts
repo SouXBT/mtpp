@@ -1,0 +1,48 @@
+// Daftar menu (resource) yang dipakai tabel group_permissions.
+export const MENUS: { key: string; label: string; master?: boolean }[] = [
+  { key: 'pelanggan', label: 'Pelanggan dan alamat kirim', master: true },
+  { key: 'principal', label: 'Principal dan gudang', master: true },
+  { key: 'produk', label: 'Produk, kategori, dan satuan', master: true },
+  { key: 'top', label: 'Term of payment', master: true },
+  { key: 'pricelist_jual', label: 'Pricelist penjualan', master: true },
+  { key: 'pricelist_principal', label: 'Pricelist dan diskon principal', master: true },
+  { key: 'pengguna', label: 'Akun pengguna dan grup', master: true },
+  { key: 'perusahaan', label: 'Data perusahaan dan tanda tangan', master: true },
+  { key: 'penjualan', label: 'Penawaran dan sales order' },
+  { key: 'pengadaan', label: 'PO Principal dan tagihan principal' },
+  { key: 'gudang', label: 'Penerimaan barang dan surat jalan' },
+  { key: 'stok', label: 'Stok per gudang dan stok minimum' },
+  { key: 'penagihan', label: 'Proforma, invoice, dan pembayaran' },
+  { key: 'akuntansi', label: 'Kas, jurnal, bagan akun, rekonsiliasi' },
+  { key: 'email', label: 'Email keluar' },
+  { key: 'pengaturan', label: 'Pengaturan (PPN, syarat, impor, API key)' },
+  { key: 'dokumen', label: 'Surat, berita acara, dan laporan pemeliharaan' },
+  { key: 'laporan', label: 'Laporan' },
+];
+
+// Matriks default (C R U D) per grup, sesuai rencana build.
+type P = string; // kombinasi huruf C R U D
+export const DEFAULT_MATRIX: Record<string, Record<string, P>> = {
+  PIMPINAN:    { pelanggan: 'RU', principal: 'R', produk: 'R', top: 'CRUD', pricelist_jual: 'CRUD', pricelist_principal: 'R', pengguna: '', perusahaan: 'R',
+                 penjualan: 'R', pengadaan: 'R', gudang: 'R', stok: 'R', penagihan: 'R', akuntansi: 'R', email: 'R', pengaturan: 'R', dokumen: 'R', laporan: 'R' },
+  ADMIN:       { pelanggan: 'CRUD', principal: 'CRUD', produk: 'CRUD', top: 'R', pricelist_jual: 'R', pricelist_principal: '', pengguna: 'CRUD', perusahaan: 'CRUD',
+                 penjualan: '', pengadaan: '', gudang: '', stok: '', penagihan: '', akuntansi: '', email: 'RU', pengaturan: 'CRUD', dokumen: 'CRUD', laporan: 'R' },
+  SALES:       { pelanggan: 'R', principal: 'R', produk: 'R', top: 'R', pricelist_jual: 'R', pricelist_principal: 'R', pengguna: '', perusahaan: 'R',
+                 penjualan: 'CRUD', pengadaan: 'R', gudang: 'R', stok: 'R', penagihan: 'R', akuntansi: '', email: 'R', pengaturan: '', dokumen: 'CRUD', laporan: 'R' },
+  OPERASIONAL: { pelanggan: 'R', principal: 'R', produk: 'R', top: 'R', pricelist_jual: '', pricelist_principal: '', pengguna: '', perusahaan: 'R',
+                 penjualan: 'R', pengadaan: 'R', gudang: 'CRUD', stok: 'CRUD', penagihan: '', akuntansi: '', email: 'R', pengaturan: '', dokumen: 'CRUD', laporan: 'R' },
+  FINANCE:     { pelanggan: 'R', principal: 'R', produk: 'R', top: 'R', pricelist_jual: 'R', pricelist_principal: 'CRUD', pengguna: '', perusahaan: 'R',
+                 penjualan: 'R', pengadaan: 'CRUD', gudang: 'R', stok: 'R', penagihan: 'CRUD', akuntansi: 'CRUD', email: 'R', pengaturan: 'R', dokumen: 'R', laporan: 'R' },
+};
+
+// Grup yang boleh melihat harga pokok, margin, dan pricelist principal (hasil wawancara).
+export const COST_GROUPS = ['PIMPINAN', 'SALES', 'FINANCE'];
+
+// Laporan per grup (kunci laporan lihat reports.service.ts)
+export const REPORTS_BY_GROUP: Record<string, string[]> = {
+  PIMPINAN: ['penjualan_periode', 'penjualan_pelanggan', 'penjualan_produk', 'margin', 'pembelian_utang', 'pesanan_belum_diterima', 'stok_gudang', 'pengiriman', 'umur_piutang', 'kas', 'status_bayar_po', 'buku_besar'],
+  ADMIN: ['pesanan_belum_diterima', 'stok_gudang', 'pengiriman'],
+  SALES: ['penjualan_periode', 'penjualan_pelanggan', 'penjualan_produk', 'margin', 'stok_gudang'],
+  OPERASIONAL: ['pesanan_belum_diterima', 'stok_gudang', 'pengiriman'],
+  FINANCE: ['penjualan_periode', 'margin', 'pembelian_utang', 'umur_piutang', 'kas', 'status_bayar_po', 'buku_besar'],
+};

@@ -1,0 +1,279 @@
+MTPP DISTRIBUSI - FLOW REVIEW
+Date: 5 November 2026
+Project: ~/Downloads/mtpp
+
+
+SUMMARY
+-------
+The normal flow works. scripts/demo-flow.mjs ran from start to finish and every check
+passed. The problems appear once something goes off the normal path: a cancellation, a
+reversal, a short delivery, or two orders competing for the same stock.
+
+This review found 22 points:
+  - A: 11 points where the software gives a wrong or inconsistent result. Fix these first.
+  - B: 6 points where the software works, but a business rule needs your decision.
+  - C: 5 points where the screens or wording are confusing.
+
+Nothing was fixed. This review changed no source code.
+
+Start with A1, A2, A3 and A4. They affect stock and money, and they can come up in a
+normal demo.
+
+
+HOW THIS WAS CHECKED
+--------------------
+[TESTED]  Run against the API on a temporary copy of the system.
+[UI]      Done on the real screen in the temporary copy.
+[CODE]    Read from the source code, not run.
+
+The temporary copy has been deleted. The main database at localhost:8080 was only used
+for the RCV check earlier today (reading the numbering preview).
+
+Limits:
+  - I don't have the book (Revisi 16). Where a point mentions the book, please compare it
+    yourself. Some B points may already be answered there.
+  - Emails ran in simulation mode, because no Brevo key is set. No real email was sent.
+  - Bank reconciliation, the importer and the public REST API only went through the normal
+    demo-flow checks. They did not get the off-path testing.
+
+
+1. HOW THE FLOW WORKS
+---------------------
+Step  Who           Action                        Result
+1     Sales         Create quotation              Status Draf, numbered SO/MTPP/...
+2     Sales         Send email (optional)         Status Terkirim
+3     Sales         Konfirmasi                    Status Sales Order, lines locked
+4     Finance       Buat Pesanan Principal        Draft PO, one per principal, only for the
+                                                  shortage. Dropship goes on a separate PO.
+5     Finance       Confirm PO                    Creates a receipt PO/...-T1, or a dropship
+                                                  delivery order numbered DO/...
+6     Operasional   Validate receipt              Stock increases. Any remainder goes to -T2.
+7     Finance       New customers only: proforma  Proforma makes no journal entry. Advance
+                    and advance payment           goes to Uang Muka Pelanggan.
+8     Operasional   Buat Surat Jalan              New customers are blocked until fully paid.
+9     Operasional   Siap Kirim, then Validasi     Stock decreases. Remainder goes to a new DO.
+10    Finance       Buat Invoice, then Posting    Bills delivered quantity only. Advance is
+                                                  applied automatically.
+11    Finance       Record customer payment       Journal BNK or KAS, receipt (kuitansi)
+12    Finance       Record principal bill, post,  Bill covers received quantity only. PO
+                    then pay                      payment status updates.
+13    System        SO becomes Selesai            When fully delivered and fully invoiced
+14    Finance       Cash, journals, ledger,       Separate from the document flow
+                    trial balance, bank
+                    reconciliation
+
+Dropship: steps 4 and 5 create the delivery order directly. There is no Buat Surat Jalan
+step, and warehouse stock does not change.
+
+
+2. A - WRONG OR INCONSISTENT RESULTS
+------------------------------------
+
+A1. One order can take stock already reserved for another order  [TESTED]  HIGH
+    Test:   Stock was 2. SO-A ordered 2 and showed no shortage. SO-B ordered 2 and showed
+            a shortage of 2, but its delivery order was still allowed and validated.
+    Result: Free stock became -2, and SO-A now shows a shortage of 2.
+    Why:    The delivery checks compare against physical stock, not free stock.
+    Where:  apps/api/src/modules/stock/transfers.service.ts:156 and :175
+    Decide: Should a delivery be limited to free stock, or can Operasional knowingly
+            override it?
+
+A2. Reversing an unpaid principal bill marks the PO as "lunas"  [TESTED]  HIGH
+    Test:   Posted a bill, paid nothing, then reversed it.
+    Result: PO status "lunas", with 0 billed and goods still received.
+    Why:    A reversed bill counts the same as a paid one. It should go back to
+            "menunggu tagihan".
+    Where:  apps/api/src/common/status.ts:32
+
+A3. Reversing a payment journal leaves the invoice "Lunas"  [TESTED]  HIGH
+    Test:   Paid an invoice in full, then reversed the payment from the Jurnal menu.
+    Result: The money left the bank in the journal, but the invoice is still paid with
+            residual 0. The receivable is understated, and the invoice will not chase
+            payment.
+    Why:    Invoices and bills are protected from reversal in this menu. Payment journals
+            are not, and the software has no proper "cancel payment" action.
+    Where:  apps/api/src/modules/accounting/accounting.module.ts:66
+
+A4. Pricelist price is lost when quantity changes on the form  [UI]  HIGH
+    Test:   PT Graha Bangun Sentosa has 5% off NYY cable from quantity 100. Picked the
+            product, then typed quantity 150.
+    Result: Discount stayed 0% and the price stayed 465.000. That is Rp 3.487.500 too much
+            before tax, with no warning.
+    Why:    The price is looked up once, when the product is picked at quantity 1. Changing
+            the quantity does not look it up again. From the code, changing the customer
+            afterwards has the same problem.
+    Note:   demo-flow does not catch this. It sends no price, so the server fills it in.
+    Where:  apps/web/src/pages/Sales.tsx:83, :144 and :166
+
+A5. Principal credit note cannot reach "lunas" without overpaying  [TESTED]  HIGH
+    Test:   Bill 3.263.400.000, credit note 1.110.000 including tax. Paid the displayed
+            remaining debt of 3.262.290.000.
+    Result: Status stays "sebagian" with remaining debt 0, and the bill itself still shows
+            1.110.000 unpaid. Paying that 1.110.000 was accepted and reached "lunas", which
+            is an overpayment. The PO page hides Bayar Principal at this point, but the
+            bill page still offers Catat Pembayaran.
+    Why:    The credit note lowers the displayed debt but is never applied to the bill.
+    Where:  apps/api/src/common/status.ts:24, apps/api/src/modules/billing/billing.service.ts:209
+
+A6. Editing a reopened order crashes if it already had a PO  [TESTED]  MEDIUM
+    Test:   Confirm SO, create PO, cancel SO, Kembalikan ke Draf, change a line.
+    Result: Error 500 "Internal server error". The log shows a foreign key violation. The
+            user gets no explanation.
+    Where:  apps/api/src/modules/sales/sales.service.ts:146
+
+A7. Read-only users can send quotations  [TESTED]  MEDIUM
+    Test:   Pimpinan and Operasional both have read-only access to Penjualan. Both sent a
+            quotation.
+    Result: An email goes to the customer and the status changes to Terkirim. Finance has
+            the same read-only access, so it should behave the same (not run).
+    Why:    The send endpoint only requires read permission.
+    Where:  apps/api/src/modules/sales/sales.module.ts:24
+
+A8. Invoices paid from an advance cannot be cancelled  [TESTED]  MEDIUM
+    Test:   New customer, invoice fully covered by the advance, clicked the reversal.
+    Result: Rejected with "Dokumen sudah dibayar sebagian". The invoice is fully paid, not
+            partly paid. New customers must pay up front, so this applies to all of their
+            invoices. The button is still shown.
+    Where:  apps/api/src/modules/billing/billing.service.ts:118
+
+A9. PPN rounding leaves Rp 1 stuck on split deliveries  [TESTED]  MEDIUM
+    Test:   SO total 3.330.133 delivered in 3 parts. Three invoices of 1.110.044 total
+            3.330.132.
+    Result: The SO shows Selesai, but Rp 1 stays in Uang Muka Pelanggan. Only a manual
+            journal could clear it. PPN is rounded per document, so this can happen on any
+            split delivery.
+    Where:  apps/api/src/common/settings.service.ts (tax), billing.service.ts (invoiceFromSale)
+
+A10. Product with no principal price gives a Rp 0 PO and 100% margin  [TESTED]  MEDIUM
+    Test:   Product with no entry in the principal pricelist.
+    Result: Cost 0, margin 100%, and a PO worth Rp 0 was created with no warning. An
+            expired price would behave the same way (from the code).
+    Where:  apps/api/src/modules/master/pricing.service.ts:38
+
+A11. PO PDF contradicts itself on PPN  [TESTED]  MEDIUM
+    Result: The note says "Harga sudah termasuk PPN", but the same PDF adds PPN on top of
+            the subtotal. A principal could read this either way, and a lecturer could
+            notice it.
+    Where:  apps/api/src/common/settings.service.ts:14 (the default text, also editable in
+            Pengaturan > Dokumen)
+
+
+3. B - BUSINESS RULES THAT NEED A DECISION
+------------------------------------------
+
+B1. When does a customer stop being "new"?  [TESTED]
+    After a first order was delivered and fully paid, the customer was still marked new.
+    The next order was blocked the same way. Only Pimpinan can turn it off by hand, and
+    Admin cannot set it when creating a customer, so every customer Admin creates starts
+    as new. Invoices for new customers are due the same day, even if their term of
+    payment says otherwise.
+    Where:  apps/api/src/modules/master/master.module.ts:13 and :46, billing.service.ts:54
+    Decide: Switch off automatically after the first paid order, or stay manual? If manual,
+            does Pimpinan get a reminder?
+
+B2. What happens when a principal never ships the rest?  [TESTED]
+    Received 198 of 397, then cancelled the follow-up receipt -T2.
+      - The PO stays open at "menunggu barang" permanently.
+      - The PO cannot be cancelled, because some goods were received.
+      - The software still counts 199 as "on order", so no new PO is allowed for them.
+    Where:  apps/api/src/modules/sales/sales.service.ts:206, purchasing.module.ts:129
+    Decide: Add a "close PO short" action? Only un-received lines should stop counting.
+
+B3. What happens to the money and PO when an SO is cancelled?  [TESTED]
+    Cancelled an SO that had a confirmed PO and a Rp 5.000.000 advance.
+      - The cancellation succeeds. The dialog mentions neither the money nor the PO.
+      - The PO and its receipt stay active, and the goods can still arrive.
+      - The advance stays on the cancelled SO. There is no refund or transfer function.
+    Where:  apps/api/src/modules/sales/sales.service.ts:181
+    Decide: Block the cancel, warn, or add refund and move-to-another-order functions?
+
+B4. How are returns and stock corrections handled?  [CODE]
+    I found no customer return, no return to principal, and no stock adjustment or stock
+    count. A validated delivery cannot be cancelled. A wrong quantity can't be corrected
+    in the software once validated. The invoice note says goods can't be returned, while
+    the PO note says wrong goods go back to the seller.
+    Decide: Out of scope for the prototype, or needed? If out of scope, say so in the book.
+
+B5. Can MTPP pay a principal before the goods arrive?  [CODE]
+    The seed data for PT Daya Pompa says the principal wants an advance payment and
+    settlement before shipping. The software can't do this: a payment needs a posted bill,
+    and a bill needs received goods.
+    Where:  apps/api/src/modules/billing/billing.service.ts:140, apps/api/src/db/seed.ts:87
+    Decide: Add principal advance payments, or change the seed note?
+
+B6. Smaller rules to confirm
+    a. Expired quotation [TESTED]: it shows as expired, but Konfirmasi still works. Allowed
+       on purpose, or blocked?
+    b. Siap Kirim [CODE]: Validasi is available directly from Draf, so this step can be
+       skipped. demo-flow skips it too. Required or optional?
+    c. New customer PO [CODE]: Finance can order from the principal before the customer
+       pays anything, including dropship. Is that the intended risk?
+    d. Regular customer advance [CODE]: the Proforma and Catat Uang Muka buttons only show
+       for new customers. Can a regular customer never pay a down payment?
+    e. Delivery warehouse [CODE]: a delivery can be switched to another principal's
+       warehouse, but the reservation stays on the original warehouse, so stock figures
+       can drift. Is moving between principals' warehouses allowed?
+       (apps/api/src/modules/stock/transfers.service.ts:141)
+
+
+4. C - CONFUSING SCREENS AND WORDING
+------------------------------------
+
+C1. Nothing tells the next person it is their turn  [CODE]
+    Finance has no list of SOs that need a PO. Operasional has no list of SOs ready for a
+    delivery order, because "Surat jalan belum dikirim" only counts delivery orders that
+    already exist. Neither gets a notification. They must open each SO to find the button.
+    Only invoicing has a worklist (Siap Ditagih).
+    Suggestion: add "Perlu Pesanan Principal" and "Siap Dikirim" lists.
+
+C2. Buttons that lead to an error or the wrong impression
+    a. Dropship-only SO [TESTED]: Buat Surat Jalan is enabled, then fails with "Tidak ada
+       sisa barang yang perlu dikirim". The real next step is the PO.
+    b. Reversed invoice [CODE]: the status bar shows Lunas, though nothing was paid.
+       (apps/web/src/pages/Billing.tsx:85)
+    c. Reversal button [TESTED]: shown on invoices where it will always be rejected (A8).
+    d. Send invoice email [CODE]: shown to anyone who can open the invoice, but only users
+       with write access succeed.
+    e. Invoice payment tab [CODE]: shows the full SO advance on every invoice. With 3
+       invoices, each one lists the same full advance amount.
+       (apps/api/src/modules/billing/billing.service.ts:40)
+
+C3. Names that don't match
+    a. A quotation is numbered SO/... before it is a sales order.
+    b. Receipts are PO/...-T1, and follow-up receipts -T2. Dropship and follow-up deliveries
+       get a new DO number, so a follow-up doesn't visibly link to its first delivery.
+    c. Catat Uang Muka is also how a full settlement is recorded.
+    d. The same action has several names: Posting / Konfirmasi tagihan, and Batalkan
+       (pembalik) / jurnal pembalik / nota kredit.
+    e. PO menu says Pesanan Principal; the PDF says Pesanan Pembelian.
+    f. sequenceCode 'RCV' is still stored on the Penerimaan Barang type. It is not on
+       screen and creates no number, so this only matters if someone reads the database.
+
+C4. The same data in two menus
+    Pelanggan, Principal and Pricelist each appear in both their module and Master. It
+    isn't clear which one to use. They are the same data.
+
+C5. README and software disagree
+    The README lists reports under "Seluruh peran", but Admin has 0 reports and the Laporan
+    menu is hidden, even though Admin has read permission for it. The other groups have:
+    Pimpinan 12, Finance 7, Sales 5, Operasional 3 [TESTED].
+    Where: apps/api/src/common/menus.ts:44
+
+
+5. BEFORE ANY REAL DEPLOYMENT  [CODE]
+-------------------------------------
+Fine for a local demo, but these must change before real use:
+  - The login page shows the demo accounts and password (apps/web/src/pages/Home.tsx:26).
+  - JWT_SECRET has a known default value if none is set (docker-compose.yml:24).
+  - The login token is put in the image URL for signatures (apps/web/src/pages/Home.tsx:113).
+    URLs can end up in logs and browser history.
+  - Without a Brevo key, emails show as "terkirim" even though nothing was sent. The README
+    documents this, but it can mislead during a demo.
+
+
+6. SUGGESTED ORDER
+------------------
+1. Before the next demo: A1, A2, A3, A4, A7, A11
+2. Then the remaining errors: A5, A6, A8, A9, A10
+3. Decide the rules, using the book: B1, B2, B3, then B4, B5, B6
+4. Improve the flow and wording: C1, then C2 to C5

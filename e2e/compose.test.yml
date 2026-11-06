@@ -1,0 +1,10 @@
+# Lingkungan uji terpisah (proyek mtpp-nav, port 8081). Jangan dipakai untuk proyek utama.
+# Jalankan: docker compose -p mtpp-nav -f docker-compose.yml -f e2e/compose.test.yml up -d --build
+services:
+  web:
+    ports: !override ["8081:80"]
+  api:
+    environment:
+      BREVO_API_KEY: ""
+      APP_ENV: development
+      SEED_DEMO: "true"

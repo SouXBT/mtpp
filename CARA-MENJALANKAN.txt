@@ -1,0 +1,135 @@
+CARA MENJALANKAN MTPP DISTRIBUSI
+Sistem distribusi PT Mentari Timur Prima Perkasa
+Alamat aplikasi: http://localhost:8080
+
+Semua perintah dijalankan di Terminal, dari folder proyek:
+    cd ~/Downloads/mtpp
+
+
+1. YANG PERLU DIPASANG
+----------------------
+- Docker dan Docker Compose
+- Colima, untuk menjalankan Docker di Mac (tidak perlu bila memakai Docker Desktop)
+- Node.js versi 18 atau lebih baru, hanya untuk mengisi data contoh di bagian 5
+
+Pemasangan di Mac dengan Homebrew:
+    brew install colima docker docker-compose node
+
+
+2. MENJALANKAN PERTAMA KALI
+---------------------------
+a. Nyalakan Docker:
+       colima start
+
+b. Buat file pengaturan, lalu isi kata sandi dan rahasianya:
+       cp .env.example .env
+
+c. Bangun dan jalankan aplikasi. Yang pertama bisa memakan beberapa menit:
+       docker compose up -d --build
+
+d. Buka http://localhost:8080
+
+Saat pertama menyala, sistem otomatis menyiapkan database dan akun contoh.
+
+
+3. MENJALANKAN SEHARI-HARI
+--------------------------
+Setelah Mac dinyalakan ulang:
+    colima start
+
+Aplikasi biasanya ikut menyala. Bila belum:
+    docker compose up -d
+
+Mengecek keadaan aplikasi:
+    docker compose ps
+
+Menghentikan aplikasi (data tetap aman):
+    docker compose stop
+
+Melihat catatan error backend:
+    docker compose logs --tail=50 api
+
+
+4. AKUN CONTOH
+--------------
+Kata sandi semua akun: mtpp12345
+
+    pimpinan@mtpp.co.id      Pimpinan
+    admin@mtpp.co.id         Admin
+    sales@mtpp.co.id         Sales
+    operasional@mtpp.co.id   Operasional
+    finance@mtpp.co.id       Finance
+
+Ganti kata sandi lewat menu Profil sebelum dipakai sungguhan.
+
+
+5. MENGISI DATA CONTOH (PILIHAN)
+--------------------------------
+Mengisi 49 produk dari katalog website MTPP, ditambah harga, stok, dan transaksi
+contoh. Harga dan stoknya bukan data sungguhan.
+
+    API=http://localhost:8080/api node apps/api/scripts/mock-data.mjs
+
+Skrip menolak berjalan dua kali pada database yang sama.
+Skrip memerlukan akun dan pelanggan contoh dari bagian 2 (SEED_DEMO jangan false).
+
+
+6. MEMPERBARUI SETELAH KODE BERUBAH
+-----------------------------------
+Cadangkan dulu seperti bagian 7, lalu:
+    docker compose up -d --build
+
+Perubahan struktur database diterapkan otomatis saat backend menyala.
+
+
+7. CADANGAN DAN PEMULIHAN
+-------------------------
+Data disimpan di Docker volume mtpp_dbdata, bukan di folder proyek. Menyalin folder
+proyek tidak ikut menyalin datanya.
+
+Mencadangkan database:
+    docker compose exec -T db pg_dump -U mtpp mtpp > ~/Downloads/mtpp-cadangan.sql
+
+Memulihkan dari cadangan. Perintah ini MENGHAPUS data yang ada sekarang:
+    docker compose stop api web
+    docker compose exec -T db psql -U mtpp -d postgres -c "DROP DATABASE mtpp WITH (FORCE);" -c "CREATE DATABASE mtpp;"
+    docker compose exec -T db psql -U mtpp -d mtpp < ~/Downloads/mtpp-cadangan.sql
+    docker compose start api web
+
+Lampiran dan file unggahan ada di volume terpisah, mtpp_storage, dan tidak ikut di
+cadangan ini. Lihat docs/restore.md.
+
+
+8. BILA ADA MASALAH
+-------------------
+"Cannot connect to the Docker daemon"
+    Docker belum menyala. Jalankan: colima start
+
+Halaman http://localhost:8080 tidak terbuka
+    Cek dengan docker compose ps. Bila belum jalan: docker compose up -d
+
+Port 8080 sudah dipakai
+    Cari programnya: lsof -iTCP:8080 -sTCP:LISTEN
+    Hentikan program itu, atau ganti angka 8080 pada bagian ports di docker-compose.yml.
+
+Halaman terbuka tetapi login gagal
+    Tunggu sebentar karena backend mungkin masih menyala, lalu cek:
+    docker compose logs --tail=50 api
+
+Tampilan masih versi lama
+    Muat ulang tanpa cache: Cmd + Shift + R
+
+
+9. JANGAN DIJALANKAN KECUALI YAKIN
+----------------------------------
+    docker compose down -v     menghapus seluruh data database dan lampiran
+    colima delete              menghapus VM Docker beserta semua datanya
+
+docker compose down tanpa -v aman untuk data.
+
+
+10. PANDUAN LAIN
+----------------
+    README.md                     fitur, aturan bisnis, dan cara jalan tanpa Docker
+    docs/restore.md               pemulihan dari cadangan harian di server
+    e2e/                          uji otomatis, untuk yang mengubah kode

@@ -1,0 +1,44 @@
+# Sistem Distribusi MTPP: PostgreSQL + backend NestJS + frontend React (Nginx)
+# Jalankan: cp .env.example .env && docker compose up -d --build   →  http://localhost:8080
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mtpp
+      POSTGRES_USER: mtpp
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-mtpp}
+      TZ: Asia/Jakarta
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mtpp -d mtpp"]
+      interval: 5s
+      retries: 20
+
+  api:
+    build: ./apps/api
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      DATABASE_URL: postgresql://mtpp:${DB_PASSWORD:-mtpp}@db:5432/mtpp
+      # APP_ENV=production: backend menolak berjalan bila JWT_SECRET kosong atau masih bawaan
+      APP_ENV: ${APP_ENV:-development}
+      JWT_SECRET: ${JWT_SECRET:-ganti-dengan-rahasia-panjang}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@mtpp.co.id}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-PT Mentari Timur Prima Perkasa}
+      WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:-ganti-token-webhook}
+      STORAGE_DIR: /app/storage
+      SEED_DEMO: ${SEED_DEMO:-true}
+      TZ: Asia/Jakarta
+    volumes: [storage:/app/storage]
+
+  web:
+    build: ./apps/web
+    restart: unless-stopped
+    depends_on: [api]
+    ports: ["8080:80"]
+
+volumes:
+  dbdata:
+  storage:
