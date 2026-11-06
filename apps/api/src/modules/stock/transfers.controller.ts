@@ -1,3 +1,4 @@
+import { UpdateTransferDto, ValidateTransferDto } from './transfers.dto';
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthUser, CurrentUser, Perm } from '../../shared/auth';
@@ -21,7 +22,7 @@ export class TransfersController {
   @Patch(':id') @Perm('gudang', 'write') update(
     @CurrentUser() u: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() b: any,
+    @Body() b: UpdateTransferDto,
   ) {
     return this.tr.update(u, id, b);
   }
@@ -31,7 +32,7 @@ export class TransfersController {
   @Post(':id/validate') @Perm('gudang', 'write') validate(
     @CurrentUser() u: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() b: any,
+    @Body() b: ValidateTransferDto,
   ) {
     return this.tr.validate(u, id, b);
   }

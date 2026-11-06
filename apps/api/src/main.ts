@@ -37,6 +37,8 @@ async function bootstrap() {
   }
   const { AppModule } = await import('./app.module');
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] });
+  const { appValidationPipe } = await import('./shared/validation');
+  app.useGlobalPipes(appValidationPipe());
   app.setGlobalPrefix('api');
   app.enableCors({ origin: process.env.CORS_ORIGIN?.split(',') || true });
   const port = Number(process.env.PORT || 3000);

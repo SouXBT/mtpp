@@ -1,3 +1,4 @@
+import { CreateUserDto, UpdateUserDto, ResetPasswordDto } from './users.dto';
 import {
   Body,
   Controller,
@@ -37,22 +38,19 @@ export class UsersController {
 
   @Post('users')
   @Perm('pengguna', 'create')
-  create(@Body() b: { name: string; login: string; password: string; groupId: number }) {
+  create(@Body() b: CreateUserDto) {
     return this.service.create(b);
   }
 
   @Patch('users/:id')
   @Perm('pengguna', 'write')
-  update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() b: { name?: string; login?: string; active?: boolean; groupId?: number },
-  ) {
+  update(@Param('id', ParseIntPipe) id: number, @Body() b: UpdateUserDto) {
     return this.service.update(id, b);
   }
 
   @Post('users/:id/reset-password')
   @Perm('pengguna', 'write')
-  reset(@Param('id', ParseIntPipe) id: number, @Body() b: { password: string }) {
+  reset(@Param('id', ParseIntPipe) id: number, @Body() b: ResetPasswordDto) {
     return this.service.reset(id, b);
   }
 

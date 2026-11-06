@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
 import { AuthUser, stripCost } from '../../shared/auth';
+import { checkColumnTypes } from '../../shared/validation';
 import { pick, safeDelete } from '../../shared/crud';
 import { fail, must } from '../../shared/util';
 import { PricingService } from './pricing.service';
@@ -80,6 +81,7 @@ export class ProductsService {
 
   async create(u: AuthUser, b: any) {
     if (!b.code || !b.name || !b.uomId) fail('Kode, nama, dan satuan wajib diisi');
+    checkColumnTypes('ProductTemplates', b, T_FIELDS);
     return this.db.$transaction(async (tx) => {
       const t = await tx.productTemplates.create({ data: { ...pick(b, T_FIELDS), createUid: u.id } as any });
       const p = await tx.products.create({ data: { productTmplId: t.id, defaultCode: b.code } });
@@ -89,6 +91,7 @@ export class ProductsService {
 
   async update(id: number, b: any) {
     const p = must(await this.db.products.findFirst({ where: { id: id } }), 'Produk');
+    checkColumnTypes('ProductTemplates', b, [...T_FIELDS, 'active']);
     await this.db.$transaction(async (tx) => {
       const tv = pick(b, [...T_FIELDS, 'active']);
       if (Object.keys(tv).length)

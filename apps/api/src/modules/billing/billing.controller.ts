@@ -1,3 +1,4 @@
+import { InvoiceSourceDto, SendInvoiceDto, PaymentDto } from './billing.dto';
 import {
   Body,
   Controller,
@@ -32,21 +33,21 @@ export class BillingController {
   @Post('invoices/from-sale/:soId') @Perm('penagihan', 'create') fromSale(
     @CurrentUser() u: AuthUser,
     @Param('soId', ParseIntPipe) id: number,
-    @Body() body: any,
+    @Body() body: InvoiceSourceDto,
   ) {
     return this.b.invoiceFromSale(u, id, body || {});
   }
   @Post('invoices/from-purchase/:poId') @Perm('pengadaan', 'create') fromPurchase(
     @CurrentUser() u: AuthUser,
     @Param('poId', ParseIntPipe) id: number,
-    @Body() body: any,
+    @Body() body: InvoiceSourceDto,
   ) {
     return this.b.billFromPurchase(u, id, body || {});
   }
   @Post('invoices/refund-purchase/:poId') @Perm('pengadaan', 'create') refund(
     @CurrentUser() u: AuthUser,
     @Param('poId', ParseIntPipe) id: number,
-    @Body() body: any,
+    @Body() body: InvoiceSourceDto,
   ) {
     return this.b.supplierRefund(u, id, body);
   }
@@ -68,7 +69,7 @@ export class BillingController {
   @Post('invoices/:id/send') @Perm('penagihan', 'write') send(
     @CurrentUser() u: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: any,
+    @Body() body: SendInvoiceDto,
   ) {
     return this.b.send(u, id, body || {});
   }
@@ -85,7 +86,7 @@ export class BillingController {
     if (!u.perms.penagihan?.read && !u.perms.pengadaan?.read) throw new ForbiddenException('Anda tidak memiliki akses');
     return this.b.payments(q);
   }
-  @Post('payments') pay(@CurrentUser() u: AuthUser, @Body() body: any) {
+  @Post('payments') pay(@CurrentUser() u: AuthUser, @Body() body: PaymentDto) {
     // pembayaran principal oleh Finance (pengadaan), pembayaran pelanggan (penagihan)
     checkPerm(u, body.purchaseId ? 'pengadaan' : 'penagihan', 'create');
     return this.b.pay(u, body);
@@ -93,9 +94,9 @@ export class BillingController {
   @Post('sales-orders/:id/refund-advance') @Perm('penagihan', 'write') refundAdvance(
     @CurrentUser() u: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: any,
+    @Body() body: PaymentDto,
   ) {
-    return this.b.refundAdvance(u, id, body || {});
+    return this.b.refundAdvance(u, id, body || ({} as PaymentDto));
   }
   @Post('payments/:id/cancel') async cancelPayment(@CurrentUser() u: AuthUser, @Param('id', ParseIntPipe) id: number) {
     const p = await this.b.payment(id);

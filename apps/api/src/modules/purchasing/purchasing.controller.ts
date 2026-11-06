@@ -1,3 +1,4 @@
+import { UpdatePurchaseOrderDto, SendPurchaseOrderDto } from './purchasing.dto';
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthUser, CurrentUser, Perm, stripCost } from '../../shared/auth';
@@ -21,14 +22,14 @@ export class PurchasingController {
   @Patch(':id') @Perm('pengadaan', 'write') update(
     @CurrentUser() u: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() b: any,
+    @Body() b: UpdatePurchaseOrderDto,
   ) {
     return this.po.update(u, id, b);
   }
   @Post(':id/send') @Perm('pengadaan', 'write') send(
     @CurrentUser() u: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() b: any,
+    @Body() b: SendPurchaseOrderDto,
   ) {
     return this.po.send(u, id, b || {});
   }

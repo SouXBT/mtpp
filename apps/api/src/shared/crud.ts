@@ -15,6 +15,7 @@ import { Prisma } from '@prisma/client';
 import { DB, Db } from '../db/db.module';
 import { Perm } from './auth';
 import { must } from './util';
+import { checkColumnTypes } from './validation';
 
 export interface CrudOpts {
   path: string;
@@ -79,11 +80,13 @@ export function makeCrud(o: CrudOpts) {
     async create(@Body() b: any) {
       for (const k of o.required || [])
         if (b[k] === undefined || b[k] === null || b[k] === '') throw new ConflictException(`Kolom ${k} wajib diisi`);
+      checkColumnTypes(o.table, b, o.writable);
       return this.model.create({ data: pick(b, o.writable) });
     }
     @Patch(':id')
     @Perm(o.menu, 'write')
     async update(@Param('id', ParseIntPipe) id: number, @Body() b: any) {
+      checkColumnTypes(o.table, b, [...o.writable, 'active']);
       const [r] = await this.model.updateManyAndReturn({ where: { id }, data: pick(b, [...o.writable, 'active']) });
       return must(r);
     }

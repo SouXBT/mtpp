@@ -14,6 +14,7 @@ export API=http://localhost:8081/api BASE=http://localhost:8081 RUN_TAG=77777
 node "$FLOWS/demo-flow.mjs" >"$LOG/demo.txt" 2>&1 || { echo "demo-flow GAGAL"; fail=1; }; tail -1 "$LOG/demo.txt"
 node "$FLOWS/edge-flow.mjs" >"$LOG/edge.txt" 2>&1 || { echo "edge-flow GAGAL"; fail=1; }; grep -a 'Ringkasan' "$LOG/edge.txt"
 node tests/baseline/capture.mjs "$OUT" || { echo "capture GAGAL"; fail=1; }
+node "$FLOWS/validation-flow.mjs" >"$LOG/validation.txt" 2>&1 && echo "validation ok" || { echo "validation GAGAL"; grep -a "✗" "$LOG/validation.txt"; fail=1; }
 if [ "${SKIP_E2E:-}" != "1" ]; then
   for s in nav-audit alur-po-pelanggan alur-surat-jalan alur-berikutnya; do
     node "$E2E/$s.mjs" >"$LOG/$s.txt" 2>&1 && echo "$s ok" || { echo "$s GAGAL"; tail -5 "$LOG/$s.txt"; fail=1; }

@@ -1,3 +1,4 @@
+import { SaveSalesOrderDto, ConfirmSalesOrderDto, SendSalesOrderDto, ProformaDto } from './sales.dto';
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthUser, CurrentUser, Perm } from '../../shared/auth';
@@ -28,20 +29,20 @@ export class SalesController {
   @Get(':id') @Perm('penjualan', 'read') get(@CurrentUser() u: AuthUser, @Param('id', ParseIntPipe) id: number) {
     return this.sales.get(u, id);
   }
-  @Post() @Perm('penjualan', 'create') create(@CurrentUser() u: AuthUser, @Body() b: any) {
+  @Post() @Perm('penjualan', 'create') create(@CurrentUser() u: AuthUser, @Body() b: SaveSalesOrderDto) {
     return this.sales.create(u, b);
   }
   @Patch(':id') @Perm('penjualan', 'write') update(
     @CurrentUser() u: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() b: any,
+    @Body() b: SaveSalesOrderDto,
   ) {
     return this.sales.update(u, id, b);
   }
   @Post(':id/confirm') @Perm('penjualan', 'write') confirm(
     @CurrentUser() u: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() b: any,
+    @Body() b: ConfirmSalesOrderDto,
   ) {
     return this.sales.confirm(u, id, b);
   }
@@ -66,7 +67,7 @@ export class SalesController {
   @Post(':id/send') @Perm('penjualan', 'write') send(
     @CurrentUser() u: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() b: any,
+    @Body() b: SendSalesOrderDto,
   ) {
     return this.sales.send(u, id, b || {});
   }
@@ -92,7 +93,7 @@ export class SalesController {
   @Post(':id/proforma') @Perm('penagihan', 'create') proforma(
     @CurrentUser() u: AuthUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() b: any,
+    @Body() b: ProformaDto,
   ) {
     return this.sales.proforma(u, id, b);
   }

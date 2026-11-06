@@ -1,3 +1,4 @@
+import { LoginDto, ProfileDto, ChangePasswordDto } from './auth.dto';
 import { Body, Controller, Get, Patch, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthUser, CurrentUser, Public } from '../../shared/auth';
@@ -15,7 +16,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
-  login(@Body() b: { login: string; password: string }) {
+  login(@Body() b: LoginDto) {
     return this.service.login(b);
   }
 
@@ -25,12 +26,12 @@ export class AuthController {
   }
 
   @Patch('profile')
-  profile(@CurrentUser() user: AuthUser, @Body() b: { name?: string; email?: string; phone?: string }) {
+  profile(@CurrentUser() user: AuthUser, @Body() b: ProfileDto) {
     return this.service.profile(user, b);
   }
 
   @Post('password')
-  password(@CurrentUser() user: AuthUser, @Body() b: { old: string; password: string; confirm: string }) {
+  password(@CurrentUser() user: AuthUser, @Body() b: ChangePasswordDto) {
     return this.service.password(user, b);
   }
 

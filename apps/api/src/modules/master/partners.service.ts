@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
 import { AuthUser, checkPerm } from '../../shared/auth';
+import { checkColumnTypes } from '../../shared/validation';
 import { pick, safeDelete } from '../../shared/crud';
 import { fail, must } from '../../shared/util';
 
@@ -64,6 +65,7 @@ export class PartnersService {
     const kind = b.kind || 'customer';
     checkPerm(u, kindMenu(kind), 'create');
     if (!b.name) fail('Nama wajib diisi');
+    checkColumnTypes('Partners', b, [...P_FIELDS, ...PIMPINAN_FIELDS]);
     const v: any = {
       ...pick(b, P_FIELDS),
       type: 'company',
@@ -100,6 +102,7 @@ export class PartnersService {
     const p = must(await this.db.partners.findFirst({ where: { id: id } }), 'Partner');
     const menu = kindMenu(p.supplierRank > 0 ? 'supplier' : 'customer');
     checkPerm(u, menu, 'write');
+    checkColumnTypes('Partners', b, [...P_FIELDS, ...PIMPINAN_FIELDS, 'active']);
     const v: any = { ...pick(b, [...P_FIELDS, 'active']), writeUid: u.id, writeDate: new Date() };
     // Pimpinan menetapkan term of payment, penanda pelanggan baru, dan pricelist penjualan
     if (u.group === 'PIMPINAN') Object.assign(v, pick(b, PIMPINAN_FIELDS));

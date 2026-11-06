@@ -1,3 +1,4 @@
+import { JournalEntryDto, CashDto, MatchBankLineDto } from './accounting.dto';
 import {
   Body,
   Controller,
@@ -41,13 +42,7 @@ export class AccountingController {
   createEntry(
     @CurrentUser() u: AuthUser,
     @Body()
-    b: {
-      date?: string;
-      ref?: string;
-      journal?: string;
-      lines: { accountId: number; debit?: number; credit?: number; name?: string; partnerId?: number }[];
-      post?: boolean;
-    },
+    b: JournalEntryDto,
   ) {
     return this.service.createEntry(u, b);
   }
@@ -75,7 +70,7 @@ export class AccountingController {
   cash(
     @CurrentUser() u: AuthUser,
     @Body()
-    b: { type: 'in' | 'out'; accountId: number; amount: number; date?: string; memo: string; partnerId?: number },
+    b: CashDto,
   ) {
     return this.service.cash(u, b);
   }
@@ -130,7 +125,7 @@ export class AccountingController {
 
   @Post('bank-statements/:id/match')
   @Perm('akuntansi', 'write')
-  match(@Param('id', ParseIntPipe) id: number, @Body() b: { paymentId: number }) {
+  match(@Param('id', ParseIntPipe) id: number, @Body() b: MatchBankLineDto) {
     return this.service.match(id, b);
   }
 
