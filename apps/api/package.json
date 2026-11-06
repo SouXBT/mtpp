@@ -10,7 +10,8 @@
     "demo": "node scripts/demo-flow.mjs",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:generate": "prisma generate"
+    "db:generate": "prisma generate",
+    "typecheck": "prisma generate && tsc --noEmit"
   },
   "dependencies": {
     "@nestjs/common": "10.4.15",
