@@ -1,6 +1,12 @@
 import {
-  CanActivate, ExecutionContext, Injectable, SetMetadata, UnauthorizedException, ForbiddenException,
-  createParamDecorator, Inject,
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  SetMetadata,
+  UnauthorizedException,
+  ForbiddenException,
+  createParamDecorator,
+  Inject,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
@@ -9,7 +15,12 @@ import { COST_GROUPS } from './menus';
 
 export type Action = 'read' | 'create' | 'write' | 'delete';
 export interface AuthUser {
-  id: number; partnerId: number; name: string; login: string; group: string; groupName: string;
+  id: number;
+  partnerId: number;
+  name: string;
+  login: string;
+  group: string;
+  groupName: string;
   perms: Record<string, { read: boolean; create: boolean; write: boolean; delete: boolean }>;
   canSeeCost: boolean;
 }
@@ -18,26 +29,42 @@ export const IS_PUBLIC = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC, true);
 export const PERM = 'perm';
 export const Perm = (menu: string, action: Action = 'read') => SetMetadata(PERM, { menu, action });
-export const CurrentUser = createParamDecorator((_d, ctx: ExecutionContext) => ctx.switchToHttp().getRequest().user as AuthUser);
+export const CurrentUser = createParamDecorator(
+  (_d, ctx: ExecutionContext) => ctx.switchToHttp().getRequest().user as AuthUser,
+);
 
 const cache = new Map<number, { at: number; user: AuthUser }>();
 export const clearAuthCache = () => cache.clear();
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private reflector: Reflector, private jwt: JwtService, @Inject(DB) private db: Db) {}
+  constructor(
+    private reflector: Reflector,
+    private jwt: JwtService,
+    @Inject(DB) private db: Db,
+  ) {}
 
   async loadUser(id: number): Promise<AuthUser> {
     const hit = cache.get(id);
     if (hit && Date.now() - hit.at < 30000) return hit.user;
-    const u = await this.db.users.findFirst({ where: { id: id }, include: { partner: true, groups: { include: { group: { include: { permissions: true } } } } } });
+    const u = await this.db.users.findFirst({
+      where: { id: id },
+      include: { partner: true, groups: { include: { group: { include: { permissions: true } } } } },
+    });
     if (!u || !u.active) throw new UnauthorizedException('Akun tidak aktif');
     const g = u.groups[0]?.group;
     const perms: AuthUser['perms'] = {};
-    for (const p of g?.permissions || []) perms[p.menu] = { read: p.permRead, create: p.permCreate, write: p.permWrite, delete: p.permDelete };
+    for (const p of g?.permissions || [])
+      perms[p.menu] = { read: p.permRead, create: p.permCreate, write: p.permWrite, delete: p.permDelete };
     const user: AuthUser = {
-      id: u.id, partnerId: u.partnerId, name: u.partner?.name || u.login, login: u.login,
-      group: g?.code || '', groupName: g?.name || '', perms, canSeeCost: COST_GROUPS.includes(g?.code || ''),
+      id: u.id,
+      partnerId: u.partnerId,
+      name: u.partner?.name || u.login,
+      login: u.login,
+      group: g?.code || '',
+      groupName: g?.name || '',
+      perms,
+      canSeeCost: COST_GROUPS.includes(g?.code || ''),
     };
     cache.set(id, { at: Date.now(), user });
     return user;
@@ -51,9 +78,16 @@ export class AuthGuard implements CanActivate {
     const token = h.startsWith('Bearer ') ? h.slice(7) : (req.query?.token as string);
     if (!token) throw new UnauthorizedException('Silakan login');
     let payload: any;
-    try { payload = await this.jwt.verifyAsync(token); } catch { throw new UnauthorizedException('Sesi habis, silakan login lagi'); }
+    try {
+      payload = await this.jwt.verifyAsync(token);
+    } catch {
+      throw new UnauthorizedException('Sesi habis, silakan login lagi');
+    }
     req.user = await this.loadUser(payload.sub);
-    const perm = this.reflector.getAllAndOverride<{ menu: string; action: Action }>(PERM, [ctx.getHandler(), ctx.getClass()]);
+    const perm = this.reflector.getAllAndOverride<{ menu: string; action: Action }>(PERM, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
     if (perm) {
       const p = req.user.perms[perm.menu];
       if (!p || !p[perm.action]) throw new ForbiddenException('Anda tidak memiliki akses');

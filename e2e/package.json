@@ -2,6 +2,10 @@
   "name": "mtpp-e2e",
   "private": true,
   "type": "module",
-  "scripts": { "nav-audit": "node nav-audit.mjs" },
-  "dependencies": { "playwright": "1.58.2" }
+  "scripts": {
+    "nav-audit": "node nav-audit.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.58.2"
+  }
 }

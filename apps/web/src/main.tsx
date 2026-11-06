@@ -15,22 +15,77 @@ import { SalesDetail, SalesList } from './pages/Sales';
 import { NeedPurchaseList, PODetail, POList, SupplierPricelist } from './pages/Purchasing';
 import { InvoiceDetail, InvoiceList, PaymentsList, ReadyToInvoice } from './pages/Billing';
 import { ReadyToShipList, StockMoves, StockOverview, StockRules, TransferDetail, TransferList } from './pages/Stock';
-import { AccountsPage, BankReconPage, CashPage, JournalDetail, JournalList, LedgerPage, TrialBalancePage } from './pages/Accounting';
-import { CategoriesUnits, PartnerDetail, PartnerList, PaymentTerms, ProductDetail, ProductList, SalesPricelists } from './pages/Master';
-import { ApiKeysPage, CompanyPage, DocumentSettings, EmailOutbox, GroupsPage, ImportPage, UserDetail, UsersList } from './pages/Settings';
+import {
+  AccountsPage,
+  BankReconPage,
+  CashPage,
+  JournalDetail,
+  JournalList,
+  LedgerPage,
+  TrialBalancePage,
+} from './pages/Accounting';
+import {
+  CategoriesUnits,
+  PartnerDetail,
+  PartnerList,
+  PaymentTerms,
+  ProductDetail,
+  ProductList,
+  SalesPricelists,
+} from './pages/Master';
+import {
+  ApiKeysPage,
+  CompanyPage,
+  DocumentSettings,
+  EmailOutbox,
+  GroupsPage,
+  ImportPage,
+  UserDetail,
+  UsersList,
+} from './pages/Settings';
 import { ReportView, ReportsHome } from './pages/Reports';
 import { DocumentEditor, DocumentList } from './pages/Documents';
 
 const theme = {
-  token: { colorPrimary: '#90241D', colorLink: '#90241D', colorInfo: '#90241D', colorError: '#90241D', colorWarning: '#F2C500', colorSuccess: '#15803d', fontFamily: 'Inter, system-ui, sans-serif', borderRadius: 8, colorBgLayout: '#ffffff', colorBorderSecondary: '#ECE8E4', colorText: '#2E2A27', colorTextSecondary: '#625B55', controlHeight: 36, fontSize: 14 },
-  components: { Table: { headerBg: '#ffffff', headerColor: '#90241D', rowHoverBg: '#FDF6F5' }, Button: { fontWeight: 500 }, Tabs: { titleFontSize: 15 } },
+  token: {
+    colorPrimary: '#90241D',
+    colorLink: '#90241D',
+    colorInfo: '#90241D',
+    colorError: '#90241D',
+    colorWarning: '#F2C500',
+    colorSuccess: '#15803d',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    borderRadius: 8,
+    colorBgLayout: '#ffffff',
+    colorBorderSecondary: '#ECE8E4',
+    colorText: '#2E2A27',
+    colorTextSecondary: '#625B55',
+    controlHeight: 36,
+    fontSize: 14,
+  },
+  components: {
+    Table: { headerBg: '#ffffff', headerColor: '#90241D', rowHoverBg: '#FDF6F5' },
+    Button: { fontWeight: 500 },
+    Tabs: { titleFontSize: 15 },
+  },
 };
 // dialog statis (Modal.confirm, info, warning) dirender di luar pohon React, jadi perlu tema yang sama
-ConfigProvider.config({ holderRender: (children) => <ConfigProvider theme={theme} locale={idID}>{children}</ConfigProvider> });
+ConfigProvider.config({
+  holderRender: (children) => (
+    <ConfigProvider theme={theme} locale={idID}>
+      {children}
+    </ConfigProvider>
+  ),
+});
 
 function Guard({ children }: { children: React.ReactNode }) {
   const { me, loading } = useAuth();
-  if (loading) return <div style={{ display: 'grid', placeItems: 'center', height: '100vh' }}><Spin size="large" /></div>;
+  if (loading)
+    return (
+      <div style={{ display: 'grid', placeItems: 'center', height: '100vh' }}>
+        <Spin size="large" />
+      </div>
+    );
   if (!me) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
@@ -40,7 +95,13 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route element={<Guard><Shell /></Guard>}>
+      <Route
+        element={
+          <Guard>
+            <Shell />
+          </Guard>
+        }
+      >
         <Route index element={<Dashboard />} />
         <Route path="profil" element={<Profile />} />
         <Route path="penjualan" element={<SalesList />} />
@@ -106,7 +167,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ConfigProvider theme={theme} locale={idID}>
       <AntApp>
-        <BrowserRouter><AuthProvider><AppRoutes /></AuthProvider></BrowserRouter>
+        <BrowserRouter>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </BrowserRouter>
       </AntApp>
     </ConfigProvider>
   </React.StrictMode>,

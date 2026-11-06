@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Inject, Module, Patch, Post, UnauthorizedException, UploadedFile, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Module,
+  Patch,
+  Post,
+  UnauthorizedException,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
@@ -11,15 +22,23 @@ import { fail } from '../../common/util';
 // Login, profil, kata sandi, dan tanda tangan pengguna (fitur A.a dan A.j)
 @Controller('auth')
 export class AuthController {
-  constructor(@Inject(DB) private db: Db, private jwt: JwtService, private files: FilesService) {}
+  constructor(
+    @Inject(DB) private db: Db,
+    private jwt: JwtService,
+    private files: FilesService,
+  ) {}
 
   // akun contoh hanya ditampilkan pada halaman login bila data contoh aktif
-  @Public() @Get('config') config() { return { demo: process.env.SEED_DEMO !== 'false' }; }
+  @Public() @Get('config') config() {
+    return { demo: process.env.SEED_DEMO !== 'false' };
+  }
 
-  @Public() @Post('login')
+  @Public()
+  @Post('login')
   async login(@Body() b: { login: string; password: string }) {
     const u = await this.db.users.findFirst({ where: { login: (b.login || '').trim().toLowerCase() } });
-    if (!u || !u.active || !(await bcrypt.compare(b.password || '', u.password))) throw new UnauthorizedException('Email atau kata sandi salah');
+    if (!u || !u.active || !(await bcrypt.compare(b.password || '', u.password)))
+      throw new UnauthorizedException('Email atau kata sandi salah');
     await this.db.users.updateMany({ where: { id: u.id }, data: { loginDate: new Date() } });
     return { token: await this.jwt.signAsync({ sub: u.id }) };
   }
@@ -28,13 +47,22 @@ export class AuthController {
   async me(@CurrentUser() user: AuthUser) {
     const p = await this.db.partners.findFirst({ where: { id: user.partnerId } });
     const u = await this.db.users.findFirst({ where: { id: user.id } });
-    return { ...user, email: p?.email, phone: p?.phone, signatureId: u?.signatureId, reports: REPORTS_BY_GROUP[user.group] || [] };
+    return {
+      ...user,
+      email: p?.email,
+      phone: p?.phone,
+      signatureId: u?.signatureId,
+      reports: REPORTS_BY_GROUP[user.group] || [],
+    };
   }
 
   @Patch('profile')
   async profile(@CurrentUser() user: AuthUser, @Body() b: { name?: string; email?: string; phone?: string }) {
     if (b.name !== undefined && !b.name.trim()) fail('Nama wajib diisi');
-    await this.db.partners.updateMany({ where: { id: user.partnerId }, data: { name: b.name, email: b.email, phone: b.phone } });
+    await this.db.partners.updateMany({
+      where: { id: user.partnerId },
+      data: { name: b.name, email: b.email, phone: b.phone },
+    });
     clearAuthCache();
     return { ok: true };
   }
@@ -49,7 +77,8 @@ export class AuthController {
     return { ok: true };
   }
 
-  @Post('signature') @UseInterceptors(FileInterceptor('file'))
+  @Post('signature')
+  @UseInterceptors(FileInterceptor('file'))
   async signature(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File) {
     if (!file) fail('File tanda tangan wajib diunggah');
     const a = await this.files.save(file.buffer, file.originalname, file.mimetype, 'users', user.id, user.id);

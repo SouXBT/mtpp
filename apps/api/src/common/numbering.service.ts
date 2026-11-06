@@ -34,7 +34,8 @@ export class NumberingService {
   // CariNomor + AngkaUrut: nomor urut terbesar yang sudah dipakai dengan awalan ini
   private async maxUsed(tx: any, code: string, prefix: string) {
     const s = sourceOf(code); // nama tabel dan kolom berasal dari daftar SOURCE di atas, bukan dari masukan pengguna
-    const r: any[] = await tx.$queryRaw(Prisma.sql`select coalesce(max(substring(${Prisma.raw(`"${s.col}"`)} from ${prefix.length + 1}::int for 4)::int), 0) as n
+    const r: any[] =
+      await tx.$queryRaw(Prisma.sql`select coalesce(max(substring(${Prisma.raw(`"${s.col}"`)} from ${prefix.length + 1}::int for 4)::int), 0) as n
       from ${Prisma.raw(`"${s.table}"`)} where ${Prisma.raw(`"${s.col}"`)} ~ ${'^' + prefix.replace(/\//g, '\\/') + '[0-9]{4}$'}`);
     return Number(r[0]?.n || 0);
   }
@@ -47,11 +48,17 @@ export class NumberingService {
   async next(tx: any, code: string, dateIso: string) {
     const [y, m] = dateIso.slice(0, 7).split('-').map(Number);
     const p = this.prefix(code, dateIso);
-    await tx.$executeRaw(sql`insert into document_sequences(code, year, month, last_number) values (${code}, ${y}, ${m}, 0) on conflict (code, year, month) do nothing`);
-    const r = await tx.$queryRaw(sql`select last_number from document_sequences where code=${code} and year=${y} and month=${m} for update`);
+    await tx.$executeRaw(
+      sql`insert into document_sequences(code, year, month, last_number) values (${code}, ${y}, ${m}, 0) on conflict (code, year, month) do nothing`,
+    );
+    const r = await tx.$queryRaw(
+      sql`select last_number from document_sequences where code=${code} and year=${y} and month=${m} for update`,
+    );
     void r; // baris terkunci sampai transaksi selesai; pembacaan berikutnya melihat nomor yang baru disimpan
     const n = (await this.maxUsed(tx, code, p)) + 1;
-    await tx.$executeRaw(sql`update document_sequences set last_number=${n} where code=${code} and year=${y} and month=${m}`);
+    await tx.$executeRaw(
+      sql`update document_sequences set last_number=${n} where code=${code} and year=${y} and month=${m}`,
+    );
     return p + String(n).padStart(4, '0');
   }
 }

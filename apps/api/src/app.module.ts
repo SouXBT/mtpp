@@ -23,10 +23,29 @@ import { DocumentsModule } from './modules/documents/documents.module';
 
 @Module({
   imports: [
-    JwtModule.register({ global: true, secret: process.env.JWT_SECRET || 'ganti-rahasia-ini', signOptions: { expiresIn: '8h' } }),
-    DbModule, CommonModule, EmailModule,
-    AuthModule, UsersModule, MasterModule, StockModule, SalesModule, PurchasingModule, AccountingModule, BillingModule,
-    RecordsModule, SettingsModule, ReportsModule, DashboardModule, ImporterModule, PublicApiModule, DocumentsModule,
+    JwtModule.register({
+      global: true,
+      secret: process.env.JWT_SECRET || 'ganti-rahasia-ini',
+      signOptions: { expiresIn: '8h' },
+    }),
+    DbModule,
+    CommonModule,
+    EmailModule,
+    AuthModule,
+    UsersModule,
+    MasterModule,
+    StockModule,
+    SalesModule,
+    PurchasingModule,
+    AccountingModule,
+    BillingModule,
+    RecordsModule,
+    SettingsModule,
+    ReportsModule,
+    DashboardModule,
+    ImporterModule,
+    PublicApiModule,
+    DocumentsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
 })

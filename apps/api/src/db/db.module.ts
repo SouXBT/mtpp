@@ -6,18 +6,21 @@ import { DATE_FIELDS, INT_FIELDS, JSON_FIELDS, STAMP_FIELDS } from './fields';
 // Penyesuai tipe supaya kontrak API tetap sama bagi frontend:
 // kolom date berupa string YYYY-MM-DD dan kolom numeric berupa number (Prisma memakai Date dan Decimal).
 const DATE_LIKE = /^\d{4}-\d{2}-\d{2}/;
-const midnight = (d: Date) => d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0;
+const midnight = (d: Date) =>
+  d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0;
 
 function toDate(v: any): any {
   if (typeof v === 'string' && DATE_LIKE.test(v)) return new Date(v.length === 10 ? `${v}T00:00:00.000Z` : v);
   if (Array.isArray(v)) return v.map(toDate);
-  if (v && typeof v === 'object' && !(v instanceof Date)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, toDate(x)]));
+  if (v && typeof v === 'object' && !(v instanceof Date))
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, toDate(x)]));
   return v;
 }
 function toInt(v: any): any {
   if (typeof v === 'string' && /^-?\d+$/.test(v)) return Number(v);
   if (Array.isArray(v)) return v.map(toInt);
-  if (v && typeof v === 'object' && !(v instanceof Date)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, toInt(x)]));
+  if (v && typeof v === 'object' && !(v instanceof Date))
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, toInt(x)]));
   return v;
 }
 function toDb(v: any): any {

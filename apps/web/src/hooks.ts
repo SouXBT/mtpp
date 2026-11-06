@@ -10,13 +10,21 @@ export function useFetch<T = any>(path: string | null, params?: any, deps: any[]
   const seq = useRef(0);
   const reload = useCallback(async () => {
     if (!path) return;
-    const n = ++seq.current; setLoading(true);
-    try { const r = await api.get(path, { params }); if (n === seq.current) setData(r.data); }
-    catch (e) { if (n === seq.current) showErr(e); }
-    finally { if (n === seq.current) setLoading(false); }
+    const n = ++seq.current;
+    setLoading(true);
+    try {
+      const r = await api.get(path, { params });
+      if (n === seq.current) setData(r.data);
+    } catch (e) {
+      if (n === seq.current) showErr(e);
+    } finally {
+      if (n === seq.current) setLoading(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, key, ...deps]);
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => {
+    reload();
+  }, [reload]);
   return { data, loading, reload, setData };
 }
 
@@ -27,7 +35,10 @@ export function useQueryState(defaults: Record<string, string> = {}) {
   sp.forEach((v, k) => (state[k] = v));
   const set = (patch: Record<string, string | undefined | null>) => {
     const n = new URLSearchParams(sp);
-    for (const [k, v] of Object.entries(patch)) { if (v === undefined || v === null || v === '') n.delete(k); else n.set(k, v); }
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined || v === null || v === '') n.delete(k);
+      else n.set(k, v);
+    }
     setSp(n, { replace: true });
   };
   return [state, set] as const;

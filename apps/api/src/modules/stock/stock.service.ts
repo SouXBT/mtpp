@@ -14,7 +14,10 @@ export class StockService {
   constructor(@Inject(DB) private db: Db) {}
 
   async internalLocation(warehouseId: number, tx: any = this.db) {
-    const [l] = await tx.locations.findMany({ where: { AND: [{ warehouseId: warehouseId }, { usage: 'internal' }] }, take: 1 });
+    const [l] = await tx.locations.findMany({
+      where: { AND: [{ warehouseId: warehouseId }, { usage: 'internal' }] },
+      take: 1,
+    });
     if (!l) fail('Lokasi gudang tidak ditemukan');
     return l;
   }
@@ -31,8 +34,18 @@ export class StockService {
   }
 
   async reserved(productId: number, warehouseId: number, excludeOrderId?: number, tx: any = this.db) {
-    const lines = await tx.salesOrderLines.findMany({ where: { productId, mtppWarehouseId: warehouseId, mtppIsDropship: false, order: { state: 'sale', ...(excludeOrderId ? { id: { not: excludeOrderId } } : {}) } }, select: { productUomQty: true, qtyDelivered: true } });
-    const r = { q: lines.reduce((a: number, l: any) => a + Math.max(Number(l.productUomQty) - Number(l.qtyDelivered), 0), 0) };
+    const lines = await tx.salesOrderLines.findMany({
+      where: {
+        productId,
+        mtppWarehouseId: warehouseId,
+        mtppIsDropship: false,
+        order: { state: 'sale', ...(excludeOrderId ? { id: { not: excludeOrderId } } : {}) },
+      },
+      select: { productUomQty: true, qtyDelivered: true },
+    });
+    const r = {
+      q: lines.reduce((a: number, l: any) => a + Math.max(Number(l.productUomQty) - Number(l.qtyDelivered), 0), 0),
+    };
     return Number(r?.q || 0);
   }
 
@@ -40,17 +53,34 @@ export class StockService {
   async reservedAhead(productId: number, warehouseId: number, orderId: number, tx: any = this.db) {
     const iso = (d: any) => (!d ? '' : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
     const me = await tx.salesOrders.findFirst({ where: { id: orderId }, select: { id: true, dateConfirm: true } });
-    const lines = await tx.salesOrderLines.findMany({ where: { productId, mtppWarehouseId: warehouseId, mtppIsDropship: false, order: { state: 'sale', id: { not: orderId } } }, select: { productUomQty: true, qtyDelivered: true, order: { select: { id: true, dateConfirm: true } } } });
-    const ahead = lines.filter((l: any) => iso(l.order.dateConfirm) < iso(me?.dateConfirm) || (iso(l.order.dateConfirm) === iso(me?.dateConfirm) && l.order.id < orderId));
+    const lines = await tx.salesOrderLines.findMany({
+      where: {
+        productId,
+        mtppWarehouseId: warehouseId,
+        mtppIsDropship: false,
+        order: { state: 'sale', id: { not: orderId } },
+      },
+      select: { productUomQty: true, qtyDelivered: true, order: { select: { id: true, dateConfirm: true } } },
+    });
+    const ahead = lines.filter(
+      (l: any) =>
+        iso(l.order.dateConfirm) < iso(me?.dateConfirm) ||
+        (iso(l.order.dateConfirm) === iso(me?.dateConfirm) && l.order.id < orderId),
+    );
     return ahead.reduce((a: number, l: any) => a + Math.max(Number(l.productUomQty) - Number(l.qtyDelivered), 0), 0);
   }
 
   // pindahkan stok antar lokasi; stok gudang tidak boleh minus
   async applyMove(tx: any, productId: number, fromLoc: any, toLoc: any, qty: number) {
     if (qty <= 0) return;
-    for (const [loc, sign] of [[fromLoc, -1], [toLoc, 1]] as const) {
+    for (const [loc, sign] of [
+      [fromLoc, -1],
+      [toLoc, 1],
+    ] as const) {
       if (loc.usage !== 'internal') continue;
-      await tx.$queryRaw(sql`select id from stock_balances where product_id = ${productId} and location_id = ${loc.id} for update`);
+      await tx.$queryRaw(
+        sql`select id from stock_balances where product_id = ${productId} and location_id = ${loc.id} for update`,
+      );
       const b = await tx.stockBalances.findFirst({ where: { productId, locationId: loc.id } });
       const newQ = round2(Number(b?.quantity || 0) + sign * qty);
       if (newQ < 0) fail('Stok fisik tidak cukup di ' + loc.completeName);
@@ -60,12 +90,30 @@ export class StockService {
   }
 
   async overview(q: { warehouseId?: number; categoryId?: number; low?: boolean; q?: string }) {
-    const whs = await this.db.warehouses.findMany({ where: { active: true }, include: { partner: true, locations: true } });
-    const prods: any[] = (await this.db.products.findMany({ where: { active: true }, include: { template: { include: { category: { select: { name: true } }, uom: { select: { name: true } } } } } }))
-      .map(({ template: t, ...p }) => ({ id: p.id, code: p.defaultCode, name: t.name, categoryId: t.categoryId, category: t.category?.name ?? null, uom: t.uom.name, supplierId: t.mainSupplierId, type: t.type }));
-    const bal = await this.db.stockBalances.findMany({  });
-    const rules = await this.db.stockRules.findMany({  });
-    const res: any[] = await this.db.$queryRaw(sql`select l.product_id as "productId", l.mtpp_warehouse_id as w, sum(greatest(l.product_uom_qty - l.qty_delivered, 0))::float as q from sales_order_lines l join sales_orders o on o.id = l.order_id where o.state = 'sale' and l.mtpp_is_dropship = false group by l.product_id, l.mtpp_warehouse_id`);
+    const whs = await this.db.warehouses.findMany({
+      where: { active: true },
+      include: { partner: true, locations: true },
+    });
+    const prods: any[] = (
+      await this.db.products.findMany({
+        where: { active: true },
+        include: { template: { include: { category: { select: { name: true } }, uom: { select: { name: true } } } } },
+      })
+    ).map(({ template: t, ...p }) => ({
+      id: p.id,
+      code: p.defaultCode,
+      name: t.name,
+      categoryId: t.categoryId,
+      category: t.category?.name ?? null,
+      uom: t.uom.name,
+      supplierId: t.mainSupplierId,
+      type: t.type,
+    }));
+    const bal = await this.db.stockBalances.findMany({});
+    const rules = await this.db.stockRules.findMany({});
+    const res: any[] = await this.db.$queryRaw(
+      sql`select l.product_id as "productId", l.mtpp_warehouse_id as w, sum(greatest(l.product_uom_qty - l.qty_delivered, 0))::float as q from sales_order_lines l join sales_orders o on o.id = l.order_id where o.state = 'sale' and l.mtpp_is_dropship = false group by l.product_id, l.mtpp_warehouse_id`,
+    );
     const rows: any[] = [];
     for (const w of whs) {
       if (q.warehouseId && w.id !== +q.warehouseId) continue;
@@ -81,13 +129,30 @@ export class StockService {
         const low = min !== null && free < min;
         if (q.low && !low) continue;
         if (q.categoryId && p.categoryId !== +q.categoryId) continue;
-        if (q.q && !(`${p.code} ${p.name}`.toLowerCase().includes(String(q.q).toLowerCase()))) continue;
-        rows.push({ key: `${w.id}-${p.id}`, productId: p.id, code: p.code, product: p.name, category: p.category, uom: p.uom, warehouseId: w.id, warehouse: w.name, principal: w.partner?.name,
-          physical, reserved, free, minQty: min, ruleId: rule?.id || null, status: low ? 'stok rendah' : free < 0 ? 'kurang' : 'aman' });
+        if (q.q && !`${p.code} ${p.name}`.toLowerCase().includes(String(q.q).toLowerCase())) continue;
+        rows.push({
+          key: `${w.id}-${p.id}`,
+          productId: p.id,
+          code: p.code,
+          product: p.name,
+          category: p.category,
+          uom: p.uom,
+          warehouseId: w.id,
+          warehouse: w.name,
+          principal: w.partner?.name,
+          physical,
+          reserved,
+          free,
+          minQty: min,
+          ruleId: rule?.id || null,
+          status: low ? 'stok rendah' : free < 0 ? 'kurang' : 'aman',
+        });
       }
     }
     return rows;
   }
 
-  async lowStockCount() { return (await this.overview({ low: true })).length; }
+  async lowStockCount() {
+    return (await this.overview({ low: true })).length;
+  }
 }

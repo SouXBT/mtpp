@@ -11,7 +11,9 @@ export class PricingService {
   constructor(@Inject(DB) private db: Db) {}
 
   async product(productId: number) {
-    const [r] = (await this.db.products.findMany({ where: { id: productId }, include: { template: true } })).map(({ template, ...p }) => ({ p, t: template }));
+    const [r] = (await this.db.products.findMany({ where: { id: productId }, include: { template: true } })).map(
+      ({ template, ...p }) => ({ p, t: template }),
+    );
     return r;
   }
 
@@ -20,8 +22,25 @@ export class PricingService {
     const pr = await this.product(productId);
     const partner = await this.db.partners.findFirst({ where: { id: partnerId } });
     if (partner?.salesPricelistId) {
-      const [it] = await this.db.salesPricelistItems.findMany({ where: { AND: [{ pricelistId: partner.salesPricelistId }, { productId: productId }, { minQty: { lte: qty } }, { OR: [{ dateStart: null }, { dateStart: { lte: date } }] }, { OR: [{ dateEnd: null }, { dateEnd: { gte: date } }] }] }, orderBy: [{ dateStart: { sort: 'desc', nulls: 'last' } }, { minQty: 'desc' }], take: 1 });
-      if (it) return { priceUnit: it.fixedPrice ?? pr.t.listPrice, discount: it.fixedPrice ? 0 : Number(it.discount), source: 'pricelist' };
+      const [it] = await this.db.salesPricelistItems.findMany({
+        where: {
+          AND: [
+            { pricelistId: partner.salesPricelistId },
+            { productId: productId },
+            { minQty: { lte: qty } },
+            { OR: [{ dateStart: null }, { dateStart: { lte: date } }] },
+            { OR: [{ dateEnd: null }, { dateEnd: { gte: date } }] },
+          ],
+        },
+        orderBy: [{ dateStart: { sort: 'desc', nulls: 'last' } }, { minQty: 'desc' }],
+        take: 1,
+      });
+      if (it)
+        return {
+          priceUnit: it.fixedPrice ?? pr.t.listPrice,
+          discount: it.fixedPrice ? 0 : Number(it.discount),
+          source: 'pricelist',
+        };
     }
     return { priceUnit: Number(pr.t.listPrice), discount: 0, source: 'produk' };
   }
@@ -30,13 +49,24 @@ export class PricingService {
   async cost(productId: number, qty: number, date = today(), supplierId?: number) {
     const pr = await this.product(productId);
     const sup = supplierId || pr.t.mainSupplierId;
-    const conds: any[] = [{ productTmplId: pr.t.id }, { minQty: { lte: Math.max(qty, 0) } },
+    const conds: any[] = [
+      { productTmplId: pr.t.id },
+      { minQty: { lte: Math.max(qty, 0) } },
       { OR: [{ dateStart: null }, { dateStart: { lte: date } }] },
-      { OR: [{ dateEnd: null }, { dateEnd: { gte: date } }] }];
+      { OR: [{ dateEnd: null }, { dateEnd: { gte: date } }] },
+    ];
     if (sup) conds.push({ partnerId: sup });
-    const [sp] = await this.db.supplierPrices.findMany({ where: { AND: conds }, orderBy: [{ dateStart: { sort: 'desc', nulls: 'last' } }, { minQty: 'desc' }], take: 1 });
+    const [sp] = await this.db.supplierPrices.findMany({
+      where: { AND: conds },
+      orderBy: [{ dateStart: { sort: 'desc', nulls: 'last' } }, { minQty: 'desc' }],
+      take: 1,
+    });
     if (!sp) return { cost: 0, supplierId: sup || null, missing: true };
-    return { cost: round2(Number(sp.price) * (1 - Number(sp.discount) / 100)), supplierId: sp.partnerId, missing: false };
+    return {
+      cost: round2(Number(sp.price) * (1 - Number(sp.discount) / 100)),
+      supplierId: sp.partnerId,
+      missing: false,
+    };
   }
 
   async warehouseOf(partnerId: number) {

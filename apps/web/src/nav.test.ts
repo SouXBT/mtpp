@@ -3,14 +3,38 @@ import { test } from 'node:test';
 import { activeItem, activeModule, moduleEntry, visibleModules } from './nav.ts';
 
 const perm = (...menus: string[]) => Object.fromEntries(menus.map((m) => [m, { read: true }]));
-const sales = perm('penjualan', 'pengadaan', 'pricelist_principal', 'stok', 'gudang', 'penagihan', 'dokumen', 'pelanggan', 'principal', 'produk', 'top', 'pricelist_jual', 'email', 'perusahaan');
+const sales = perm(
+  'penjualan',
+  'pengadaan',
+  'pricelist_principal',
+  'stok',
+  'gudang',
+  'penagihan',
+  'dokumen',
+  'pelanggan',
+  'principal',
+  'produk',
+  'top',
+  'pricelist_jual',
+  'email',
+  'perusahaan',
+);
 const mods = visibleModules({ perms: sales, reports: ['margin'] });
 const get = (k: string) => mods.find((m) => m.key === k)!;
 
 test('modul dan submenu disaring menurut izin', () => {
-  assert.deepEqual(get('pengaturan').items.map((i) => i.label), ['Email Keluar', 'Perusahaan']);
-  assert.equal(mods.find((m) => m.key === 'akuntansi'), undefined);
-  assert.equal(visibleModules({ perms: perm('pengguna') }).some((m) => m.key === 'laporan'), false);
+  assert.deepEqual(
+    get('pengaturan').items.map((i) => i.label),
+    ['Email Keluar', 'Perusahaan'],
+  );
+  assert.equal(
+    mods.find((m) => m.key === 'akuntansi'),
+    undefined,
+  );
+  assert.equal(
+    visibleModules({ perms: perm('pengguna') }).some((m) => m.key === 'laporan'),
+    false,
+  );
   assert.equal(visibleModules(null).length, 1); // hanya Beranda
 });
 
