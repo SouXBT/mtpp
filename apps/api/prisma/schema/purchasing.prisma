@@ -1,5 +1,6 @@
 // PO Principal
 
+// PO kepada principal, dibuat dari SO yang stoknya kurang; menyimpan status dan sisa pembayaran.
 model PurchaseOrders {
   id                          Int                  @id @default(autoincrement())
   name                        String               @unique(map: "purchase_orders_name_unique") @db.VarChar(40)
@@ -36,6 +37,7 @@ model PurchaseOrders {
   @@map("purchase_orders")
 }
 
+// Baris produk PO: kuantitas dipesan, diterima, tertagih, dan harga beli.
 model PurchaseOrderLines {
   id                                 Int                 @id @default(autoincrement())
   orderId                            Int                 @map("order_id")

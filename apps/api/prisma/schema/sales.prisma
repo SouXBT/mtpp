@@ -1,5 +1,6 @@
 // Penawaran dan sales order
 
+// Penawaran (PN) dan sales order (SO) dalam satu tabel, dibedakan oleh state. Menyimpan total, PO pelanggan, proforma, dan syarat cetak.
 model SalesOrders {
   id                         Int               @id @default(autoincrement())
   name                       String            @unique(map: "sales_orders_name_unique") @db.VarChar(40)
@@ -52,6 +53,7 @@ model SalesOrders {
   @@map("sales_orders")
 }
 
+// Baris produk penawaran atau SO: kuantitas, harga, diskon, harga pokok, jumlah terkirim dan tertagih.
 model SalesOrderLines {
   id                                  Int                  @id @default(autoincrement())
   orderId                             Int                  @map("order_id")

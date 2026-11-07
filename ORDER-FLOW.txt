@@ -1,0 +1,324 @@
+MTPP DISTRIBUTION SYSTEM - HOW ONE ORDER MOVES THROUGH EACH ROLE
+=================================================================
+
+Open the app at http://localhost:8080
+Button and menu names are written exactly as they appear on screen, in [brackets].
+"Menu > Sub-menu" means click the menu in the top bar, then the sub-menu under it.
+The web address is shown in (brackets) in case you want to go there directly.
+
+
+THE SHORT VERSION
+-----------------
+
+  SALES        1. Make the quotation          Penjualan > Penawaran
+               2. Send it to the customer
+               3. Customer agrees: Konfirmasi (quotation PN/... becomes sales order SO/...)
+                                  |
+          +-----------------------+-----------------------+
+          | Stock too low         | New customer          | Stock available
+          v                       v                       |
+  FINANCE 4. Make + confirm       Record the customer's   |
+             PO to the principal  payment (must be paid   |
+          |                       in full before sending) |
+          v                       |                       |
+  OPERASIONAL 5. Receive goods    |                       |
+          |                       |                       |
+          v                       |                       |
+  FINANCE 6. Record + pay the     |                       |
+             principal's bill     |                       |
+          |                       |                       |
+          +-----------------------+-----------------------+
+                                  |
+                                  v
+  OPERASIONAL  7. Make + validate the delivery note       Stok > Siap Dikirim
+                                  |
+                                  v
+  FINANCE      8. Make + post the invoice                 Penagihan > Siap Ditagih
+               9. Record the customer's payment           [Catat Pembayaran]
+                                  |
+                                  v
+                                 DONE
+
+  One order can take more than one path at once. For example, part of it can ship
+  from stock now while the rest waits for a PO.
+
+  TIP: Open the sales order at any time (Penjualan > Sales Order, click the row).
+  A note at the top starting "Berikutnya:" tells you who needs to do what next.
+
+
+WHO DOES WHAT
+-------------
+
+  Role          Login                     Works in
+  ------------  ------------------------  ------------------------------------------------
+  Sales         sales@mtpp.co.id          Penjualan (quotations and sales orders)
+  Finance       finance@mtpp.co.id        Pengadaan, Penagihan, Akuntansi
+  Operasional   operasional@mtpp.co.id    Stok (receiving goods, delivery notes)
+  Admin         admin@mtpp.co.id          Master data, Pengaturan. Cannot open orders.
+  Pimpinan      pimpinan@mtpp.co.id       Sees everything. Sets payment terms and selling
+                                          price lists. Cannot create orders.
+
+  Demo password for all of them: mtpp12345
+
+  To log in:  /login -> type Email and Kata sandi -> [Masuk] -> you land on Beranda.
+  To log out: click your name at the top right -> Keluar.
+
+
+BEFORE THE FIRST ORDER (set up once)
+------------------------------------
+
+  ADMIN
+    New customer:   Master > Pelanggan (/master/pelanggan), add the customer.
+                    New customers have "Pelanggan baru (wajib lunas sebelum kirim)" ticked
+                    automatically. Leave it ticked if they must pay before delivery.
+    New principal:  Master > Principal (/master/principal). A warehouse is created for it
+                    automatically.
+    New product:    Master > Produk (/master/produk). Choose its principal.
+
+  FINANCE
+    Purchase price: Pengadaan > Pricelist Principal (/pengadaan/pricelist).
+                    Without a price here, the PO in Step 4 is refused.
+
+  PIMPINAN (optional)
+    Payment terms:  Master > Term of Payment (/master/top)
+    Special prices: Master > Pricelist Penjualan (/master/pricelist)
+
+
+=================================================================
+EXAMPLE 1: REGULAR CUSTOMER, NOT ENOUGH STOCK
+The customer orders 500 pieces. Only 40 are in stock, so 460 must be ordered.
+This is the longest path, and it uses all of the main steps.
+=================================================================
+
+STEP 1 - SALES: make the quotation
+  Go to:    Penjualan > Penawaran (/penjualan?tab=quote)
+  Click:    [Penawaran baru]
+  You are:  on the new quotation page (/penjualan/baru)
+  Fill in:  Pelanggan        choose the customer (required)
+            Term of payment  filled from the customer, can be changed
+            Berlaku sampai   the date the quotation expires
+            PO Pelanggan     customer's PO number, if you have it already
+            Alamat kirim     delivery address
+            Rencana kirim    planned delivery date
+  Then:     on the "Baris Produk" tab, click [Tambah baris]
+            Produk           choose the product
+            Qty              type 500
+            Harga (Rp)       filled automatically, can be changed
+            Diskon           optional
+            Repeat [Tambah baris] for each product.
+  Optional: the "Syarat Penawaran" tab holds the printed terms (Pembayaran, Penyerahan,
+            Standar, Waktu kirim, Masa berlaku, Garansi).
+  Click:    [Simpan]
+  Result:   the quotation gets a number like PN/MTPP/2026/11/0001.
+            You stay on its page (/penjualan/1).
+
+STEP 2 - SALES: send it to the customer
+  Where:    same page
+  Click:    [Kirim Email] to email it, or [Cetak] to get the PDF.
+            [Kirim Email] stays greyed out until a product has a price.
+  Result:   status becomes Terkirim. If no Brevo email key is set, the email is
+            only simulated and nothing is really sent.
+
+STEP 3 - SALES: the customer agrees
+  Where:    same page. To come back later: Penjualan > Penawaran, click the row.
+  Click:    [Konfirmasi]
+  Dialog:   "Konfirmasi menjadi sales order?" -> type the PO Pelanggan -> [Konfirmasi]
+  Result:   the number changes to SO/MTPP/2026/11/0001 and product lines are locked.
+  Screen:   "Berikutnya: Finance membuat PO Principal."
+            "Berikutnya: Operasional membuat surat jalan."  (for the 40 in stock)
+  Sales is finished for now, and can follow progress on this page.
+
+STEP 4 - FINANCE: order the missing goods from the principal
+  Go to:    Pengadaan > Perlu PO Principal (/pengadaan/perlu-pesanan)
+  See:      every sales order that is short of stock
+  Click:    [Buat PO] on the order's row
+            (or open the sales order and click [Buat PO Principal])
+  You are:  on the new PO page (/pengadaan/1), number PO/MTPP/2026/11/0001, quantity 460.
+            If the products come from 2 principals, you get 2 POs and stay on the list.
+  Click:    [Kirim Email] to send it to the principal, or [Cetak] for the PDF
+            (email needs the principal's email address to be filled in).
+  Click:    [Konfirmasi] -> dialog "Konfirmasi PO?" -> [Konfirmasi]
+  Result:   a goods receipt is created automatically for Operasional.
+
+STEP 5 - OPERASIONAL: goods arrive from the principal
+  Go to:    Stok > Penerimaan Barang (/stok/penerimaan)
+  Click:    the row of the PO (the whole row is clickable)
+  You are:  on the receipt page (/stok/dok/1), number PO/MTPP/2026/11/0001-T1
+  Check:    "Diterima" is already filled with the ordered quantity (460).
+            Change it if fewer arrived.
+  Click:    [Validasi] -> dialog "Validasi penerimaan barang?" -> [Validasi]
+  Result:   physical stock goes up. Optional: [Cetak bukti penerimaan] prints the proof.
+  If fewer arrived: the dialog warns you, and a follow-up receipt is created for the rest.
+
+STEP 6 - FINANCE: pay the principal
+  Go to:    Pengadaan > PO Principal (/pengadaan), click the PO
+  Click:    [Catat Tagihan]
+  Dialog:   Nomor tagihan dari principal, Tanggal tagihan, Lama pembayaran,
+            File tagihan principal -> [Simpan tagihan]
+  You are:  on the bill page (/pengadaan/tagihan/1), number BILL/MTPP/2026/11/0001
+  Click:    [Posting]  (the journal entry is created)
+  Click:    [Catat Pembayaran]
+  Dialog:   Jumlah (Rp), Metode (Transfer bank or Kas), Tanggal, Keterangan
+            -> [Catat pembayaran]
+  Result:   the bill is Lunas. To see all bills: Pengadaan > Tagihan Principal.
+  Note:     paying the principal does not have to come before delivery. Step 7 only
+            needs the goods to be in stock.
+
+STEP 7 - OPERASIONAL: deliver to the customer
+  Go to:    Stok > Siap Dikirim (/stok/siap-dikirim)
+  Click:    [Buat Surat Jalan] on the order's row
+  You are:  on the delivery note page (/stok/dok/2), number like DO/MTPP/2026/11/0001
+  Check:    "Dikirim" is the quantity going on the truck. Lower it to ship in parts.
+  Click:    [Cetak surat jalan (3 lembar)] for the 3-copy paper delivery note
+  Click:    [Siap Kirim] (optional: marks it as ready to go)
+  Click:    [Validasi] -> dialog "Validasi surat jalan?" -> [Validasi]
+  Result:   physical stock goes down.
+  Screen:   the sales order now says "Berikutnya: Finance membuat invoice."
+  If you shipped less: a follow-up delivery note is created for the rest.
+
+STEP 8 - FINANCE: invoice the customer
+  Go to:    Penagihan > Siap Ditagih (/penagihan/siap)
+  Click:    [Buat Invoice] on the order's row
+  You are:  on the draft invoice page (/penagihan/3)
+  Check:    the lines, then click [Posting]
+  Result:   number like INV/MTPP/2026/11/0001, journal entry created.
+  Click:    [Kirim Email] to send it, or [Cetak] for the PDF
+            (email needs the customer's email address to be filled in).
+
+STEP 9 - FINANCE: the customer pays
+  Where:    same invoice page. To come back later: Penagihan > Invoice, click the row.
+  Click:    [Catat Pembayaran]
+  Dialog:   Jumlah (Rp), Metode (Transfer bank or Kas), Tanggal, Keterangan
+            -> [Catat pembayaran]
+  Result:   the invoice shows Lunas if paid in full, or Sebagian if partly paid.
+  Receipt:  Penagihan > Pembayaran (/penagihan/pembayaran) -> [Kuitansi] on the row.
+
+  THE ORDER IS FINISHED.
+
+
+=================================================================
+EXAMPLE 2: NEW CUSTOMER, STOCK AVAILABLE
+A new customer must pay in full before anything can be delivered.
+=================================================================
+
+STEPS 1-3 - SALES: same as Example 1.
+  Screen after Konfirmasi:
+    "Pelanggan baru: dibayar Rp 0 dari Rp 516.150. Surat jalan diterbitkan setelah lunas."
+    "Berikutnya: Finance mencatat pembayaran pelanggan."
+
+  While unpaid:
+    - The order does NOT appear in Stok > Siap Dikirim.
+    - On the sales order page, Operasional sees [Buat Surat Jalan] greyed out.
+
+STEP 4 - FINANCE: ask for payment (optional)
+  Go to:    Penjualan > Sales Order (/penjualan?tab=order), click the order
+  Click:    [Proforma Invoice]
+  Dialog:   choose Berdasarkan persen or Berdasarkan nominal, then Tanggal and
+            Catatan pembayaran -> [Terbitkan dan cetak] or [Terbitkan dan kirim email]
+  Result:   a proforma invoice number (PI). It creates no journal entry.
+
+STEP 5 - FINANCE: record the payment
+  Where:    same sales order page
+  Click:    [Catat Uang Muka / Pelunasan]
+  Dialog:   Jumlah (Rp), Metode, Tanggal, Keterangan -> [Catat pembayaran]
+  Result:   "Pelanggan baru: sales order sudah lunas, surat jalan dapat diterbitkan."
+  Partial:  record a smaller amount and the delivery stays blocked until the rest is paid.
+
+STEP 6 - OPERASIONAL: deliver
+  Same as Step 7 in Example 1. The order now appears in Stok > Siap Dikirim.
+
+STEP 7 - FINANCE: invoice
+  Same as Step 8 in Example 1.
+  The payment from Step 5 is applied automatically when the invoice is posted, so there
+  is nothing more to collect unless the order changed.
+
+
+=================================================================
+EXAMPLE 3: DROPSHIP
+The principal sends the goods straight to the customer. MTPP's stock does not change.
+=================================================================
+
+STEPS 1-3 - SALES: same as Example 1, using a dropship product.
+  Screen: "Berikutnya: Finance membuat PO Principal."
+
+STEP 4 - FINANCE: order from the principal
+  Go to:    Pengadaan > Perlu PO Principal -> [Buat PO]
+  Click:    [Konfirmasi] -> dialog says "Surat jalan dropship dibuat otomatis." -> [Konfirmasi]
+  Result:   a delivery note is created automatically.
+
+STEP 5 - OPERASIONAL: confirm the customer received it
+  Go to:    Stok > Surat Jalan (/stok/surat-jalan), click the row marked "dropship"
+  Click:    [Validasi] -> "Konfirmasi barang dropship diterima pelanggan?" -> [Validasi]
+  Result:   stock does not change.
+  Screen:   "Berikutnya: Finance membuat invoice."
+
+STEP 6 - FINANCE: invoice and payment
+  Same as Steps 8 and 9 in Example 1. Pay the principal as in Step 6 of Example 1.
+
+
+=================================================================
+WHEN SOMETHING CHANGES
+=================================================================
+
+  Cancel a quotation or order (Sales)
+    On its page, click the [...] button at the right -> Batalkan.
+    To reuse it: [Kembalikan ke Draf]. To copy it: [...] -> Salin penawaran.
+    An order cannot be cancelled while its PO is running or a customer advance is
+    still held.
+
+  Give back an advance (Finance)
+    On the sales order page: [Kembalikan Uang Muka].
+
+  Principal will never send the rest (Finance)
+    On the PO page: [Tutup sisa PO]. The PO shrinks to what arrived, and the rest can be
+    ordered again from the sales order.
+
+  Cancel a PO (Finance)
+    On the PO page: [Batalkan]. Not possible once goods have been partly received.
+
+  Credit note from a principal (Finance)
+    On the PO page: [Nota Kredit].
+
+  Undo a customer or principal payment (Finance)
+    Penagihan > Pembayaran -> Batalkan Pembayaran on the row.
+
+  Undo a posted invoice or bill (Finance)
+    On its page: [Batalkan (jurnal pembalik)]. Posted journals are never edited, a
+    reversing entry is created instead.
+
+  Quotation expired
+    It is marked Kedaluwarsa. It can still be confirmed, but the dialog warns you.
+
+
+=================================================================
+PAGES EACH ROLE WATCHES
+=================================================================
+
+  SALES         Penjualan > Penawaran       quotations waiting for the customer
+                Penjualan > Sales Order     confirmed orders and their progress
+  FINANCE       Pengadaan > Perlu PO Principal   orders needing a PO
+                Pengadaan > Tagihan Principal    bills to post and pay
+                Penagihan > Siap Ditagih         delivered, not yet invoiced
+                Penagihan > Invoice              invoices and who still owes money
+                Akuntansi > Kas, Jurnal, Buku Besar, Neraca Saldo, Rekonsiliasi Bank
+  OPERASIONAL   Stok > Penerimaan Barang    goods expected from principals
+                Stok > Siap Dikirim         orders that can ship now
+                Stok > Surat Jalan          delivery schedule, late ones marked
+                Stok > Stok per Gudang      physical, reserved and free stock
+                Stok > Mutasi               history of every stock movement
+  PIMPINAN      Beranda and Laporan         the numbers across the whole business
+  ADMIN         Master, Pengaturan          customers, products, users, company data
+  EVERYONE      The bell at the top         scheduled activities
+
+
+=================================================================
+HOW THIS GUIDE WAS CHECKED
+=================================================================
+
+  Examples 1, 2 (up to the payment) and 3 (up to the delivery note) were clicked through
+  in a real browser on a temporary test copy, not on your live data. The steps below were
+  read from the code and automated tests, not clicked for this guide:
+    - The invoice steps of Examples 2 and 3
+    - Everything under "WHEN SOMETHING CHANGES"
+    - "BEFORE THE FIRST ORDER"
+  Document numbers and amounts are examples. Your own numbers will differ.

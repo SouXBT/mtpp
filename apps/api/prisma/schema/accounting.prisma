@@ -1,5 +1,6 @@
 // Akun, jurnal, invoice, pembayaran, rekonsiliasi bank
 
+// Bagan akun (chart of accounts).
 model Accounts {
   id                            Int                 @id @default(autoincrement())
   code                          String              @unique(map: "accounts_code_store_unique") @map("code_store") @db.VarChar(20)
@@ -16,6 +17,7 @@ model Accounts {
   @@map("accounts")
 }
 
+// Buku jurnal, misalnya penjualan, pembelian, kas, dan bank.
 model Journals {
   id                             Int                  @id @default(autoincrement())
   name                           String               @db.VarChar(80)
@@ -37,6 +39,7 @@ model Journals {
   @@map("journals")
 }
 
+// Dokumen akuntansi: invoice pelanggan, tagihan principal, nota kredit, dan jurnal, dibedakan oleh move_type.
 model JournalEntries {
   id                   Int                 @id @default(autoincrement())
   name                 String              @unique(map: "journal_entries_name_unique") @db.VarChar(40)
@@ -80,6 +83,7 @@ model JournalEntries {
   @@map("journal_entries")
 }
 
+// Baris dokumen akuntansi: produk tagihan serta debit dan kredit per akun.
 model JournalEntryLines {
   id             Int                 @id @default(autoincrement())
   moveId         Int                 @map("move_id")
@@ -118,6 +122,7 @@ model JournalEntryLines {
   @@map("journal_entry_lines")
 }
 
+// Pembayaran masuk dari pelanggan, termasuk uang muka, dan keluar ke principal.
 model Payments {
   id                             Int                  @id @default(autoincrement())
   name                           String               @unique(map: "payments_name_unique") @db.VarChar(40)
@@ -152,6 +157,7 @@ model Payments {
   @@map("payments")
 }
 
+// Baris mutasi bank hasil impor CSV untuk rekonsiliasi dengan pembayaran.
 model BankStatementLines {
   id           Int       @id @default(autoincrement())
   journalId    Int       @map("journal_id")

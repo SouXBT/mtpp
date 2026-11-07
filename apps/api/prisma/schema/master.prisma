@@ -1,5 +1,6 @@
 // Data master: pelanggan, principal, produk, pricelist
 
+// Semua kontak: pelanggan, principal, alamat kirim (anak dari pelanggan), dan kontak pengguna. Menyimpan penanda pelanggan baru.
 model Partners {
   id                                Int                  @id @default(autoincrement())
   parentId                          Int?                 @map("parent_id")
@@ -47,6 +48,7 @@ model Partners {
   @@map("partners")
 }
 
+// Term of payment: nama dan jumlah hari jatuh tempo.
 model PaymentTerms {
   id                          Int           @id @default(autoincrement())
   name                        String        @db.VarChar(80)
@@ -63,6 +65,7 @@ model PaymentTerms {
   @@map("payment_terms")
 }
 
+// Daftar harga jual khusus yang dapat dipasang pada pelanggan.
 model SalesPricelists {
   id                          Int                   @id @default(autoincrement())
   name                        String                @db.VarChar(120)
@@ -73,6 +76,7 @@ model SalesPricelists {
   @@map("sales_pricelists")
 }
 
+// Isi pricelist jual: harga tetap atau diskon per produk, dengan kuantitas minimum dan masa berlaku.
 model SalesPricelistItems {
   id          Int             @id @default(autoincrement())
   pricelistId Int             @map("pricelist_id")
@@ -90,6 +94,7 @@ model SalesPricelistItems {
   @@map("sales_pricelist_items")
 }
 
+// Satuan produk, misalnya pcs atau meter.
 model Units {
   id                       Int                @id @default(autoincrement())
   name                     String             @db.VarChar(40)
@@ -104,6 +109,7 @@ model Units {
   @@map("units")
 }
 
+// Kategori produk.
 model ProductCategories {
   id                            Int                @id @default(autoincrement())
   name                          String             @db.VarChar(80)
@@ -113,6 +119,7 @@ model ProductCategories {
   @@map("product_categories")
 }
 
+// Data utama produk: nama, harga jual, satuan, kategori, principal pemasok, jalur stok atau dropship.
 model ProductTemplates {
   id              Int                @id @default(autoincrement())
   uomId           Int                @map("uom_id")
@@ -140,6 +147,7 @@ model ProductTemplates {
   @@map("product_templates")
 }
 
+// Kode produk (SKU) yang dipakai baris transaksi; menunjuk ke product_templates.
 model Products {
   id                              Int                   @id @default(autoincrement())
   productTmplId                   Int                   @map("product_tmpl_id")
@@ -162,6 +170,7 @@ model Products {
   @@map("products")
 }
 
+// Pricelist principal: harga beli dan diskon per produk; dasar harga pokok dan margin.
 model SupplierPrices {
   id            Int              @id @default(autoincrement())
   partnerId     Int              @map("partner_id")

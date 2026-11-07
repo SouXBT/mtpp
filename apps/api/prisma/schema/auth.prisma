@@ -1,5 +1,6 @@
 // Pengguna, grup, dan hak akses
 
+// Akun login pengguna: email, kata sandi (hash), status aktif, tanda tangan. Data kontaknya ada di partners.
 model Users {
   id                    Int            @id @default(autoincrement())
   partnerId             Int            @map("partner_id")
@@ -25,6 +26,7 @@ model Users {
   @@map("users")
 }
 
+// Lima grup peran: Pimpinan, Admin, Sales, Operasional, Finance.
 model Groups {
   id          Int                @id @default(autoincrement())
   code        String             @unique(map: "groups_code_unique") @db.VarChar(30)
@@ -40,6 +42,7 @@ model Groups {
   @@map("groups")
 }
 
+// Penghubung pengguna dengan grupnya.
 model GroupUsers {
   id         Int      @id @default(autoincrement())
   gid        Int
@@ -56,6 +59,7 @@ model GroupUsers {
   @@map("group_users")
 }
 
+// Hak akses baca/buat/ubah/hapus setiap grup per menu.
 model GroupPermissions {
   id         Int      @id @default(autoincrement())
   groupId    Int      @map("group_id")

@@ -1,5 +1,6 @@
 // Catatan, email, lampiran, pengaturan, penomoran, dokumen
 
+// Catatan internal dan entri riwayat pada dokumen apa pun.
 model Messages {
   id                     Int          @id @default(autoincrement())
   authorId               Int?         @map("author_id")
@@ -20,6 +21,7 @@ model Messages {
   @@map("messages")
 }
 
+// Nilai lama dan baru setiap kolom yang berubah, terikat ke satu entri messages.
 model ChangeLogs {
   id            Int      @id @default(autoincrement())
   messageId     Int      @map("message_id")
@@ -38,6 +40,7 @@ model ChangeLogs {
   @@map("change_logs")
 }
 
+// Catatan setiap email keluar dan status pengirimannya.
 model EmailLogs {
   id                 Int       @id @default(autoincrement())
   model              String    @db.VarChar(60)
@@ -60,6 +63,7 @@ model EmailLogs {
   @@map("email_logs")
 }
 
+// Data berkas lampiran dan tanda tangan; berkasnya sendiri ada di volume storage.
 model Attachments {
   id                  Int      @id @default(autoincrement())
   name                String   @db.VarChar(250)
@@ -77,6 +81,7 @@ model Attachments {
   @@map("attachments")
 }
 
+// Aktivitas terjadwal pada dokumen, tampil di ikon lonceng.
 model Activities {
   id           Int      @id @default(autoincrement())
   resModel     String   @map("res_model") @db.VarChar(60)
@@ -96,6 +101,7 @@ model Activities {
   @@map("activities")
 }
 
+// Pengaturan sistem berupa pasangan kunci dan nilai: perusahaan, PPN, syarat dokumen.
 model Settings {
   key   String @id @db.VarChar(60)
   value Json
@@ -103,6 +109,7 @@ model Settings {
   @@map("settings")
 }
 
+// Penghitung nomor dokumen per kode, tahun, dan bulan.
 model DocumentSequences {
   id         Int    @id @default(autoincrement())
   code       String @db.VarChar(10)
@@ -114,6 +121,7 @@ model DocumentSequences {
   @@map("document_sequences")
 }
 
+// Filter favorit yang disimpan setiap pengguna.
 model SavedFilters {
   id       Int    @id @default(autoincrement())
   userId   Int    @map("user_id")
@@ -126,6 +134,7 @@ model SavedFilters {
   @@map("saved_filters")
 }
 
+// Kunci REST API untuk aplikasi lain; hanya hash-nya yang disimpan.
 model ApiKeys {
   id         Int       @id @default(autoincrement())
   name       String    @db.VarChar(80)
@@ -138,6 +147,7 @@ model ApiKeys {
   @@map("api_keys")
 }
 
+// Surat resmi, berita acara, dan laporan pemeliharaan; tidak memengaruhi stok maupun jurnal.
 model Documents {
   id          Int          @id @default(autoincrement())
   type        String       @db.VarChar(20)

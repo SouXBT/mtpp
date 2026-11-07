@@ -1,5 +1,6 @@
 // Gudang, surat jalan, dan stok
 
+// Gudang; setiap principal memiliki satu gudang.
 model Warehouses {
   id                                Int               @id @default(autoincrement())
   partnerId                         Int               @map("partner_id")
@@ -21,6 +22,7 @@ model Warehouses {
   @@map("warehouses")
 }
 
+// Lokasi stok, baik di dalam gudang maupun lokasi asal dan tujuan barang.
 model Locations {
   id                              Int              @id @default(autoincrement())
   warehouseId                     Int?             @map("warehouse_id")
@@ -43,6 +45,7 @@ model Locations {
   @@map("locations")
 }
 
+// Jenis dokumen gudang per gudang: Penerimaan Barang atau Surat Jalan, beserta kode nomornya.
 model TransferTypes {
   id                             Int              @id @default(autoincrement())
   warehouseId                    Int?             @map("warehouse_id")
@@ -60,6 +63,7 @@ model TransferTypes {
   @@map("transfer_types")
 }
 
+// Dokumen gudang: penerimaan barang dan surat jalan, termasuk dokumen susulan.
 model StockTransfers {
   id             Int              @id @default(autoincrement())
   name           String           @unique(map: "stock_transfers_name_unique") @db.VarChar(40)
@@ -99,6 +103,7 @@ model StockTransfers {
   @@map("stock_transfers")
 }
 
+// Baris barang pada dokumen gudang; yang sudah divalidasi menjadi riwayat mutasi stok.
 model StockMoves {
   id             Int                 @id @default(autoincrement())
   pickingId      Int?                @map("picking_id")
@@ -131,6 +136,7 @@ model StockMoves {
   @@map("stock_moves")
 }
 
+// Saldo stok fisik per produk per lokasi.
 model StockBalances {
   id               Int       @id @default(autoincrement())
   productId        Int       @map("product_id")
@@ -150,6 +156,7 @@ model StockBalances {
   @@map("stock_balances")
 }
 
+// Batas stok minimum per produk per gudang.
 model StockRules {
   id          Int        @id @default(autoincrement())
   productId   Int        @map("product_id")
