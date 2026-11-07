@@ -135,5 +135,21 @@ cek(longgar.body.partnerShippingId === null, `'' menjadi kosong (${longgar.body.
 const salah = await call(S, 'POST', '/sales-orders', { partnerId: 999999 });
 cek(salah.status !== 500, `pelanggan tidak ada tetap pesan biasa -> ${salah.status}`);
 
+// Harga produk butuh pelanggan: tanpa pelanggan yang sah harus pesan jelas, bukan galat server.
+const produk = (await call(S, 'GET', '/products')).body[0];
+for (const [q, ket] of [
+  ['', 'tanpa pelanggan'],
+  ['?partnerId=abc', 'pelanggan bukan angka'],
+  ['?partnerId=1.5', 'pelanggan desimal'],
+  ['?partnerId=99999999999', 'pelanggan di luar rentang'],
+]) {
+  const r = await call(S, 'GET', `/products/${produk.id}/price${q}`);
+  cek(r.status === 400 && /pelanggan/i.test(r.body.message), `harga ${ket} -> ${r.status} ${r.body.message || ''}`);
+}
+const harga = await call(S, 'GET', `/products/${produk.id}/price?partnerId=${partner.id}&qty=2`);
+cek(harga.status === 200 && typeof harga.body.priceUnit === 'number', `harga dengan pelanggan -> ${harga.status}`);
+const tanpaData = await call(S, 'GET', `/products/${produk.id}/price?partnerId=999999`);
+cek(tanpaData.status === 200, `pelanggan tidak terdaftar tetap harga daftar -> ${tanpaData.status}`);
+
 console.log(gagal ? `${gagal} gagal` : 'Validasi lulus');
 process.exit(gagal ? 1 : 0);

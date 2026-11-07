@@ -65,7 +65,10 @@ export class ProductsService {
   }
 
   async price(u: AuthUser, id: number, q: any) {
-    const sp = await this.pricing.salePrice(id, +q.partnerId, +q.qty || 1);
+    const partnerId = Number(q.partnerId);
+    if (!Number.isInteger(partnerId) || partnerId < 1 || partnerId > 2147483647)
+      fail('Pilih pelanggan dulu untuk melihat harga produk');
+    const sp = await this.pricing.salePrice(id, partnerId, +q.qty || 1);
     const c = await this.pricing.cost(id, +q.qty || 1);
     const pr = await this.pricing.product(id);
     const w = pr.t.mainSupplierId ? await this.pricing.warehouseOf(pr.t.mainSupplierId) : null;
