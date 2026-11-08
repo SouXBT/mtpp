@@ -1,3 +1,12 @@
+-- ======================================================================
+-- Migrasi indexes_relations_state_rules (perubahan STRUKTUR).
+-- Tiga bagian:
+--   A. Index pada kolom foreign key agar join dan filter lebih cepat.
+--   B. Foreign key yang belum ada di 0_init (relasi ke diri sendiri, dll).
+--   C. CHECK constraint untuk nilai kolom state di dokumen utama.
+-- ======================================================================
+
+-- ---- A. INDEX pada kolom foreign key -------------------------------
 -- CreateIndex
 CREATE INDEX "users_partner_id_idx" ON "users"("partner_id");
 
@@ -214,6 +223,7 @@ CREATE INDEX "documents_partner_id_idx" ON "documents"("partner_id");
 -- CreateIndex
 CREATE INDEX "documents_sale_order_id_idx" ON "documents"("sale_order_id");
 
+-- ---- B. FOREIGN KEY tambahan ---------------------------------------
 -- AddForeignKey
 ALTER TABLE "journal_entries" ADD CONSTRAINT "journal_entries_reversed_entry_id_fk" FOREIGN KEY ("reversed_entry_id") REFERENCES "journal_entries"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
@@ -230,6 +240,7 @@ ALTER TABLE "stock_transfers" ADD CONSTRAINT "stock_transfers_backorder_id_fk" F
 ALTER TABLE "messages" ADD CONSTRAINT "messages_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 
+-- ---- C. CHECK constraint: daftar nilai state yang diizinkan --------
 -- Aturan nilai state. Prisma tidak memodelkan CHECK, jadi hanya ada di migrasi ini.
 ALTER TABLE "sales_orders" ADD CONSTRAINT "sales_orders_state_check" CHECK ("state" IN ('draft', 'sent', 'sale', 'done', 'cancel'));
 ALTER TABLE "purchase_orders" ADD CONSTRAINT "purchase_orders_state_check" CHECK ("state" IN ('draft', 'sent', 'purchase', 'done', 'cancel'));

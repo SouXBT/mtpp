@@ -1,3 +1,12 @@
+-- ======================================================================
+-- Migrasi doc_notes_no_returns (perubahan DATA, bukan struktur).
+-- Sistem tidak memiliki proses retur maupun uang muka ke principal, jadi:
+--   1. Catatan PO: barang tidak sesuai diselesaikan lewat kesepakatan tertulis.
+--   2. Catatan invoice: pengecualian "kecuali ada kesepakatan tertulis".
+--   3. Data contoh PT Daya Pompa Mandiri: termin 30 hari, bukan uang muka.
+-- Setiap UPDATE hanya berlaku bila teks masih sama dengan bawaan sebelumnya.
+-- ======================================================================
+
 -- Catatan invoice dan PO selaras: sistem tidak memiliki proses retur. Hanya teks yang masih bawaan yang diganti.
 UPDATE "settings"
 SET "value" = jsonb_set("value"::jsonb, '{po}', to_jsonb(E'Harga belum termasuk PPN; PPN dihitung terpisah pada dokumen ini\nHarga sudah termasuk biaya pengiriman ke alamat tujuan\nFaktur pajak dan surat jalan wajib dilampirkan pada saat pengiriman\nBarang yang tidak sesuai spesifikasi diselesaikan melalui kesepakatan tertulis dengan penjual'::text))

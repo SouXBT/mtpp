@@ -1,6 +1,14 @@
+-- ======================================================================
+-- Migrasi 0_init: struktur awal database MTPP Distribusi.
+-- Membuat 40 tabel, index unik, dan foreign key utama.
+-- Dijalankan sekali saat database masih kosong; migrasi berikutnya
+-- hanya menambah atau mengubah dari titik ini.
+-- ======================================================================
+
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
 
+-- ---- AUTH: pengguna, grup, dan hak akses ---------------------------
 -- CreateTable
 CREATE TABLE "users" (
     "id" SERIAL NOT NULL,
@@ -62,6 +70,7 @@ CREATE TABLE "group_permissions" (
     CONSTRAINT "group_permissions_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- BASE: chatter, log perubahan, log email, lampiran -------------
 -- CreateTable
 CREATE TABLE "messages" (
     "id" SERIAL NOT NULL,
@@ -136,6 +145,7 @@ CREATE TABLE "attachments" (
     CONSTRAINT "attachments_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- MASTER: termin, pricelist, partner, satuan, produk, harga supplier ----
 -- CreateTable
 CREATE TABLE "payment_terms" (
     "id" SERIAL NOT NULL,
@@ -262,6 +272,7 @@ CREATE TABLE "supplier_prices" (
     CONSTRAINT "supplier_prices_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- STOCK: gudang dan lokasi --------------------------------------
 -- CreateTable
 CREATE TABLE "warehouses" (
     "id" SERIAL NOT NULL,
@@ -293,6 +304,7 @@ CREATE TABLE "locations" (
     CONSTRAINT "locations_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- SALES: penawaran / sales order dan barisnya -------------------
 -- CreateTable
 CREATE TABLE "sales_orders" (
     "id" SERIAL NOT NULL,
@@ -354,6 +366,7 @@ CREATE TABLE "sales_order_lines" (
     CONSTRAINT "sales_order_lines_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- PURCHASING: purchase order dan barisnya -----------------------
 -- CreateTable
 CREATE TABLE "purchase_orders" (
     "id" SERIAL NOT NULL,
@@ -401,6 +414,7 @@ CREATE TABLE "purchase_order_lines" (
     CONSTRAINT "purchase_order_lines_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- STOCK: jenis transfer, transfer, pergerakan, dan saldo stok ----
 -- CreateTable
 CREATE TABLE "transfer_types" (
     "id" SERIAL NOT NULL,
@@ -477,6 +491,7 @@ CREATE TABLE "stock_balances" (
     CONSTRAINT "stock_balances_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- ACCOUNTING: akun, jurnal, entri jurnal, pembayaran, mutasi bank ----
 -- CreateTable
 CREATE TABLE "accounts" (
     "id" SERIAL NOT NULL,
@@ -609,6 +624,7 @@ CREATE TABLE "bank_statement_lines" (
     CONSTRAINT "bank_statement_lines_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- MASTER: item pricelist penjualan ------------------------------
 -- CreateTable
 CREATE TABLE "sales_pricelist_items" (
     "id" SERIAL NOT NULL,
@@ -623,6 +639,7 @@ CREATE TABLE "sales_pricelist_items" (
     CONSTRAINT "sales_pricelist_items_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- STOCK: aturan stok minimum ------------------------------------
 -- CreateTable
 CREATE TABLE "stock_rules" (
     "id" SERIAL NOT NULL,
@@ -633,6 +650,7 @@ CREATE TABLE "stock_rules" (
     CONSTRAINT "stock_rules_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- BASE: aktivitas / tugas ---------------------------------------
 -- CreateTable
 CREATE TABLE "activities" (
     "id" SERIAL NOT NULL,
@@ -651,6 +669,7 @@ CREATE TABLE "activities" (
     CONSTRAINT "activities_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- SYSTEM: pengaturan, penomoran dokumen, filter tersimpan, API key ----
 -- CreateTable
 CREATE TABLE "settings" (
     "key" VARCHAR(60) NOT NULL,
@@ -694,6 +713,7 @@ CREATE TABLE "api_keys" (
     CONSTRAINT "api_keys_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- SYSTEM: dokumen -----------------------------------------------
 -- CreateTable
 CREATE TABLE "documents" (
     "id" SERIAL NOT NULL,
@@ -712,6 +732,7 @@ CREATE TABLE "documents" (
     CONSTRAINT "documents_pkey" PRIMARY KEY ("id")
 );
 
+-- ---- INDEX UNIK (dibuat setelah semua tabel ada) -------------------
 -- CreateIndex
 CREATE UNIQUE INDEX "users_login_unique" ON "users"("login");
 
@@ -772,6 +793,7 @@ CREATE UNIQUE INDEX "documents_number_unique" ON "documents"("number");
 -- CreateIndex
 CREATE INDEX "documents_type_idx" ON "documents"("type");
 
+-- ---- FOREIGN KEY: relasi antar tabel -------------------------------
 -- AddForeignKey
 ALTER TABLE "users" ADD CONSTRAINT "users_partner_id_partners_id_fk" FOREIGN KEY ("partner_id") REFERENCES "partners"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
