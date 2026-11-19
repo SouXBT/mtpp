@@ -39,6 +39,7 @@ const ACCOUNTS: [string, string, string][] = [
   ['3-2000', 'Laba Ditahan', 'equity'],
   ['3-9000', 'Ekuitas Saldo Awal', 'equity'],
   ['4-1000', 'Penjualan', 'income'],
+  ['4-1100', 'Retur Penjualan', 'income'],
   ['4-2000', 'Pendapatan Lain-lain', 'income'],
   ['5-1000', 'Pembelian Barang Dagang', 'expense'],
   ['6-1000', 'Beban Gaji', 'expense'],

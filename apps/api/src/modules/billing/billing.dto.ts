@@ -1,4 +1,4 @@
-import { IsDateLike, IsId, IsNumeric, IsText } from '../../shared/validation';
+import { IsDateLike, IsId, IsNumeric, IsRows, IsText } from '../../shared/validation';
 
 export class PaymentDto {
   @IsId() invoiceId?: number;
@@ -20,4 +20,9 @@ export class InvoiceSourceDto {
 
 export class SendInvoiceDto {
   @IsText() to?: string;
+}
+
+export class InstallmentsDto {
+  @IsRows() termins!: { dateDue: string; amount: number }[];
+  @IsText() note?: string;
 }

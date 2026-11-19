@@ -77,3 +77,9 @@ test('pelanggan baru lunas dengan stok memberi KIRIM; invoiceStatus partial tanp
   );
   assert.deepEqual(nextSteps({ state: 'sale', invoiceStatus: 'partial' }), []);
 });
+
+test('tagihan lewat masa tenggang menahan surat jalan', () => {
+  const s = nextSteps({ state: 'sale', canDeliver: false, readyItems: 2, creditHold: { blocking: true } });
+  assert.ok(s.some((x) => x.includes('lewat masa tenggang')));
+  assert.ok(!s.some((x) => x.includes('membuat surat jalan')));
+});

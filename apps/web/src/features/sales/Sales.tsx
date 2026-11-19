@@ -410,7 +410,30 @@ export function SalesDetail() {
   const addresses = (partner.data?.addresses || []) as any[];
   const step = o.state === 'cancel' ? 'draft' : o.state;
   const pay = o.payment || {};
+  const hold = o.creditHold || {};
   const steps = nextSteps(o);
+  const release = () => {
+    let note = '';
+    Modal.confirm({
+      title: 'Izinkan pengiriman?',
+      content: (
+        <>
+          <div>Surat jalan sales order ini dapat diterbitkan walau pelanggan memiliki tagihan lewat masa tenggang.</div>
+          <Input.TextArea
+            style={{ marginTop: 12 }}
+            rows={2}
+            placeholder="Alasan (wajib), mis. janji bayar tanggal ..."
+            onChange={(e) => {
+              note = e.target.value;
+            }}
+          />
+        </>
+      ),
+      okText: 'Izinkan Kirim',
+      cancelText: 'Batal',
+      onOk: () => act('release', 'Pengiriman diizinkan', { note }),
+    });
+  };
   const fromQuote = o.quotationNumber && o.name !== o.quotationNumber;
   // draf bekas SO dan penawaran lama yang nomornya tidak diganti tetap memakai nomor yang ada
   const getsSoNumber = !fromQuote && (o.quotationNumber || (o.nameEdit && o.nameEdit !== o.name));
@@ -422,6 +445,15 @@ export function SalesDetail() {
       content: (
         <>
           <div>{`${o.expired ? 'Penawaran sudah kedaluwarsa. ' : ''}Baris produk akan terkunci setelah dikonfirmasi.${getsSoNumber ? ' Dokumen ini akan mendapat nomor sales order.' : ''}`}</div>
+          {hold.invoices?.length > 0 && (
+            <Alert
+              style={{ marginTop: 12 }}
+              type="warning"
+              showIcon
+              message={`Pelanggan memiliki tagihan lewat masa tenggang: ${hold.invoices.map((x: any) => x.name).join(', ')}.`}
+              description="Sales order tetap dapat dikonfirmasi, tetapi surat jalan ditahan sampai tagihan dilunasi atau Pimpinan memberi izin kirim."
+            />
+          )}
           <div style={{ marginTop: 12 }}>
             <label htmlFor="po-konfirmasi">PO Pelanggan</label>
             <Input
@@ -542,7 +574,13 @@ export function SalesDetail() {
         {o.state === 'sale' && can('gudang', 'create') && o.deliverable && (
           <Button
             disabled={!o.canDeliver || delivery.isCreating(+id!)}
-            title={!o.canDeliver ? 'Pelanggan baru harus melunasi sales order' : ''}
+            title={
+              !o.canDeliver
+                ? hold.blocking
+                  ? 'Pelanggan memiliki tagihan lewat masa tenggang'
+                  : 'Pelanggan baru harus melunasi sales order'
+                : ''
+            }
             onClick={() => delivery.create(+id!)}
           >
             Buat Surat Jalan
@@ -605,6 +643,45 @@ export function SalesDetail() {
                 Cetak proforma
               </Button>
             )
+          }
+        />
+      )}
+
+      {!isNew && hold.invoices?.length > 0 && o.state !== 'cancel' && (
+        <Alert
+          style={{ marginBottom: 16 }}
+          type={hold.blocking ? 'error' : 'warning'}
+          showIcon
+          message={
+            <>
+              Tagihan lewat masa tenggang:{' '}
+              {hold.invoices.map((x: any, i: number) => (
+                <span key={x.id}>
+                  {i > 0 && ', '}
+                  <Link to={`/penagihan/${x.id}`}>{x.name}</Link>
+                </span>
+              ))}
+            </>
+          }
+          description={
+            hold.released
+              ? `Pengiriman diizinkan ${hold.releasedBy ? 'oleh ' + hold.releasedBy : ''} (${hold.releaseNote}).`
+              : ['sale'].includes(o.state)
+                ? 'Surat jalan ditahan sampai tagihan dilunasi atau Pimpinan memberi izin kirim.'
+                : 'Setelah dikonfirmasi, surat jalan ditahan sampai tagihan dilunasi atau Pimpinan memberi izin kirim.'
+          }
+          action={
+            me?.group === 'PIMPINAN' &&
+            ['sale', 'done'].includes(o.state) &&
+            (hold.released ? (
+              <Button size="small" onClick={() => act('release/revoke', 'Izin kirim dicabut')}>
+                Cabut Izin
+              </Button>
+            ) : (
+              <Button size="small" type="primary" onClick={release}>
+                Izinkan Kirim
+              </Button>
+            ))
           }
         />
       )}
@@ -1038,6 +1115,15 @@ function Related({ o }: { o: any }) {
               </div>
             ))}
             {!o.invoices?.length && '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="Retur">
+            {(o.returns || []).map((t: any) => (
+              <div key={t.id}>
+                <Link to={`/stok/retur/${t.id}`}>{t.name}</Link> <Pill v={t.state} kind="ret" />{' '}
+                <span className="muted">{LABEL.retRes[t.resolution] || t.resolution}</span>
+              </div>
+            ))}
+            {!o.returns?.length && '-'}
           </Descriptions.Item>
           <Descriptions.Item label="Pembayaran diterima">
             {rp(o.payment?.amount)} dari {rp(o.amountTotal)}

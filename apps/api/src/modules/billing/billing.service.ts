@@ -18,6 +18,15 @@ import {
   tglIndo,
   today,
 } from '../../shared/util';
+import {
+  DUE_STATE,
+  allocate,
+  collectionSettings,
+  graceOf,
+  planError,
+  receivableSlices,
+  summarize,
+} from '../../shared/collection';
 import { JournalService } from '../accounting/journal.service';
 import { EmailService } from '../email/email.service';
 import { Prisma } from '@prisma/client';
@@ -57,8 +66,8 @@ export class BillingService {
     if (q.state) w.push({ state: q.state });
     if (q.paymentState) w.push({ paymentState: { in: String(q.paymentState).split(',') } });
     if (q.partnerId) w.push({ partnerId: +q.partnerId });
-    if (q.overdue === 'true')
-      w.push({ AND: [{ invoiceDateDue: { lt: today() } }, { amountResidual: { gt: 0 } }, { state: 'posted' }] });
+    // jatuh tempo efektif bergantung pada cicilan, jadi filter lewat jatuh tempo diterapkan setelah status dihitung
+    if (q.overdue === 'true' || q.dueState) w.push({ AND: [{ amountResidual: { gt: 0 } }, { state: 'posted' }] });
     if (q.q)
       w.push({
         OR: [
@@ -77,13 +86,164 @@ export class BillingService {
       })
     ).map(({ partner, ...e }) => ({ e, partner: partner?.name ?? null }));
     const t = today();
-    return rows.map((r) => ({
-      ...r.e,
-      partner: r.partner,
-      paymentLabel: PAY_STATE[r.e.paymentState],
-      overdue:
-        r.e.state === 'posted' && Number(r.e.amountResidual) > 0 && !!r.e.invoiceDateDue && r.e.invoiceDateDue < t,
+    const open = rows.filter((r) => r.e.moveType === 'out_invoice' && r.e.state === 'posted').map((r) => r.e.id);
+    const sum = open.length ? summarize(await receivableSlices(this.db, { invoiceIds: open }), t) : new Map();
+    const out = rows.map((r) => {
+      const s = sum.get(r.e.id);
+      return {
+        ...r.e,
+        partner: r.partner,
+        paymentLabel: PAY_STATE[r.e.paymentState],
+        dueDate: s?.due ?? r.e.invoiceDateDue,
+        dueState: s?.state ?? null,
+        dueLabel: s ? DUE_STATE[s.state] : null,
+        graceUntil: s?.graceUntil ?? null,
+        overdue: s
+          ? s.overdue
+          : r.e.state === 'posted' && Number(r.e.amountResidual) > 0 && !!r.e.invoiceDateDue && r.e.invoiceDateDue < t,
+      };
+    });
+    return out.filter(
+      (x) => (q.overdue !== 'true' || x.overdue) && (!q.dueState || String(q.dueState).split(',').includes(x.dueState)),
+    );
+  }
+
+  // Jadwal cicilan beserta alokasi pembayaran per termin
+  async installments(e: any) {
+    const rows = await this.db.invoiceInstallments.findMany({
+      where: { invoiceId: e.id },
+      orderBy: { sequence: 'asc' },
+    });
+    if (!rows.length) return { state: null, rows: [], outside: 0 };
+    const a = allocate(Number(e.amountTotal), Number(e.amountResidual), rows as any);
+    const uids = [...new Set(rows.map((r) => r.approveUid).filter(Boolean))] as number[];
+    const users = uids.length
+      ? await this.db.users.findMany({ where: { id: { in: uids } }, include: { partner: { select: { name: true } } } })
+      : [];
+    const t = today();
+    return {
+      state: rows[0].state,
+      approvedBy: users[0]?.partner.name ?? null,
+      approveDate: rows[0].approveDate,
+      note: rows[0].note,
+      outside: a.outside,
+      rows: a.rows.map((x) => ({ ...x, late: x.open > 0.5 && x.dateDue < t })),
+    };
+  }
+
+  // Buat atau ganti jadwal cicilan (status draf, belum berlaku sampai disetujui)
+  async setInstallments(u: AuthUser, id: number, b: { termins: { dateDue: string; amount: number }[]; note?: string }) {
+    const e = must(await this.db.journalEntries.findFirst({ where: { id }, include: { partner: true } }), 'Invoice');
+    if (e.moveType !== 'out_invoice' || e.state !== 'posted')
+      fail('Cicilan hanya untuk invoice pelanggan yang sudah diposting');
+    if (e.paymentState === 'reversed') fail('Invoice sudah dibalik');
+    if (!(Number(e.amountResidual) > 0.5)) fail('Invoice sudah lunas');
+    if (e.partner?.mtppIsNewCustomer) fail('Pelanggan baru wajib melunasi di muka; cicilan hanya untuk pelanggan lama');
+    const cfg = await collectionSettings(this.db);
+    const termins = (b.termins || []).map((x) => ({
+      dateDue: String(x.dateDue || ''),
+      amount: round2(Number(x.amount)),
     }));
+    const err = planError(termins, Number(e.amountResidual), e.invoiceDate || e.date, {
+      maxTermins: Number(cfg.maxInstallments),
+      maxMonths: Number(cfg.maxMonths),
+    });
+    if (err) fail(err);
+    await this.db.$transaction(async (tx) => {
+      const had = await tx.invoiceInstallments.count({ where: { invoiceId: id } });
+      await tx.invoiceInstallments.deleteMany({ where: { invoiceId: id } });
+      await tx.invoiceInstallments.createMany({
+        data: termins.map((x, i) => ({
+          invoiceId: id,
+          sequence: i + 1,
+          dateDue: x.dateDue,
+          amount: x.amount,
+          note: b.note || null,
+          createUid: u.id,
+          writeUid: u.id,
+        })),
+      });
+      const list = termins.map((x, i) => `${i + 1}) ${tglIndo(x.dateDue)} ${rupiah(x.amount)}`).join('; ');
+      await this.chatter.log(
+        MODEL,
+        id,
+        u.id,
+        `${had ? 'Jadwal cicilan diubah' : 'Jadwal cicilan diajukan'}, menunggu persetujuan: ${list}`,
+        [],
+        tx,
+      );
+    });
+    return this.get(id);
+  }
+
+  async approveInstallments(u: AuthUser, id: number) {
+    const rows = await this.db.invoiceInstallments.findMany({ where: { invoiceId: id } });
+    if (!rows.length) fail('Invoice belum memiliki jadwal cicilan');
+    if (rows[0].state === 'approved') fail('Jadwal cicilan sudah disetujui');
+    const e = must(await this.db.journalEntries.findFirst({ where: { id } }), 'Invoice');
+    const planned = round2(rows.reduce((a, x) => a + Number(x.amount), 0));
+    if (Math.abs(planned - Number(e.amountResidual)) > 0.5)
+      fail('Sisa tagihan berubah sejak jadwal diajukan; ajukan ulang jadwal cicilan');
+    await this.db.$transaction(async (tx) => {
+      await tx.invoiceInstallments.updateMany({
+        where: { invoiceId: id },
+        data: { state: 'approved', approveUid: u.id, approveDate: new Date(), writeUid: u.id },
+      });
+      await this.chatter.log(MODEL, id, u.id, `Jadwal cicilan ${rows.length} termin disetujui`, [], tx);
+    });
+    return this.get(id);
+  }
+
+  async cancelInstallments(u: AuthUser, id: number) {
+    const n = await this.db.invoiceInstallments.count({ where: { invoiceId: id } });
+    if (!n) fail('Invoice belum memiliki jadwal cicilan');
+    await this.db.$transaction(async (tx) => {
+      await tx.invoiceInstallments.deleteMany({ where: { invoiceId: id } });
+      await this.chatter.log(
+        MODEL,
+        id,
+        u.id,
+        'Jadwal cicilan dibatalkan; jatuh tempo kembali ke tanggal invoice',
+        [],
+        tx,
+      );
+    });
+    return this.get(id);
+  }
+
+  // Email pengingat pembayaran untuk invoice yang mendekati atau melewati jatuh tempo
+  async remind(u: AuthUser, id: number, b: { to?: string }) {
+    const e: any = await this.get(id);
+    if (e.moveType !== 'out_invoice' || e.state !== 'posted' || !(Number(e.amountResidual) > 0.5))
+      fail('Pengingat hanya untuk invoice yang belum lunas');
+    const to = b.to || e.partner?.email;
+    if (!to) fail('Email pelanggan belum diisi');
+    const f = await this.pdfBuffer(u, id);
+    const open = e.installments.rows.filter((x: any) => x.open > 0.5);
+    const next = open[0];
+    const what = next
+      ? ` Cicilan ke-${next.sequence} sebesar ${rupiah(next.open)} jatuh tempo ${tglIndo(next.dateDue)}.`
+      : ` Sisa tagihan ${rupiah(e.amountResidual)} jatuh tempo ${tglIndo(e.invoiceDateDue)}.`;
+    const grace =
+      e.dueState === 'tenggang'
+        ? ` Saat ini dalam masa tenggang sampai ${tglIndo(e.graceUntil)}.`
+        : e.dueState === 'lewat_tenggang'
+          ? ' Masa tenggang sudah berakhir; pengiriman berikutnya ditahan sampai tagihan ini diselesaikan.'
+          : '';
+    const r = await this.email.send(
+      {
+        model: MODEL,
+        resId: id,
+        documentName: e.name,
+        to,
+        subject: `Pengingat pembayaran ${e.name} – PT Mentari Timur Prima Perkasa`,
+        html: this.email.html('Pengingat pembayaran', e.name, e.partner.name, what + grace),
+        pdf: { name: f.name, buffer: f.buffer },
+      },
+      u.id,
+    );
+    await this.chatter.log(MODEL, id, u.id, `Pengingat pembayaran dikirim ke ${to}`);
+    return r;
   }
 
   async get(id: number) {
@@ -114,8 +274,25 @@ export class BillingService {
       const p = advPays.find((a) => a.name === x.paymentName);
       return { ...p, amount: x.amount };
     });
+    const inst = e.moveType === 'out_invoice' ? await this.installments(e) : { state: null, rows: [], outside: 0 };
+    const sum =
+      e.moveType === 'out_invoice' && e.state === 'posted'
+        ? summarize(await receivableSlices(this.db, { invoiceIds: [id] }), today()).get(id)
+        : undefined;
+    const cfg = await collectionSettings(this.db);
     return {
       ...e,
+      installments: inst,
+      graceDays: graceOf(e.partner, cfg.graceDays),
+      dueDate: sum?.due ?? e.invoiceDateDue,
+      dueState: sum?.state ?? null,
+      dueLabel: sum ? DUE_STATE[sum.state] : null,
+      graceUntil: sum?.graceUntil ?? null,
+      canInstall:
+        e.moveType === 'out_invoice' &&
+        e.state === 'posted' &&
+        Number(e.amountResidual) > 0.5 &&
+        !e.partner?.mtppIsNewCustomer,
       lines: lines.map((r) => ({ ...r.l, account: `${r.code} ${r.account}` })),
       productLines: lines.filter((r) => r.l.displayType === 'product').map((r) => r.l),
       payments: pays,
@@ -125,7 +302,9 @@ export class BillingService {
       words: terbilang(Number(e.amountTotal)),
       wordsEn: terbilangEn(Number(e.amountTotal)),
       emailStatus: await this.email.lastStatus(MODEL, id),
-      overdue: e.state === 'posted' && Number(e.amountResidual) > 0 && !!e.invoiceDateDue && e.invoiceDateDue < today(),
+      overdue: sum
+        ? sum.overdue
+        : e.state === 'posted' && Number(e.amountResidual) > 0 && !!e.invoiceDateDue && e.invoiceDateDue < today(),
     };
   }
 
@@ -399,6 +578,7 @@ export class BillingService {
           }
         }
       const rv = await this.journal.reverse(tx, id, u.id, e.moveType === 'out_invoice' ? 'out_refund' : 'in_refund');
+      await tx.invoiceInstallments.deleteMany({ where: { invoiceId: id } });
       for (const l of lines) {
         if (l.saleLineId)
           await tx.$executeRaw(
@@ -900,7 +1080,22 @@ export class BillingService {
       ],
       words: terbilang(Number(e.amountTotal)),
       wordsEn: terbilangEn(Number(e.amountTotal)),
-      terms: [['Pembayaran / Payment', bank.text]],
+      terms: [
+        ...(e.installments.state === 'approved'
+          ? [
+              [
+                'Jadwal cicilan / Installments',
+                e.installments.rows
+                  .map(
+                    (x: any) =>
+                      `${x.sequence}. ${tglIndo(x.dateDue)} – ${rupiah(x.amount)}${x.status === 'lunas' ? ' (lunas)' : x.paid > 0 ? ` (sisa ${rupiah(x.open)})` : ''}`,
+                  )
+                  .join('\n'),
+              ],
+            ]
+          : []),
+        ['Pembayaran / Payment', bank.text],
+      ],
       signer: { name: sg?.name || u.name, role: 'Finance – PT Mentari Timur Prima Perkasa', signatureId: sg?.sig },
     };
     return { buffer: await this.pdf.document(spec), name: `${e.name.replace(/\//g, '-')}.pdf`, e };

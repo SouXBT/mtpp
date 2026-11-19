@@ -36,3 +36,7 @@ export class ProformaDto {
   @IsText() note?: string;
   @IsDateLike() date?: string;
 }
+
+export class ReleaseDto {
+  @IsText() note?: string;
+}

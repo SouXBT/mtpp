@@ -48,6 +48,7 @@ export const MODULES: Module[] = [
       { label: 'Penerimaan Barang', to: '/stok/penerimaan', menu: 'gudang' },
       { label: 'Siap Dikirim', to: '/stok/siap-dikirim', menu: 'gudang' },
       { label: 'Surat Jalan', to: '/stok/surat-jalan', menu: 'gudang' },
+      { label: 'Retur Pelanggan', to: '/stok/retur', menu: 'gudang' },
       { label: 'Stok Minimum', to: '/stok/minimum', menu: 'stok' },
       { label: 'Mutasi', to: '/stok/mutasi', menu: 'stok' },
     ],

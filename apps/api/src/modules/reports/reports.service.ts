@@ -6,6 +6,7 @@ import { daysBetween, fail, round2, rupiah, tglIndo, today } from '../../shared/
 import { StockService } from '../stock/stock.service';
 import { Prisma } from '@prisma/client';
 import { Col, REPORT_TITLES } from './reports.helpers';
+import { DUE_STATE, dueState, receivableSlices } from '../../shared/collection';
 
 const sql = Prisma.sql;
 
@@ -482,10 +483,22 @@ export class ReportsService {
         };
       }
       case 'umur_piutang': {
-        const inv = await this
-          .q(sql`select e.id, e.name, e.partner_id, p.name as customer, e.invoice_date as date, e.invoice_date_due as due, e.amount_total::float as total, e.amount_residual::float as residual
-          from journal_entries e join partners p on p.id = e.partner_id where e.move_type = 'out_invoice' and e.state = 'posted' and e.amount_residual > 0
-          ${pid ? sql`and e.partner_id = ${pid}` : sql``} order by p.name, e.invoice_date_due`);
+        // dipecah per termin cicilan yang disetujui; umur dihitung dari jatuh tempo asli, masa tenggang hanya status
+        const inv: any[] = (await receivableSlices(this.db, pid ? { partnerId: pid } : {}))
+          .map((x) => {
+            const d = dueState(x.due, x.open, x.graceDays, today());
+            return {
+              id: x.invoiceId,
+              name: x.sequence ? `${x.name} (cicilan ${x.sequence})` : x.name,
+              partner_id: x.partnerId,
+              customer: x.customer,
+              date: x.date,
+              due: x.due,
+              residual: x.open,
+              status: DUE_STATE[d.state],
+            };
+          })
+          .sort((a, b) => a.customer.localeCompare(b.customer) || String(a.due).localeCompare(String(b.due)));
         const t = today();
         const map: Record<string, any> = {};
         for (const i of inv) {
@@ -518,6 +531,7 @@ export class ReportsService {
                 { key: 'due', title: 'Jatuh tempo', type: 'date' },
                 { key: 'days', title: 'Terlambat (hari)', type: 'qty' },
                 { key: 'bucket', title: 'Kelompok' },
+                { key: 'status', title: 'Status penagihan' },
                 { key: 'residual', title: 'Sisa piutang', type: 'money' },
               ]
             : [

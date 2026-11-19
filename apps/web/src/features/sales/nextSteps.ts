@@ -8,6 +8,7 @@ interface Order {
   invoiceStatus?: string;
   invoices?: { moveType: string; state: string; paymentState?: string }[];
   transfers?: { code?: string; state: string }[];
+  creditHold?: { blocking?: boolean };
 }
 
 // Langkah berikutnya di detail sales order, menurut keadaan yang sama dengan tombol aksinya.
@@ -17,6 +18,8 @@ export function nextSteps(o: Order): string[] {
     if ((o.shortage || []).some((x) => x.shortage > 0)) out.push('Berikutnya: Finance membuat PO Principal.');
     if (o.partner?.mtppIsNewCustomer && !o.payment?.paidFull)
       out.push('Berikutnya: Finance mencatat pembayaran pelanggan.');
+    else if (o.creditHold?.blocking)
+      out.push('Berikutnya: Finance menagih tagihan yang lewat masa tenggang, atau Pimpinan memberi izin kirim.');
     else if (o.canDeliver && (o.readyItems || 0) > 0) out.push('Berikutnya: Operasional membuat surat jalan.');
     if ((o.transfers || []).some((t) => t.code === 'outgoing' && ['draft', 'waiting', 'assigned'].includes(t.state)))
       out.push('Berikutnya: Operasional memvalidasi surat jalan.');

@@ -38,7 +38,10 @@ export class StockController {
       qty: m.quantity,
       product: m.product.template.name,
       code: m.product.defaultCode,
-      doc: m.picking?.name ?? null,
+      // retur pelanggan tidak memiliki dokumen gudang; tujuannya lokasi Barang Rusak
+      doc:
+        m.picking?.name ??
+        (locs.find((l) => l.id === m.locationDestId)?.usage === 'damaged' ? 'Retur pelanggan' : null),
       from: m.location.completeName,
       toId: m.locationDestId,
       to: locs.find((l) => l.id === m.locationDestId)?.completeName,

@@ -6,6 +6,7 @@ import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
 import { graduateCustomer, refreshPurchase, refreshSale, salePayments } from '../../shared/status';
 import { fail, must, idr, num, round2, tglIndo, today } from '../../shared/util';
+import { collectionSettings, pastGrace } from '../../shared/collection';
 import { StockService } from './stock.service';
 import { Prisma } from '@prisma/client';
 
@@ -120,7 +121,7 @@ export class TransfersService {
       });
     const dropship = t.location.usage === 'supplier' && t.pickingType.code === 'outgoing';
     let payBlock = null;
-    if (t.pickingType.code === 'outgoing' && t.sale) payBlock = await this.paymentBlock(t.saleId);
+    if (t.pickingType.code === 'outgoing' && t.sale) payBlock = await this.paymentBlock(t.saleId, dropship);
     const backorders = await this.db.stockTransfers.findMany({
       select: { id: true, name: true, state: true },
       where: { backorderId: id },
@@ -141,13 +142,22 @@ export class TransfersService {
     };
   }
 
-  // Surat jalan untuk pelanggan baru ditolak selama sales order belum lunas
-  async paymentBlock(saleId: number) {
+  // Surat jalan ditolak untuk pelanggan baru yang belum lunas, dan untuk pelanggan dengan tagihan lewat masa tenggang
+  // kecuali Pimpinan memberi izin kirim pada SO ini. Dropship yang sudah dikirim principal hanya terkena aturan pelanggan baru.
+  async paymentBlock(saleId: number, dropship = false) {
     const o = await this.db.salesOrders.findFirst({ where: { id: saleId }, include: { partner: true } });
-    if (!o?.partner.mtppIsNewCustomer) return null;
-    const paid = (await salePayments(this.db, saleId)).advance;
-    if (paid >= Number(o.amountTotal) - 0.5) return null;
-    return `Pelanggan baru: sales order baru dibayar Rp ${idr(paid)} dari Rp ${idr(Number(o.amountTotal))}. Surat jalan hanya dapat diterbitkan setelah lunas.`;
+    if (!o) return null;
+    if (o.partner.mtppIsNewCustomer) {
+      const paid = (await salePayments(this.db, saleId)).advance;
+      if (paid < Number(o.amountTotal) - 0.5)
+        return `Pelanggan baru: sales order baru dibayar Rp ${idr(paid)} dari Rp ${idr(Number(o.amountTotal))}. Surat jalan hanya dapat diterbitkan setelah lunas.`;
+    }
+    if (dropship || o.mtppReleaseDate) return null;
+    const cfg = await collectionSettings(this.db);
+    if (!cfg.blockDelivery) return null;
+    const late = await pastGrace(this.db, o.partnerId, today());
+    if (!late.length) return null;
+    return `Pelanggan memiliki tagihan lewat masa tenggang (${late.map((x) => x.name).join(', ')}). Surat jalan ditahan sampai tagihan dilunasi atau Pimpinan memberi izin kirim pada ${o.name}.`;
   }
 
   private async pendingInOpen(saleLineIds: number[]) {

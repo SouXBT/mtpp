@@ -3,6 +3,7 @@ import { Inject } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
 import { AuthUser } from '../../shared/auth';
 import { addDays, daysBetween, round2, rupiah, today } from '../../shared/util';
+import { receivableSlices } from '../../shared/collection';
 import { StockService } from '../stock/stock.service';
 import { SalesService } from '../sales/sales.service';
 import { Prisma } from '@prisma/client';
@@ -63,9 +64,7 @@ export class DashboardService {
       };
     };
     const aging = async () => {
-      const inv = await this.q(
-        sql`select invoice_date_due as due, amount_residual::float as r from journal_entries where move_type = 'out_invoice' and state = 'posted' and amount_residual > 0`,
-      );
+      const inv = (await receivableSlices(this.db)).map((x) => ({ due: x.due, r: x.open }));
       const b = { 'belum jatuh tempo': 0, '1-30': 0, '31-60': 0, '61-90': 0, '> 90': 0 } as Record<string, number>;
       for (const i of inv) {
         const d = daysBetween(i.due || t, t);
@@ -81,10 +80,11 @@ export class DashboardService {
         data: Object.entries(b).map(([bucket, value]) => ({ bucket, value })),
       };
     };
-    const overdue = async () =>
-      this.one(
-        sql`select count(*)::int as n, coalesce(sum(amount_residual),0)::float as v from journal_entries where move_type = 'out_invoice' and state = 'posted' and amount_residual > 0 and invoice_date_due < ${t}`,
-      );
+    // piutang lewat jatuh tempo per termin cicilan; n = jumlah invoice
+    const overdue = async () => {
+      const late = (await receivableSlices(this.db)).filter((x) => x.due && x.due < t);
+      return { n: new Set(late.map((x) => x.invoiceId)).size, v: round2(late.reduce((a, x) => a + x.open, 0)) };
+    };
     const cash = async () =>
       this.one(
         sql`select coalesce(sum(l.debit - l.credit),0)::float as v from journal_entry_lines l join journal_entries e on e.id = l.move_id join journals j on j.id = e.journal_id where e.state = 'posted' and j.type in ('cash','bank') and l.account_id = j.default_account_id`,
@@ -329,16 +329,23 @@ export class DashboardService {
           key: 'due',
           title: 'Invoice mendekati jatuh tempo (7 hari)',
           columns: ['Invoice', 'Pelanggan', 'Jatuh tempo', 'Sisa'],
-          rows: (
-            await this
-              .q(sql`select e.id, e.name, p.name as c, e.invoice_date_due as d, e.amount_residual::float as v from journal_entries e join partners p on p.id = e.partner_id
-          where e.move_type = 'out_invoice' and e.state = 'posted' and e.amount_residual > 0 and e.invoice_date_due <= ${addDays(t, 7)} order by e.invoice_date_due limit 8`)
-          ).map((r) => [
-            { text: r.name, link: `/penagihan/${r.id}` },
-            r.c,
-            { date: r.d, late: r.d < t },
-            { money: r.v },
-          ]),
+          rows: (await receivableSlices(this.db))
+            .filter((x) => x.due && x.due <= addDays(t, 7))
+            .sort((a, b) => String(a.due).localeCompare(String(b.due)))
+            .slice(0, 8)
+            .map((x) => ({
+              id: x.invoiceId,
+              name: x.sequence ? `${x.name} (${x.sequence})` : x.name,
+              c: x.customer,
+              d: x.due,
+              v: x.open,
+            }))
+            .map((r) => [
+              { text: r.name, link: `/penagihan/${r.id}` },
+              r.c,
+              { date: r.d, late: !!r.d && r.d < t },
+              { money: r.v },
+            ]),
         });
         out.lists.push({
           key: 'proforma',

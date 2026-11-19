@@ -1,4 +1,4 @@
-import { InvoiceSourceDto, SendInvoiceDto, PaymentDto } from './billing.dto';
+import { InstallmentsDto, InvoiceSourceDto, SendInvoiceDto, PaymentDto } from './billing.dto';
 import {
   Body,
   Controller,
@@ -72,6 +72,33 @@ export class BillingController {
     @Body() body: SendInvoiceDto,
   ) {
     return this.b.send(u, id, body || {});
+  }
+  @Post('invoices/:id/remind') @Perm('penagihan', 'write') remind(
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: SendInvoiceDto,
+  ) {
+    return this.b.remind(u, id, body || {});
+  }
+  // cicilan: diajukan oleh pengguna dengan hak buat, disetujui atau dibatalkan oleh pengguna dengan hak ubah penagihan
+  @Post('invoices/:id/installments') @Perm('penagihan', 'create') setInstallments(
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: InstallmentsDto,
+  ) {
+    return this.b.setInstallments(u, id, body);
+  }
+  @Post('invoices/:id/installments/approve') @Perm('penagihan', 'write') approveInstallments(
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.b.approveInstallments(u, id);
+  }
+  @Delete('invoices/:id/installments') @Perm('penagihan', 'write') cancelInstallments(
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.b.cancelInstallments(u, id);
   }
   @Get('invoices/:id/pdf')
   @Perm('penagihan', 'read')

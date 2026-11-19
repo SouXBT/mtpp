@@ -17,6 +17,7 @@ model Partners {
   category                          String?              @db.VarChar(80)
   supplierNote                      String?              @map("mtpp_supplier_note") @db.Text
   mtppIsNewCustomer                 Boolean              @default(false) @map("mtpp_is_new_customer")
+  mtppGraceDays                     Int?                 @map("mtpp_grace_days")
   salesPricelistId                  Int?                 @map("sales_pricelist_id")
   active                            Boolean              @default(true)
   createUid                         Int?                 @map("create_uid")
@@ -41,6 +42,7 @@ model Partners {
   revUsersPartnerId                 Users[]              @relation("users_partnerId")
   parent                            Partners?            @relation("partners_parentId", fields: [parentId], references: [id], map: "partners_parent_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
   children                          Partners[]           @relation("partners_parentId")
+  revSalesReturnsPartnerId          SalesReturns[]       @relation("salesReturns_partnerId")
 
   @@index([salesPricelistId], map: "partners_sales_pricelist_id_idx")
   @@index([parentId], map: "partners_parent_id_idx")
@@ -165,6 +167,7 @@ model Products {
   revJournalEntryLinesProductId   JournalEntryLines[]   @relation("journalEntryLines_productId")
   revSalesPricelistItemsProductId SalesPricelistItems[] @relation("salesPricelistItems_productId")
   revStockRulesProductId          StockRules[]          @relation("stockRules_productId")
+  revSalesReturnLinesProductId    SalesReturnLines[]    @relation("salesReturnLines_productId")
 
   @@index([productTmplId], map: "products_product_tmpl_id_idx")
   @@map("products")

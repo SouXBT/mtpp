@@ -13,6 +13,7 @@ import { SalesModule } from './modules/sales/sales.module';
 import { PurchasingModule } from './modules/purchasing/purchasing.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { ReturnsModule } from './modules/returns/returns.module';
 import { RecordsModule } from './modules/records/records.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { ReportsModule } from './modules/reports/reports.module';
@@ -39,6 +40,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
     PurchasingModule,
     AccountingModule,
     BillingModule,
+    ReturnsModule,
     RecordsModule,
     SettingsModule,
     ReportsModule,

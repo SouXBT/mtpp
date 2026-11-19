@@ -546,7 +546,9 @@ export function DocumentSettings() {
   const [po, setPo] = useState<any>({});
   const [bank, setBank] = useState<any>({});
   const [notes, setNotes] = useState<any>({});
+  const [col, setCol] = useState<any>({});
   useEffect(() => {
+    setCol(settings.collection || {});
     setTax(settings.tax || {});
     setTerms(settings.terms || {});
     setPo(settings.po_terms || {});
@@ -562,6 +564,73 @@ export function DocumentSettings() {
       <PageHead title="Format Cetak" />
       <Tabs
         items={[
+          {
+            key: 'collection',
+            label: 'Penagihan & Retur',
+            children: (
+              <div className="card">
+                <Row gutter={24}>
+                  <Col>
+                    <div className="muted">Masa tenggang bawaan (hari)</div>
+                    <InputNumber
+                      disabled={!w}
+                      min={0}
+                      max={90}
+                      value={col.graceDays}
+                      onChange={(v) => setCol({ ...col, graceDays: v })}
+                    />
+                  </Col>
+                  <Col>
+                    <div className="muted">Tahan surat jalan setelah masa tenggang</div>
+                    <Switch
+                      disabled={!w}
+                      checked={!!col.blockDelivery}
+                      onChange={(v) => setCol({ ...col, blockDelivery: v })}
+                    />
+                  </Col>
+                  <Col>
+                    <div className="muted">Cicilan paling banyak (termin)</div>
+                    <InputNumber
+                      disabled={!w}
+                      min={2}
+                      max={24}
+                      value={col.maxInstallments}
+                      onChange={(v) => setCol({ ...col, maxInstallments: v })}
+                    />
+                  </Col>
+                  <Col>
+                    <div className="muted">Termin terakhir paling lambat (bulan)</div>
+                    <InputNumber
+                      disabled={!w}
+                      min={1}
+                      max={36}
+                      value={col.maxMonths}
+                      onChange={(v) => setCol({ ...col, maxMonths: v })}
+                    />
+                  </Col>
+                  <Col>
+                    <div className="muted">Batas klaim barang bermasalah (hari)</div>
+                    <InputNumber
+                      disabled={!w}
+                      min={0}
+                      max={90}
+                      value={col.returnDays}
+                      onChange={(v) => setCol({ ...col, returnDays: v })}
+                    />
+                  </Col>
+                </Row>
+                <p className="note">
+                  Masa tenggang dapat diganti per pelanggan oleh Pimpinan di data pelanggan. Umur piutang tetap dihitung
+                  dari tanggal jatuh tempo; masa tenggang hanya menentukan kapan pengiriman berikutnya ditahan.
+                </p>
+                {w && (
+                  <Button type="primary" onClick={() => save('collection', col)}>
+                    Simpan
+                  </Button>
+                )}
+              </div>
+            ),
+          },
           {
             key: 'tax',
             label: 'PPN',

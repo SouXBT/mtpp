@@ -1,4 +1,4 @@
-import { SaveSalesOrderDto, ConfirmSalesOrderDto, SendSalesOrderDto, ProformaDto } from './sales.dto';
+import { SaveSalesOrderDto, ConfirmSalesOrderDto, SendSalesOrderDto, ProformaDto, ReleaseDto } from './sales.dto';
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthUser, CurrentUser, Perm } from '../../shared/auth';
@@ -45,6 +45,20 @@ export class SalesController {
     @Body() b: ConfirmSalesOrderDto,
   ) {
     return this.sales.confirm(u, id, b);
+  }
+  // izin kirim walau pelanggan punya tagihan lewat masa tenggang (hanya Pimpinan, diperiksa di service)
+  @Post(':id/release') @Perm('penjualan', 'read') release(
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() b: ReleaseDto,
+  ) {
+    return this.sales.release(u, id, b || {});
+  }
+  @Post(':id/release/revoke') @Perm('penjualan', 'read') revoke(
+    @CurrentUser() u: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.sales.release(u, id, {}, true);
   }
   @Post(':id/cancel') @Perm('penjualan', 'delete') cancel(
     @CurrentUser() u: AuthUser,

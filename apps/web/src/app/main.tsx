@@ -51,6 +51,7 @@ import {
   UsersList,
 } from '../features/settings/Settings';
 import { ReportView, ReportsHome } from '../features/reports/Reports';
+import { ReturnDetail, ReturnList } from '../features/stock/Returns';
 import { DocumentEditor, DocumentList } from '../features/documents/Documents';
 
 const theme = {
@@ -131,6 +132,8 @@ function AppRoutes() {
         <Route path="stok/dok/:id" element={<TransferDetail />} />
         <Route path="stok/minimum" element={<StockRules />} />
         <Route path="stok/mutasi" element={<StockMoves />} />
+        <Route path="stok/retur" element={<ReturnList />} />
+        <Route path="stok/retur/:id" element={<ReturnDetail />} />
         <Route path="penagihan" element={<InvoiceList type="invoice" />} />
         <Route path="penagihan/siap" element={<ReadyToInvoice />} />
         <Route path="penagihan/pembayaran" element={<PaymentsList />} />

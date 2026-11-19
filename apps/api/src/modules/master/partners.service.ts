@@ -10,7 +10,13 @@ const kindMenu = (k: string) => (k === 'supplier' ? 'principal' : 'pelanggan');
 
 const P_FIELDS = ['name', 'vat', 'email', 'phone', 'street', 'city', 'category', 'supplierNote'];
 
-const PIMPINAN_FIELDS = ['paymentTermId', 'mtppIsNewCustomer', 'salesPricelistId'];
+// mtppGraceDays: masa tenggang pembayaran per pelanggan (hari); kosong = bawaan di Pengaturan
+const PIMPINAN_FIELDS = ['paymentTermId', 'mtppIsNewCustomer', 'salesPricelistId', 'mtppGraceDays'];
+const checkGrace = (b: any) => {
+  if (b.mtppGraceDays === undefined || b.mtppGraceDays === null || b.mtppGraceDays === '') return;
+  const n = Number(b.mtppGraceDays);
+  if (!Number.isInteger(n) || n < 0 || n > 90) fail('Masa tenggang harus bilangan bulat 0 sampai 90 hari');
+};
 
 // Master pelanggan (C.b), principal dan gudang (C.c), alamat kirim (E.i), term of payment (B.a)
 @Injectable()
@@ -66,6 +72,7 @@ export class PartnersService {
     checkPerm(u, kindMenu(kind), 'create');
     if (!b.name) fail('Nama wajib diisi');
     checkColumnTypes('Partners', b, [...P_FIELDS, ...PIMPINAN_FIELDS]);
+    checkGrace(b);
     const v: any = {
       ...pick(b, P_FIELDS),
       type: 'company',
@@ -75,6 +82,7 @@ export class PartnersService {
     };
     if (kind === 'customer') v.mtppIsNewCustomer = true;
     if (u.group === 'PIMPINAN') Object.assign(v, pick(b, PIMPINAN_FIELDS));
+    if (v.mtppGraceDays !== undefined && v.mtppGraceDays !== null) v.mtppGraceDays = Number(v.mtppGraceDays);
     if (u.group === 'ADMIN') Object.assign(v, pick(b, ['mtppIsNewCustomer']));
     return this.db.$transaction(async (tx) => {
       const p = await tx.partners.create({ data: v });
@@ -103,9 +111,11 @@ export class PartnersService {
     const menu = kindMenu(p.supplierRank > 0 ? 'supplier' : 'customer');
     checkPerm(u, menu, 'write');
     checkColumnTypes('Partners', b, [...P_FIELDS, ...PIMPINAN_FIELDS, 'active']);
+    checkGrace(b);
     const v: any = { ...pick(b, [...P_FIELDS, 'active']), writeUid: u.id, writeDate: new Date() };
-    // Pimpinan menetapkan term of payment, penanda pelanggan baru, dan pricelist penjualan
+    // Pimpinan menetapkan term of payment, penanda pelanggan baru, pricelist penjualan, dan masa tenggang
     if (u.group === 'PIMPINAN') Object.assign(v, pick(b, PIMPINAN_FIELDS));
+    if (v.mtppGraceDays !== undefined && v.mtppGraceDays !== null) v.mtppGraceDays = Number(v.mtppGraceDays);
     // Admin juga dapat menetapkan penanda pelanggan baru; penanda berakhir otomatis (graduateCustomer)
     if (u.group === 'ADMIN') Object.assign(v, pick(b, ['mtppIsNewCustomer']));
     if (b.warehouseName && p.supplierRank > 0)

@@ -6,6 +6,7 @@ import { SettingsService } from '../../shared/settings.service';
 import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
 import { salePayments } from '../../shared/status';
+import { collectionSettings, pastGrace } from '../../shared/collection';
 import {
   addDays,
   fail,
@@ -246,9 +247,17 @@ export class SalesService {
     const costTotal = round2(ls.reduce((a, l) => a + Number(l.purchasePrice) * Number(l.productUomQty), 0));
     const marginTotal = round2(Number(o.amountUntaxed) - costTotal);
     const t = today();
+    const hold = await this.creditHold(o);
+    const returns = await this.db.salesReturns.findMany({
+      where: { saleId: id },
+      select: { id: true, name: true, state: true, resolution: true, date: true, amountTotal: true },
+      orderBy: { id: 'asc' },
+    });
     const res = {
       ...o,
       stateLabel: SO_STATE[o.state],
+      creditHold: hold,
+      returns,
       expired: !!o.validityDate && o.validityDate < t && ['draft', 'sent'].includes(o.state),
       lines: ls,
       costTotal,
@@ -259,12 +268,57 @@ export class SalesService {
       purchaseOrders: pos,
       payment: pay,
       emailStatus: await this.email.lastStatus(MODEL, id),
-      canDeliver: o.state === 'sale' && (!o.partner.mtppIsNewCustomer || pay.paidFull),
+      canDeliver: o.state === 'sale' && (!o.partner.mtppIsNewCustomer || pay.paidFull) && !hold.blocking,
       deliverable: o.state === 'sale' && (await this.undelivered(id)).length > 0,
       shortage: o.state === 'sale' ? await this.shortage(id) : [],
       readyItems: o.state === 'sale' && (!o.partner.mtppIsNewCustomer || pay.paidFull) ? await this.readyItems(id) : 0,
     };
     return stripCost(u, res);
+  }
+
+  // Tagihan pelanggan yang lewat masa tenggang: peringatan saat konfirmasi, surat jalan ditahan kecuali diizinkan Pimpinan
+  async creditHold(o: any) {
+    const cfg = await collectionSettings(this.db);
+    const invoices = await pastGrace(this.db, o.partnerId, today());
+    let releasedBy: string | null = null;
+    if (o.mtppReleaseUid) {
+      const r = await this.db.users.findFirst({ where: { id: o.mtppReleaseUid }, include: { partner: true } });
+      releasedBy = r?.partner?.name ?? null;
+    }
+    return {
+      invoices,
+      released: !!o.mtppReleaseDate,
+      releasedBy,
+      releaseDate: o.mtppReleaseDate,
+      releaseNote: o.mtppReleaseNote,
+      blocking: !!cfg.blockDelivery && invoices.length > 0 && !o.mtppReleaseDate,
+    };
+  }
+
+  async release(u: AuthUser, id: number, b: { note?: string }, revoke = false) {
+    if (u.group !== 'PIMPINAN') fail('Hanya Pimpinan yang dapat mengizinkan pengiriman');
+    const o = must(await this.db.salesOrders.findFirst({ where: { id } }), 'Sales order');
+    if (!['sale', 'done'].includes(o.state)) fail('Izin kirim diberikan untuk sales order yang sudah dikonfirmasi');
+    if (!revoke && !String(b.note || '').trim()) fail('Isi alasan izin kirim');
+    await this.db.$transaction(async (tx) => {
+      await tx.salesOrders.updateMany({
+        where: { id },
+        data: revoke
+          ? { mtppReleaseUid: null, mtppReleaseDate: null, mtppReleaseNote: null }
+          : { mtppReleaseUid: u.id, mtppReleaseDate: new Date(), mtppReleaseNote: String(b.note).trim() },
+      });
+      await this.chatter.log(
+        MODEL,
+        id,
+        u.id,
+        revoke
+          ? 'Izin kirim walau ada tagihan lewat masa tenggang dicabut'
+          : `Pengiriman diizinkan walau ada tagihan lewat masa tenggang: ${String(b.note).trim()}`,
+        [],
+        tx,
+      );
+    });
+    return this.get(u, id);
   }
 
   // uang muka pelanggan yang sudah dibayar untuk SO ini (rencana bagian 3)

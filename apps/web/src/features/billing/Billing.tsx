@@ -1,10 +1,24 @@
 import { useState } from 'react';
-import { Alert, Button, Descriptions, Modal, Radio, Select, Table, Tabs } from 'antd';
+import dayjs from 'dayjs';
+import {
+  Alert,
+  Button,
+  DatePicker,
+  Descriptions,
+  Input,
+  InputNumber,
+  Modal,
+  Radio,
+  Select,
+  Table,
+  Tabs,
+  Tag,
+} from 'antd';
 import { MailOutlined, PrinterOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
-import { api, idr, nf, openFile, qf, rp, run, tgl } from '../../shared/lib';
+import { api, idr, nf, openFile, qf, rp, run, tgl, today } from '../../shared/lib';
 import { EmailTag, LABEL, emptyText, PageHead, Pill, SearchBar, StatusBar } from '../../shared/ui';
 import { GroupSelect, groupCols, groupRows } from '../../shared/ui';
 import Chatter from '../../shared/Chatter';
@@ -22,6 +36,221 @@ const cancelPayment = (p: any, after: () => void) =>
     },
   });
 
+// status penagihan menurut masa tenggang pelanggan
+export function DueTag({ s, until }: { s?: string | null; until?: string | null }) {
+  if (s === 'tenggang') return <Tag color="gold">Masa tenggang s.d. {tgl(until)}</Tag>;
+  if (s === 'lewat_tenggang') return <Tag color="red">Lewat masa tenggang</Tag>;
+  return null;
+}
+
+// Ajukan jadwal cicilan: bagi rata lalu sesuaikan tanggal dan nominal per termin
+function InstallmentModal({ e, onClose }: { e: any; onClose: (ok?: boolean) => void }) {
+  const residual = Number(e.amountResidual);
+  const old = e.installments?.rows?.length ? e.installments.rows : null;
+  const split = (n: number, first: string, every: number) => {
+    const base = Math.floor((residual / n) * 100) / 100;
+    return Array.from({ length: n }, (_, i) => ({
+      dateDue: dayjs(first)
+        .add(i * every, 'day')
+        .format('YYYY-MM-DD'),
+      amount: i === n - 1 ? Math.round((residual - base * (n - 1)) * 100) / 100 : base,
+    }));
+  };
+  const [n, setN] = useState(old ? old.length : 3);
+  const [first, setFirst] = useState(old ? old[0].dateDue : dayjs(e.invoiceDateDue || today()).format('YYYY-MM-DD'));
+  const [every, setEvery] = useState(30);
+  const [rows, setRows] = useState<any[]>(
+    old ? old.map((x: any) => ({ dateDue: x.dateDue, amount: Number(x.amount) })) : split(3, first, 30),
+  );
+  const [note, setNote] = useState(e.installments?.note || '');
+  const sum = Math.round(rows.reduce((a, x) => a + Number(x.amount || 0), 0) * 100) / 100;
+  const diff = Math.round((residual - sum) * 100) / 100;
+  return (
+    <Modal
+      open
+      width={640}
+      title={`Jadwal cicilan ${e.name}`}
+      okText="Ajukan Jadwal"
+      cancelText="Batal"
+      okButtonProps={{ disabled: Math.abs(diff) > 0.009 }}
+      onCancel={() => onClose()}
+      onOk={async () => {
+        if (
+          (await run(
+            api.post(`/invoices/${e.id}/installments`, { termins: rows, note }),
+            'Jadwal cicilan diajukan',
+          )) !== undefined
+        )
+          onClose(true);
+      }}
+    >
+      <p className="muted">
+        Sisa tagihan {rp(residual)} dibagi menjadi beberapa termin. Jadwal berlaku setelah disetujui pengguna yang
+        berhak mengubah data penagihan.
+      </p>
+      <div className="toolbar">
+        <span>
+          Termin <InputNumber min={2} max={24} value={n} onChange={(v) => setN(Number(v) || 2)} style={{ width: 70 }} />
+        </span>
+        <span>
+          Mulai{' '}
+          <DatePicker
+            allowClear={false}
+            format="D MMM YYYY"
+            value={dayjs(first)}
+            onChange={(d) => d && setFirst(d.format('YYYY-MM-DD'))}
+          />
+        </span>
+        <span>
+          Setiap{' '}
+          <InputNumber
+            min={1}
+            max={120}
+            value={every}
+            onChange={(v) => setEvery(Number(v) || 30)}
+            style={{ width: 70 }}
+          />{' '}
+          hari
+        </span>
+        <Button onClick={() => setRows(split(n, first, every))}>Bagi Rata</Button>
+      </div>
+      <Table<any>
+        size="small"
+        rowKey={(_, i) => String(i)}
+        pagination={false}
+        dataSource={rows}
+        columns={[
+          { title: 'Termin', key: 'n', render: (_, __, i) => i + 1 },
+          {
+            title: 'Jatuh tempo',
+            dataIndex: 'dateDue',
+            render: (v, _, i) => (
+              <DatePicker
+                allowClear={false}
+                format="D MMM YYYY"
+                value={dayjs(v)}
+                onChange={(d) =>
+                  d && setRows(rows.map((x, j) => (j === i ? { ...x, dateDue: d.format('YYYY-MM-DD') } : x)))
+                }
+              />
+            ),
+          },
+          {
+            title: 'Nominal (Rp)',
+            dataIndex: 'amount',
+            align: 'right',
+            render: (v, _, i) => (
+              <InputNumber
+                min={0}
+                style={{ width: 170 }}
+                value={v}
+                decimalSeparator=","
+                formatter={(x) => (x === undefined || x === null || x === '' ? '' : Number(x).toLocaleString('id-ID'))}
+                parser={(x) => Number(String(x).replace(/\./g, '').replace(',', '.')) as any}
+                onChange={(a) => setRows(rows.map((x, j) => (j === i ? { ...x, amount: Number(a) || 0 } : x)))}
+              />
+            ),
+          },
+        ]}
+      />
+      <div className="totals">
+        <span>
+          Jumlah termin <b>{rp(sum)}</b>
+        </span>
+        {Math.abs(diff) > 0.009 && <span className="loss">selisih {rp(diff)} dari sisa tagihan</span>}
+      </div>
+      <Input.TextArea
+        rows={2}
+        placeholder="Catatan kesepakatan (opsional)"
+        value={note}
+        onChange={(x) => setNote(x.target.value)}
+      />
+    </Modal>
+  );
+}
+
+function InstallmentsTab({ e, can, reload }: { e: any; can: any; reload: () => void }) {
+  const inst = e.installments || {};
+  const act = async (p: Promise<any>, msg: string) => {
+    if ((await run(p, msg)) !== undefined) reload();
+  };
+  return (
+    <>
+      {inst.state && (
+        <div className="toolbar">
+          {inst.state === 'draft' ? (
+            <Tag color="gold">Menunggu persetujuan</Tag>
+          ) : (
+            <Tag color="green">
+              Disetujui {inst.approvedBy ? `oleh ${inst.approvedBy}` : ''} {tgl(inst.approveDate)}
+            </Tag>
+          )}
+          {inst.state === 'draft' && can('penagihan', 'write') && (
+            <Button
+              type="primary"
+              onClick={() => act(api.post(`/invoices/${e.id}/installments/approve`, {}), 'Jadwal cicilan disetujui')}
+            >
+              Setujui Jadwal
+            </Button>
+          )}
+          {can('penagihan', 'write') && (
+            <Button
+              danger
+              onClick={() =>
+                Modal.confirm({
+                  title: 'Batalkan jadwal cicilan?',
+                  content: 'Jatuh tempo kembali ke tanggal jatuh tempo invoice.',
+                  okText: 'Batalkan Jadwal',
+                  cancelText: 'Tidak',
+                  onOk: () => act(api.delete(`/invoices/${e.id}/installments`), 'Jadwal cicilan dibatalkan'),
+                })
+              }
+            >
+              Batalkan Jadwal
+            </Button>
+          )}
+        </div>
+      )}
+      <Table<any>
+        size="small"
+        rowKey="sequence"
+        pagination={false}
+        dataSource={inst.rows || []}
+        locale={{ emptyText: 'Belum ada jadwal cicilan. Jatuh tempo mengikuti tanggal jatuh tempo invoice.' }}
+        columns={[
+          { title: 'Termin', dataIndex: 'sequence' },
+          {
+            title: 'Jatuh tempo',
+            dataIndex: 'dateDue',
+            render: (v, r) => <span className={r.late ? 'loss' : ''}>{tgl(v)}</span>,
+          },
+          { title: 'Nominal', dataIndex: 'amount', align: 'right', render: (v: any) => idr(v) },
+          { title: 'Terbayar', dataIndex: 'paid', align: 'right', render: (v: any) => idr(v) },
+          { title: 'Sisa', dataIndex: 'open', align: 'right', render: (v: any) => idr(v) },
+          {
+            title: 'Status',
+            dataIndex: 'status',
+            render: (v) =>
+              v === 'lunas' ? (
+                <Tag color="green">Lunas</Tag>
+              ) : v === 'sebagian' ? (
+                <Tag color="blue">Sebagian</Tag>
+              ) : (
+                <Tag>Belum</Tag>
+              ),
+          },
+        ]}
+      />
+      {Number(inst.outside) > 0.5 && (
+        <div className="note">
+          Sisa {rp(inst.outside)} di luar jadwal (pembayaran lama dibatalkan) jatuh tempo pada tanggal invoice.
+        </div>
+      )}
+      {inst.note && <div className="note">Catatan: {inst.note}</div>}
+    </>
+  );
+}
+
 export function InvoiceList({ type }: { type: 'invoice' | 'bill' }) {
   const [qs, set] = useQueryState({});
   const list = useFetch<any[]>('/invoices', {
@@ -29,6 +258,7 @@ export function InvoiceList({ type }: { type: 'invoice' | 'bill' }) {
     q: qs.q,
     paymentState: qs.paymentState,
     overdue: qs.overdue,
+    dueState: qs.dueState,
     state: qs.state,
   });
   const nav = useNavigate();
@@ -69,6 +299,20 @@ export function InvoiceList({ type }: { type: 'invoice' | 'bill' }) {
             { value: 'posted', label: 'Diposting' },
           ]}
         />
+        {type === 'invoice' && (
+          <Select
+            allowClear
+            placeholder="Status penagihan"
+            style={{ width: 190 }}
+            value={qs.dueState}
+            onChange={(v) => set({ dueState: v })}
+            options={[
+              { value: 'belum_jt', label: 'Belum jatuh tempo' },
+              { value: 'tenggang', label: 'Masa tenggang' },
+              { value: 'lewat_tenggang', label: 'Lewat masa tenggang' },
+            ]}
+          />
+        )}
         <Button
           type={qs.overdue ? 'primary' : 'default'}
           danger={!!qs.overdue}
@@ -125,8 +369,13 @@ export function InvoiceList({ type }: { type: 'invoice' | 'bill' }) {
               { title: 'Tanggal', dataIndex: 'invoiceDate', render: tgl },
               {
                 title: 'Jatuh tempo',
-                dataIndex: 'invoiceDateDue',
-                render: (v: any, r: any) => <span className={r.overdue ? 'loss' : ''}>{tgl(v)}</span>,
+                dataIndex: 'dueDate',
+                render: (v: any, r: any) => (
+                  <>
+                    <span className={r.overdue ? 'loss' : ''}>{tgl(v || r.invoiceDateDue)}</span>{' '}
+                    <DueTag s={r.dueState} until={r.graceUntil} />
+                  </>
+                ),
               },
               { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => idr(v) },
               {
@@ -209,6 +458,7 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
   const doc = useFetch<any>(`/invoices/${id}`);
   const [rk, setRk] = useState(0);
   const [payOpen, setPayOpen] = useState(false);
+  const [instOpen, setInstOpen] = useState(false);
   const e = doc.data;
   if (!e) return null;
   const menu = type === 'bill' ? 'pengadaan' : 'penagihan';
@@ -249,6 +499,14 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
         {cust && e.state === 'posted' && can('penagihan', 'write') && (
           <Button icon={<MailOutlined />} onClick={() => act('send', 'Invoice dikirim lewat email')}>
             Kirim Email
+          </Button>
+        )}
+        {e.canInstall && can('penagihan', 'create') && (
+          <Button onClick={() => setInstOpen(true)}>{e.installments?.state ? 'Ubah Cicilan' : 'Atur Cicilan'}</Button>
+        )}
+        {cust && e.dueState && e.dueState !== 'lunas' && can('penagihan', 'write') && (
+          <Button icon={<MailOutlined />} onClick={() => act('remind', 'Pengingat pembayaran dikirim')}>
+            Kirim Pengingat
           </Button>
         )}
         {cust && (
@@ -311,19 +569,48 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
           }
         />
       </div>
-      {e.overdue && (
+      {e.dueState === 'lewat_tenggang' ? (
         <Alert
           type="error"
           showIcon
           style={{ marginBottom: 16 }}
-          message={`Jatuh tempo ${tgl(e.invoiceDateDue)}; sisa ${rp(e.amountResidual)} belum dibayar.`}
+          message={`Lewat masa tenggang (${e.graceDays} hari setelah jatuh tempo ${tgl(e.dueDate)}); sisa ${rp(e.amountResidual)} belum dibayar.`}
+          description="Surat jalan baru untuk pelanggan ini ditahan sampai tagihan dilunasi atau Pimpinan memberi izin kirim pada sales order."
         />
+      ) : e.dueState === 'tenggang' ? (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={`Jatuh tempo ${tgl(e.dueDate)} terlewati; masa tenggang sampai ${tgl(e.graceUntil)}.`}
+        />
+      ) : (
+        e.overdue && (
+          <Alert
+            type="error"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={`Jatuh tempo ${tgl(e.dueDate || e.invoiceDateDue)}; sisa ${rp(e.amountResidual)} belum dibayar.`}
+          />
+        )
       )}
       <div className="card">
         <Descriptions column={{ xs: 1, md: 3 }} size="small">
           <Descriptions.Item label={cust ? 'Pelanggan' : 'Principal'}>{e.partner?.name}</Descriptions.Item>
           <Descriptions.Item label="Tanggal">{tgl(e.invoiceDate)}</Descriptions.Item>
-          <Descriptions.Item label="Jatuh tempo">{tgl(e.invoiceDateDue)}</Descriptions.Item>
+          <Descriptions.Item label="Jatuh tempo">
+            {tgl(e.invoiceDateDue)}
+            {e.installments?.state === 'approved' && e.dueDate && e.dueDate !== e.invoiceDateDue && (
+              <span className="muted" style={{ marginLeft: 6 }}>
+                (cicilan berikut {tgl(e.dueDate)})
+              </span>
+            )}
+          </Descriptions.Item>
+          {cust && e.moveType === 'out_invoice' && (
+            <Descriptions.Item label="Masa tenggang">
+              {e.graceDays} hari <DueTag s={e.dueState} until={e.graceUntil} />
+            </Descriptions.Item>
+          )}
           {cust && (
             <Descriptions.Item label="Term of payment">
               {e.sale?.paymentTermName ||
@@ -420,6 +707,15 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
                 />
               ),
             },
+            ...(e.moveType === 'out_invoice'
+              ? [
+                  {
+                    key: 'inst',
+                    label: `Cicilan${e.installments?.rows?.length ? ` (${e.installments.rows.length})` : ''}`,
+                    children: <InstallmentsTab e={e} can={can} reload={reload} />,
+                  },
+                ]
+              : []),
             {
               key: 'pay',
               label: `Pembayaran (${(e.payments || []).length + (e.advances || []).length})`,
@@ -441,8 +737,10 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
                       key: 'r',
                       render: (_, p) => (
                         <>
-                          {cust && <a onClick={() => openFile(`/payments/${p.id}/receipt`)}>Kuitansi</a>}{' '}
-                          {!p.adv && can(menu, 'write') && (
+                          {cust && p.paymentType !== 'outbound' && (
+                            <a onClick={() => openFile(`/payments/${p.id}/receipt`)}>Kuitansi</a>
+                          )}{' '}
+                          {!p.adv && p.paymentType !== 'outbound' && can(menu, 'write') && (
                             <a className="loss" style={{ marginLeft: 10 }} onClick={() => cancelPayment(p, reload)}>
                               Batalkan Pembayaran
                             </a>
@@ -458,6 +756,15 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
         />
       </div>
       <Chatter model="journal_entries" id={+id!} name={e.name} reloadKey={rk} />
+      {instOpen && (
+        <InstallmentModal
+          e={e}
+          onClose={(ok) => {
+            setInstOpen(false);
+            if (ok) reload();
+          }}
+        />
+      )}
       {payOpen && (
         <PayModal
           title={`Pembayaran ${e.name}`}

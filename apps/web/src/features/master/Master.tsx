@@ -114,7 +114,7 @@ export function PartnerDetail({ kind }: { kind: 'customer' | 'supplier' }) {
   const nav = useNavigate();
   const loc = useLocation();
   const can = useCan();
-  const { me } = useAuth();
+  const { me, settings } = useAuth();
   const menu = kind === 'supplier' ? 'principal' : 'pelanggan';
   const base = baseOf(loc.pathname, kind);
   const doc = useFetch<any>(isNew ? null : `/partners/${id}`);
@@ -285,6 +285,21 @@ export function PartnerDetail({ kind }: { kind: 'customer' | 'supplier' }) {
                     tooltip="Ditetapkan Admin atau Pimpinan; berakhir otomatis saat sales order pertama terkirim seluruhnya dan lunas"
                   >
                     <Switch disabled={!pim && !admin} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={8}>
+                  <Form.Item
+                    name="mtppGraceDays"
+                    label="Masa tenggang pembayaran (hari)"
+                    tooltip="Ditetapkan Pimpinan. Setelah jatuh tempo + masa tenggang, surat jalan baru ditahan. Kosong = bawaan di Pengaturan."
+                  >
+                    <InputNumber
+                      disabled={!pim}
+                      min={0}
+                      max={90}
+                      style={{ width: '100%' }}
+                      placeholder={`bawaan ${settings?.collection?.graceDays ?? 7} hari`}
+                    />
                   </Form.Item>
                 </Col>
               </>
