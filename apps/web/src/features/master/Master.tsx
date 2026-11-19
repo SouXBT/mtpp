@@ -19,7 +19,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth, useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
-import { api, nf, run, tgl } from '../../shared/lib';
+import { api, idr, nf, run, tgl } from '../../shared/lib';
 import { PageHead } from '../../shared/ui';
 import Crud from '../../shared/Crud';
 import Chatter from '../../shared/Chatter';
@@ -356,7 +356,7 @@ export function PartnerDetail({ kind }: { kind: 'customer' | 'supplier' }) {
             dataSource={prices.data}
             columns={[
               { title: 'Produk', dataIndex: 'product' },
-              { title: 'Harga', dataIndex: 'price', align: 'right', render: (v: any) => nf(v) },
+              { title: 'Harga', dataIndex: 'price', align: 'right', render: (v: any) => idr(v) },
               { title: 'Diskon', dataIndex: 'discount', align: 'right', render: (v) => `${nf(v, 1)}%` },
               { title: 'Min. qty', dataIndex: 'minQty', align: 'right', render: (v: any) => nf(v) },
               {
@@ -475,14 +475,14 @@ export function ProductList() {
             { title: 'Kategori', dataIndex: 'category', render: (v) => v || '-' },
             { title: 'Satuan', dataIndex: 'uom' },
             { title: 'Principal', dataIndex: 'supplier', render: (v) => v || '-' },
-            { title: 'Harga jual', dataIndex: 'listPrice', align: 'right', render: (v: any) => nf(v) },
+            { title: 'Harga jual', dataIndex: 'listPrice', align: 'right', render: (v: any) => idr(v) },
             ...(me?.canSeeCost
               ? [
                   {
                     title: 'Harga pokok',
                     dataIndex: 'purchasePrice',
                     align: 'right' as const,
-                    render: (v: any) => <span className="cost">{nf(v)}</span>,
+                    render: (v: any) => <span className="cost">{idr(v)}</span>,
                   },
                 ]
               : []),
@@ -634,7 +634,7 @@ export function ProductDetail() {
             dataSource={prices.data.filter((r) => r.productTmplId === p.tmplId)}
             columns={[
               { title: 'Principal', dataIndex: 'partner' },
-              { title: 'Harga', dataIndex: 'price', align: 'right', render: (v: any) => nf(v) },
+              { title: 'Harga', dataIndex: 'price', align: 'right', render: (v: any) => idr(v) },
               { title: 'Diskon', dataIndex: 'discount', align: 'right', render: (v) => `${nf(v, 1)}%` },
               { title: 'Min. qty', dataIndex: 'minQty', align: 'right', render: (v: any) => nf(v) },
               {
@@ -658,29 +658,25 @@ export function CategoriesUnits() {
         title="Kategori Produk dan Satuan"
         sub="Kategori dan satuan yang sudah dipakai hanya dapat diarsipkan."
       />
-      <Row gutter={16}>
-        <Col xs={24} lg={12}>
-          <h3 className="card-title">Kategori</h3>
-          <Crud
-            path="/categories"
-            menu="produk"
-            title="kategori"
-            fields={[{ key: 'name', label: 'Nama kategori', required: true }]}
-          />
-        </Col>
-        <Col xs={24} lg={12}>
-          <h3 className="card-title">Satuan</h3>
-          <Crud
-            path="/units"
-            menu="produk"
-            title="satuan"
-            fields={[
-              { key: 'name', label: 'Nama satuan', required: true },
-              { key: 'relativeFactor', label: 'Faktor', type: 'number' },
-            ]}
-          />
-        </Col>
-      </Row>
+      <h3 className="card-title">Kategori</h3>
+      <Crud
+        path="/categories"
+        menu="produk"
+        title="kategori"
+        fields={[{ key: 'name', label: 'Nama kategori', required: true }]}
+      />
+      <h3 className="card-title" style={{ marginTop: 24 }}>
+        Satuan
+      </h3>
+      <Crud
+        path="/units"
+        menu="produk"
+        title="satuan"
+        fields={[
+          { key: 'name', label: 'Nama satuan', required: true },
+          { key: 'relativeFactor', label: 'Faktor', type: 'number' },
+        ]}
+      />
     </>
   );
 }
@@ -711,49 +707,47 @@ export function SalesPricelists() {
         title="Pricelist Penjualan"
         sub="Harga jual atau diskon per pelanggan; terisi otomatis ketika produk dipilih pada penawaran."
       />
-      <Row gutter={16}>
-        <Col xs={24} lg={9}>
+      <Crud
+        path="/pricelists"
+        menu="pricelist_jual"
+        title="pricelist"
+        fields={[{ key: 'name', label: 'Nama pricelist', required: true }]}
+        extraActions={(r) => <a onClick={() => setSel(r)}>Isi harga</a>}
+      />
+      {sel ? (
+        <>
+          <h3 className="card-title" style={{ marginTop: 24 }}>
+            Harga pada pricelist {sel.name}
+          </h3>
           <Crud
-            path="/pricelists"
+            key={sel.id}
+            path="/pricelist-items"
+            params={{ pricelistId: sel.id }}
+            defaults={{ pricelistId: sel.id }}
             menu="pricelist_jual"
-            title="pricelist"
-            fields={[{ key: 'name', label: 'Nama pricelist', required: true }]}
-            extraActions={(r) => <a onClick={() => setSel(r)}>Isi harga</a>}
+            archive={false}
+            title="harga"
+            fields={[
+              {
+                key: 'productId',
+                label: 'Produk',
+                type: 'select',
+                required: true,
+                source: { path: '/products', label: (r) => `[${r.code}] ${r.name}` },
+              },
+              { key: 'fixedPrice', label: 'Harga tetap (Rp)', type: 'money' },
+              { key: 'discount', label: 'atau diskon', type: 'pct' },
+              { key: 'minQty', label: 'Qty minimum', type: 'number' },
+              { key: 'dateStart', label: 'Mulai', type: 'date' },
+              { key: 'dateEnd', label: 'Sampai', type: 'date' },
+            ]}
           />
-        </Col>
-        <Col xs={24} lg={15}>
-          {sel ? (
-            <>
-              <h3 className="card-title">{sel.name}</h3>
-              <Crud
-                key={sel.id}
-                path="/pricelist-items"
-                params={{ pricelistId: sel.id }}
-                defaults={{ pricelistId: sel.id }}
-                menu="pricelist_jual"
-                archive={false}
-                title="harga"
-                fields={[
-                  {
-                    key: 'productId',
-                    label: 'Produk',
-                    type: 'select',
-                    required: true,
-                    source: { path: '/products', label: (r) => `[${r.code}] ${r.name}` },
-                  },
-                  { key: 'fixedPrice', label: 'Harga tetap (Rp)', type: 'money' },
-                  { key: 'discount', label: 'atau diskon', type: 'pct' },
-                  { key: 'minQty', label: 'Qty minimum', type: 'number' },
-                  { key: 'dateStart', label: 'Mulai', type: 'date' },
-                  { key: 'dateEnd', label: 'Sampai', type: 'date' },
-                ]}
-              />
-            </>
-          ) : (
-            <div className="card muted">Pilih "Isi harga" pada salah satu pricelist.</div>
-          )}
-        </Col>
-      </Row>
+        </>
+      ) : (
+        <div className="card muted" style={{ marginTop: 24 }}>
+          Pilih "Isi harga" pada salah satu pricelist.
+        </div>
+      )}
     </>
   );
 }
