@@ -66,6 +66,7 @@ docker compose -p mtpp-nav -f docker-compose.yml -f infra/compose/test.yml up -d
 # uji alur lewat API, berurutan pada database bersih
 API=http://localhost:8081/api node tests/flows/demo-flow.mjs
 API=http://localhost:8081/api node tests/flows/edge-flow.mjs
+API=http://localhost:8081/api node tests/flows/collection-flow.mjs   # cicilan, masa tenggang, retur
 
 # uji aturan menu dan langkah berikutnya
 cd apps/web && node --test src/app/nav.test.ts src/features/sales/nextSteps.test.ts && cd ../..
@@ -193,7 +194,9 @@ Penawaran, invoice, surat jalan, PO, proforma, dan kuitansi tetap dibuat dari tr
 - Jurnal yang sudah diposting tidak dapat diubah; pembatalan melalui jurnal pembalik. Pembayaran dibatalkan dari menu Penagihan supaya sisa tagihan ikut kembali.
 - SO tidak dapat dibatalkan selama PO Principal masih berjalan atau uang muka belum dikembalikan (**Kembalikan Uang Muka**).
 - **Tutup sisa PO**: bila principal tidak mengirim sisanya, kuantitas PO menjadi sebesar yang diterima dan sisanya dapat dipesan ulang.
-- Retur barang dan stock opname berada di luar cakupan sistem.
+- **Cicilan** (hanya pelanggan lama): Finance mengajukan jadwal 2–12 termin untuk sisa tagihan invoice, termin terakhir paling lambat 12 bulan setelah tanggal invoice; jadwal berlaku setelah disetujui pengguna dengan hak ubah Penagihan. Pembayaran dialokasikan ke termin terlama; umur piutang dihitung per termin. Jurnal tidak berubah.
+- **Masa tenggang**: ditetapkan Pimpinan per pelanggan (0–90 hari; kosong = bawaan 7 hari di Pengaturan → Format Cetak → Penagihan & Retur). Setelah jatuh tempo + masa tenggang, konfirmasi SO memberi peringatan dan surat jalan baru ditahan, kecuali Pimpinan memberi **Izin Kirim** beralasan pada SO tersebut. Umur piutang tetap dihitung dari tanggal jatuh tempo; denda hanya teks pada invoice.
+- **Retur pelanggan** dari surat jalan yang sudah selesai (batas klaim bawaan 7 hari, klaim terlambat tetap dicatat): *kirim pengganti* (barang ke lokasi Barang Rusak, qty terkirim SO berkurang, invoice tetap), *retur dan nota kredit* (barang ke Barang Rusak, nota kredit Retur Penjualan + PPN Keluaran / Piutang), atau *potongan harga* (barang tetap di pelanggan). Nota kredit hanya untuk barang yang sudah ditagih; sisa kredit atas invoice lunas dapat dikembalikan. Dropship tidak dapat diganti dari gudang. Klaim ke principal dan stock opname berada di luar cakupan sistem.
 
 ## REST API untuk aplikasi lain
 

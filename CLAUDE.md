@@ -29,7 +29,7 @@ Flows and browser tests, on the test stack:
 
 ```bash
 docker compose -p mtpp-nav -f docker-compose.yml -f infra/compose/test.yml up -d --build
-API=http://localhost:8081/api node tests/flows/demo-flow.mjs   # then edge-flow, in this order, on a fresh DB
+API=http://localhost:8081/api node tests/flows/demo-flow.mjs   # then edge-flow and collection-flow, in this order, on a fresh DB
 node tests/e2e/alur-po-pelanggan.mjs                           # BASE defaults to :8081
 docker compose -p mtpp-nav -f docker-compose.yml -f infra/compose/test.yml down -v
 ```
@@ -38,7 +38,7 @@ Schema change, from `apps/api`: edit `prisma/schema/*.prisma`, then `npm run db:
 
 ## Rules for working here
 
-- **Never run write scripts against the main database on `:8080`.** That covers `demo-flow`, `edge-flow`, `validation-flow`, the `alur-*` scripts and `mock-data`. Only `nav-audit` is safe there (`BASE=http://localhost:8080`). The owner's test quotation `SO/MTPP/2026/11/0001` (`rdadad`, Rp 0) must stay unchanged.
+- **Never run write scripts against the main database on `:8080`.** That covers `demo-flow`, `edge-flow`, `collection-flow`, `validation-flow`, the `alur-*` scripts and `mock-data`. Only `nav-audit` is safe there (`BASE=http://localhost:8080`). The owner's test quotation `SO/MTPP/2026/11/0001` (`rdadad`, Rp 0) must stay unchanged.
 - **The test stack must be named `-p mtpp-nav`,** because `edge-flow` hardcodes it, and it runs on port 8081.
 - **Keep `docker-compose.yml` in the root and the folder name `mtpp`.** The compose project name comes from the folder, so changing either points at new, empty `mtpp_dbdata` and `mtpp_storage` volumes.
 - **`docker compose up -d --build` on the main stack applies pending migrations to the main database,** because the API image runs `prisma migrate deploy` at start. A failing migration keeps the API down.
