@@ -59,9 +59,11 @@ export const fileUrl = (path: string) =>
   `/api${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(getToken())}`;
 export const openFile = (path: string) => window.open(fileUrl(path), '_blank');
 
-export const rp = (n: any) => 'Rp ' + Math.round(Number(n || 0)).toLocaleString('id-ID');
 export const nf = (n: any, d = 0) =>
   Number(n || 0).toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d });
+// rupiah selalu dengan dua desimal, mis. 1.500.000,00
+export const idr = (n: any) => nf(n, 2);
+export const rp = (n: any) => 'Rp ' + idr(n);
 export const qf = (n: any) => nf(n, Number(n) % 1 ? 2 : 0);
 export const pct = (n: any) => nf(n, 1) + '%';
 export const short = (n: any) => {

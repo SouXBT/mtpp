@@ -4,7 +4,7 @@ import { MailOutlined, PrinterOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
-import { api, nf, openFile, qf, rp, run, tgl } from '../../shared/lib';
+import { api, idr, nf, openFile, qf, rp, run, tgl } from '../../shared/lib';
 import { EmailTag, LABEL, emptyText, PageHead, Pill, SearchBar, StatusBar } from '../../shared/ui';
 import { GroupSelect, groupCols, groupRows } from '../../shared/ui';
 import Chatter from '../../shared/Chatter';
@@ -128,12 +128,12 @@ export function InvoiceList({ type }: { type: 'invoice' | 'bill' }) {
                 dataIndex: 'invoiceDateDue',
                 render: (v: any, r: any) => <span className={r.overdue ? 'loss' : ''}>{tgl(v)}</span>,
               },
-              { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => nf(v) },
+              { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => idr(v) },
               {
                 title: 'Sisa',
                 dataIndex: 'amountResidual',
                 align: 'right',
-                render: (v: any, r: any) => (r.state === 'posted' ? nf(v) : '-'),
+                render: (v: any, r: any) => (r.state === 'posted' ? idr(v) : '-'),
               },
               {
                 title: 'Status',
@@ -176,7 +176,7 @@ export function ReadyToInvoice() {
             { title: 'Pelanggan', dataIndex: 'partner' },
             { title: 'PO Pelanggan', dataIndex: 'clientOrderRef', render: (v) => v || '-' },
             { title: 'Tanggal konfirmasi', dataIndex: 'dateConfirm', render: tgl },
-            { title: 'Total SO', dataIndex: 'amountTotal', align: 'right', render: (v: any) => nf(v) },
+            { title: 'Total SO', dataIndex: 'amountTotal', align: 'right', render: (v: any) => idr(v) },
             {
               title: '',
               key: 'a',
@@ -360,12 +360,12 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
                     columns={[
                       { title: 'Produk', dataIndex: 'name' },
                       { title: 'Qty', dataIndex: 'quantity', align: 'right', render: qf },
-                      { title: 'Harga (Rp)', dataIndex: 'priceUnit', align: 'right', render: (v: any) => nf(v) },
+                      { title: 'Harga (Rp)', dataIndex: 'priceUnit', align: 'right', render: (v: any) => idr(v) },
                       {
                         title: 'Subtotal (Rp)',
                         key: 's',
                         align: 'right',
-                        render: (_, l) => nf(Number(l.debit) + Number(l.credit)),
+                        render: (_, l) => idr(Number(l.debit) + Number(l.credit)),
                       },
                     ]}
                   />
@@ -404,18 +404,18 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
                         <b>Total</b>
                       </Table.Summary.Cell>
                       <Table.Summary.Cell index={2} align="right">
-                        <b>{nf(d.reduce((a, l: any) => a + Number(l.debit), 0))}</b>
+                        <b>{idr(d.reduce((a, l: any) => a + Number(l.debit), 0))}</b>
                       </Table.Summary.Cell>
                       <Table.Summary.Cell index={3} align="right">
-                        <b>{nf(d.reduce((a, l: any) => a + Number(l.credit), 0))}</b>
+                        <b>{idr(d.reduce((a, l: any) => a + Number(l.credit), 0))}</b>
                       </Table.Summary.Cell>
                     </Table.Summary.Row>
                   )}
                   columns={[
                     { title: 'Akun', dataIndex: 'account' },
                     { title: 'Keterangan', dataIndex: 'name' },
-                    { title: 'Debit', dataIndex: 'debit', align: 'right', render: (v) => (Number(v) ? nf(v) : '') },
-                    { title: 'Kredit', dataIndex: 'credit', align: 'right', render: (v) => (Number(v) ? nf(v) : '') },
+                    { title: 'Debit', dataIndex: 'debit', align: 'right', render: (v) => (Number(v) ? idr(v) : '') },
+                    { title: 'Kredit', dataIndex: 'credit', align: 'right', render: (v) => (Number(v) ? idr(v) : '') },
                   ]}
                 />
               ),
@@ -435,7 +435,7 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
                     { title: 'Tanggal', dataIndex: 'date', render: tgl },
                     { title: 'Jenis', key: 'k', render: (_, p) => (p.adv ? 'uang muka SO' : 'pembayaran invoice') },
                     { title: 'Keterangan', dataIndex: 'memo', render: (v) => v || '-' },
-                    { title: 'Jumlah', dataIndex: 'amount', align: 'right', render: (v: any) => nf(v) },
+                    { title: 'Jumlah', dataIndex: 'amount', align: 'right', render: (v: any) => idr(v) },
                     {
                       title: '',
                       key: 'r',
@@ -520,7 +520,7 @@ export function PaymentsList() {
             },
             { title: 'Metode', dataIndex: 'journal' },
             { title: 'Keterangan', dataIndex: 'memo', render: (v) => v || '-' },
-            { title: 'Jumlah', dataIndex: 'amount', align: 'right', render: (v: any) => nf(v) },
+            { title: 'Jumlah', dataIndex: 'amount', align: 'right', render: (v: any) => idr(v) },
             {
               title: '',
               key: 'k',

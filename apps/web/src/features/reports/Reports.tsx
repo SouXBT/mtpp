@@ -4,7 +4,7 @@ import { BarChartOutlined, FilePdfOutlined, FileExcelOutlined } from '@ant-desig
 import dayjs from 'dayjs';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useFetch, useQueryState } from '../../shared/hooks';
-import { nf, openFile, tgl } from '../../shared/lib';
+import { idr, nf, openFile, tgl } from '../../shared/lib';
 import { PageHead, Pill } from '../../shared/ui';
 import Chart from '../../shared/Chart';
 
@@ -74,7 +74,7 @@ export function ReportView() {
     v == null || v === '' ? (
       ''
     ) : c.type === 'money' ? (
-      nf(v)
+      idr(v)
     ) : c.type === 'qty' ? (
       nf(v, Number(v) % 1 ? 2 : 0)
     ) : c.type === 'pct' ? (

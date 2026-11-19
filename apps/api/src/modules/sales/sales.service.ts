@@ -6,7 +6,19 @@ import { SettingsService } from '../../shared/settings.service';
 import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
 import { salePayments } from '../../shared/status';
-import { addDays, fail, must, num, round2, rupiah, terbilang, terbilangEn, tglIndo, today } from '../../shared/util';
+import {
+  addDays,
+  fail,
+  must,
+  idr,
+  num,
+  round2,
+  rupiah,
+  terbilang,
+  terbilangEn,
+  tglIndo,
+  today,
+} from '../../shared/util';
 import { PricingService } from '../master/pricing.service';
 import { StockService } from '../stock/stock.service';
 import { EmailService } from '../email/email.service';
@@ -617,9 +629,9 @@ export class SalesService {
       i + 1,
       l.name,
       `${num(l.productUomQty)} ${l.uom}`,
-      num(l.priceUnit),
+      idr(l.priceUnit),
       l.discount ? num(l.discount, 0) + '%' : '-',
-      num(l.priceSubtotal),
+      idr(l.priceSubtotal),
     ]);
     const cols = [
       { h: 'No', en: 'No', w: 18 },

@@ -14,7 +14,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { nf, short } from './lib';
+import { nf, rp, short } from './lib';
 
 const PALETTE = ['#90241D', '#F2C500', '#C9756F', '#625B55', '#5E1510', '#F9E88A', '#E3B0AB', '#B8AFA8'];
 const AGING = ['#F7D531', '#E3B0AB', '#C9756F', '#A83F36', '#731C16'];
@@ -52,7 +52,7 @@ export default function Chart({
       </div>
     );
   const fmt = (v: any) => (money ? short(v) : nf(v));
-  const tip = <Tooltip formatter={(v: any) => (money ? 'Rp ' + nf(v) : nf(v))} labelFormatter={tickX} />;
+  const tip = <Tooltip formatter={(v: any) => (money ? rp(v) : nf(v))} labelFormatter={tickX} />;
   const isAging = spec.x === 'bucket';
   if (spec.type === 'pie') {
     const k = spec.series[0].key;

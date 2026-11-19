@@ -15,7 +15,7 @@ import {
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { api, run, nf, tgl } from './lib';
+import { api, run, idr, nf, tgl } from './lib';
 import { useFetch } from './hooks';
 import { useCan } from '../app/auth';
 
@@ -127,7 +127,7 @@ export default function Crud({
         f.render ||
         ((v: any) =>
           f.type === 'money' ? (
-            nf(v)
+            idr(v)
           ) : f.type === 'pct' ? (
             `${nf(v, 1)}%`
           ) : f.type === 'date' ? (

@@ -6,7 +6,19 @@ import { SettingsService } from '../../shared/settings.service';
 import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
 import { refreshPurchase } from '../../shared/status';
-import { addDays, fail, must, num, round2, rupiah, terbilang, terbilangEn, tglIndo, today } from '../../shared/util';
+import {
+  addDays,
+  fail,
+  must,
+  idr,
+  num,
+  round2,
+  rupiah,
+  terbilang,
+  terbilangEn,
+  tglIndo,
+  today,
+} from '../../shared/util';
 import { PricingService } from '../master/pricing.service';
 import { TransfersService } from '../stock/transfers.service';
 import { SalesService } from '../sales/sales.service';
@@ -335,8 +347,8 @@ export class PurchasingService {
         i + 1,
         l.name,
         `${num(l.productQty)} ${l.uom}`,
-        num(l.priceUnit),
-        num(l.priceSubtotal),
+        idr(l.priceUnit),
+        idr(l.priceSubtotal),
       ]),
       totals: [
         ['Subtotal', rupiah(o.amountUntaxed)],

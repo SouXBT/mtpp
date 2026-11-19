@@ -25,7 +25,7 @@ import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom
 import type { ShellContext } from '../../app/Shell';
 import { useAuth, useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
-import { api, nf, openFile, pct, qf, rp, run, tgl, today } from '../../shared/lib';
+import { api, idr, nf, openFile, pct, qf, rp, run, tgl, today } from '../../shared/lib';
 import { EmailTag, LABEL, emptyText, PageHead, Pill, SearchBar, StatusBar } from '../../shared/ui';
 import { GroupSelect, groupCols, groupRows } from '../../shared/ui';
 import Chatter from '../../shared/Chatter';
@@ -172,7 +172,7 @@ export function SalesList() {
                   </span>
                 ),
               },
-              { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => nf(v) },
+              { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => idr(v) },
               { title: 'Status', dataIndex: 'state', render: (v: any) => <Pill v={v} kind="so" /> },
               {
                 title: 'Penagihan',
@@ -810,7 +810,7 @@ export function SalesDetail() {
                               />
                               {l.listHint && (
                                 <div className="muted" style={{ fontSize: 12 }}>
-                                  harga daftar: {nf(l.listHint.priceUnit)}
+                                  harga daftar: {idr(l.listHint.priceUnit)}
                                   {Number(l.listHint.discount)
                                     ? ` (diskon ${nf(l.listHint.discount, Number(l.listHint.discount) % 1 ? 1 : 0)}%)`
                                     : ''}
@@ -818,7 +818,7 @@ export function SalesDetail() {
                               )}
                             </>
                           ) : (
-                            nf(v)
+                            idr(v)
                           ),
                       },
                       {
@@ -849,7 +849,7 @@ export function SalesDetail() {
                                 l.productId && !Number(v) ? (
                                   <span className="loss">harga pokok belum ada</span>
                                 ) : (
-                                  <span className="cost">{nf(v)}</span>
+                                  <span className="cost">{idr(v)}</span>
                                 ),
                             },
                             {
@@ -870,7 +870,7 @@ export function SalesDetail() {
                             { title: 'Tertagih', dataIndex: 'qtyInvoiced', align: 'right' as const, render: qf },
                           ]
                         : []),
-                      { title: 'Subtotal (Rp)', key: 'sub', align: 'right', render: (_, l) => nf(calc(l).sub) },
+                      { title: 'Subtotal (Rp)', key: 'sub', align: 'right', render: (_, l) => idr(calc(l).sub) },
                       ...(canEdit
                         ? [
                             {

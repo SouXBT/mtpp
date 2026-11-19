@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
 import { AuthUser } from '../../shared/auth';
-import { addDays, daysBetween, round2, today } from '../../shared/util';
+import { addDays, daysBetween, round2, rupiah, today } from '../../shared/util';
 import { StockService } from '../stock/stock.service';
 import { SalesService } from '../sales/sales.service';
 import { Prisma } from '@prisma/client';
@@ -185,7 +185,7 @@ export class DashboardService {
           sql`select count(*)::int as n from email_logs where state in ('gagal','ditolak') and sent_at > now() - interval '14 days'`,
         );
         k('quotes', 'Penawaran terbuka', qo.n, {
-          hint: `nilai Rp ${Math.round(qo.v).toLocaleString('id-ID')}`,
+          hint: `nilai ${rupiah(qo.v)}`,
           link: '/penjualan?tab=quote',
         });
         k('expired', 'Penawaran kedaluwarsa', exp.n, {

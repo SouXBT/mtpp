@@ -20,7 +20,7 @@ import dayjs from 'dayjs';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
-import { api, nf, openFile, qf, rp, run, tgl, today } from '../../shared/lib';
+import { api, idr, nf, openFile, qf, rp, run, tgl, today } from '../../shared/lib';
 import { EmailTag, LABEL, emptyText, PageHead, Pill, SearchBar, StatusBar } from '../../shared/ui';
 import { GroupSelect, groupCols, groupRows } from '../../shared/ui';
 import Chatter from '../../shared/Chatter';
@@ -153,7 +153,7 @@ export function POList() {
                   <span className={r.state === 'purchase' && v && v < today() ? 'loss' : ''}>{tgl(v)}</span>
                 ),
               },
-              { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => nf(v) },
+              { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => idr(v) },
               { title: 'Status', dataIndex: 'state', render: (v: any) => <Pill v={v} kind="po" /> },
               {
                 title: 'Status bayar',
@@ -164,7 +164,7 @@ export function POList() {
                 title: 'Sisa utang',
                 dataIndex: 'mtppAmountDue',
                 align: 'right',
-                render: (v: any) => (v ? nf(v) : '-'),
+                render: (v: any) => (v ? idr(v) : '-'),
               },
             ],
             ['amountTotal', 'mtppAmountDue'],
@@ -501,7 +501,7 @@ export function PODetail() {
                               }}
                             />
                           ) : (
-                            nf(v)
+                            idr(v)
                           ),
                       },
                       { title: 'Diterima', dataIndex: 'qtyReceived', align: 'right', render: qf },
@@ -510,7 +510,7 @@ export function PODetail() {
                         title: 'Subtotal (Rp)',
                         key: 's',
                         align: 'right',
-                        render: (_, l) => nf(Number(l.productQty) * Number(l.priceUnit)),
+                        render: (_, l) => idr(Number(l.productQty) * Number(l.priceUnit)),
                       },
                     ]}
                   />
@@ -564,8 +564,8 @@ export function PODetail() {
                     },
                     { title: 'Tanggal', dataIndex: 'invoiceDate', render: tgl },
                     { title: 'Jatuh tempo', dataIndex: 'invoiceDateDue', render: tgl },
-                    { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => nf(v) },
-                    { title: 'Sisa', dataIndex: 'amountResidual', align: 'right', render: (v: any) => nf(v) },
+                    { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => idr(v) },
+                    { title: 'Sisa', dataIndex: 'amountResidual', align: 'right', render: (v: any) => idr(v) },
                     {
                       title: 'Status',
                       dataIndex: 'state',
@@ -782,7 +782,7 @@ export function SupplierPricelist() {
             key: 'net',
             label: 'Harga bersih',
             form: false,
-            render: (_, r) => nf(Number(r.price) * (1 - Number(r.discount) / 100)),
+            render: (_, r) => idr(Number(r.price) * (1 - Number(r.discount) / 100)),
           },
         ]}
       />

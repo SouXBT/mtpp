@@ -22,9 +22,11 @@ export const must = (v: any, what = 'Data'): any => {
   if (v === undefined || v === null) throw new NotFoundException(`${what} tidak ditemukan`);
   return v;
 };
-export const rupiah = (n: number) => 'Rp ' + Math.round(Number(n || 0)).toLocaleString('id-ID');
 export const num = (n: number, d = 0) =>
   Number(n || 0).toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d });
+// rupiah selalu dengan dua desimal, mis. 1.500.000,00
+export const idr = (n: number) => num(n, 2);
+export const rupiah = (n: number) => 'Rp ' + idr(n);
 export const tglIndo = (iso?: string | null) => {
   if (!iso) return '-';
   const b = [

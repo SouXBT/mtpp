@@ -5,7 +5,19 @@ import { SettingsService } from '../../shared/settings.service';
 import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
 import { graduateCustomer, refreshPurchase, refreshSale, salePayments } from '../../shared/status';
-import { addDays, fail, must, num, round2, rupiah, terbilang, terbilangEn, tglIndo, today } from '../../shared/util';
+import {
+  addDays,
+  fail,
+  must,
+  idr,
+  num,
+  round2,
+  rupiah,
+  terbilang,
+  terbilangEn,
+  tglIndo,
+  today,
+} from '../../shared/util';
 import { JournalService } from '../accounting/journal.service';
 import { EmailService } from '../email/email.service';
 import { Prisma } from '@prisma/client';
@@ -877,8 +889,8 @@ export class BillingService {
         i + 1,
         l.name,
         num(l.quantity),
-        num(l.priceUnit),
-        num(Number(l.credit) || Number(l.debit)),
+        idr(l.priceUnit),
+        idr(Number(l.credit) || Number(l.debit)),
       ]),
       totals: [
         ['DPP', rupiah(e.amountUntaxed)],
@@ -953,7 +965,7 @@ export class BillingService {
         { h: 'Jumlah (Rp)', en: 'Amount', w: 120, align: 'right' },
       ],
       rows: [
-        [p.memo || (p.invoice ? `Pembayaran invoice ${p.invoice.name}` : `Uang muka ${so?.name || ''}`), num(p.amount)],
+        [p.memo || (p.invoice ? `Pembayaran invoice ${p.invoice.name}` : `Uang muka ${so?.name || ''}`), idr(p.amount)],
       ],
       totals: [['Total', rupiah(p.amount)]],
       words: terbilang(Number(p.amount)),

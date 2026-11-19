@@ -5,13 +5,13 @@ import { AuthUser, CurrentUser } from '../../shared/auth';
 import { REPORTS_BY_GROUP } from '../../shared/menus';
 import { PdfService } from '../../shared/pdf.service';
 import { SettingsService } from '../../shared/settings.service';
-import { num, tglIndo, today } from '../../shared/util';
+import { idr, num, tglIndo, today } from '../../shared/util';
 import { Col, REPORT_TITLES } from './reports.helpers';
 import { ReportsService } from './reports.service';
 
 const fmt = (v: any, c: Col) => {
   if (v == null || v === '') return '';
-  if (c.type === 'money') return num(v);
+  if (c.type === 'money') return idr(v);
   if (c.type === 'qty') return num(v, Number(v) % 1 ? 2 : 0);
   if (c.type === 'pct') return num(v, 2) + '%';
   if (c.type === 'date') return tglIndo(String(v));

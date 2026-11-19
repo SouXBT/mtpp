@@ -5,7 +5,7 @@ import { NumberingService } from '../../shared/numbering.service';
 import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
 import { graduateCustomer, refreshPurchase, refreshSale, salePayments } from '../../shared/status';
-import { fail, must, num, round2, tglIndo, today } from '../../shared/util';
+import { fail, must, idr, num, round2, tglIndo, today } from '../../shared/util';
 import { StockService } from './stock.service';
 import { Prisma } from '@prisma/client';
 
@@ -147,7 +147,7 @@ export class TransfersService {
     if (!o?.partner.mtppIsNewCustomer) return null;
     const paid = (await salePayments(this.db, saleId)).advance;
     if (paid >= Number(o.amountTotal) - 0.5) return null;
-    return `Pelanggan baru: sales order baru dibayar Rp ${num(paid)} dari Rp ${num(Number(o.amountTotal))}. Surat jalan hanya dapat diterbitkan setelah lunas.`;
+    return `Pelanggan baru: sales order baru dibayar Rp ${idr(paid)} dari Rp ${idr(Number(o.amountTotal))}. Surat jalan hanya dapat diterbitkan setelah lunas.`;
   }
 
   private async pendingInOpen(saleLineIds: number[]) {

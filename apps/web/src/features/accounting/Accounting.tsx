@@ -19,7 +19,7 @@ import dayjs from 'dayjs';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
-import { api, nf, openFile, rp, run, tgl, today } from '../../shared/lib';
+import { api, idr, nf, openFile, rp, run, tgl, today } from '../../shared/lib';
 import { PageHead, Pill } from '../../shared/ui';
 import Crud from '../../shared/Crud';
 import Chatter from '../../shared/Chatter';
@@ -189,7 +189,7 @@ function JournalTable({ rows, loading }: { rows?: any[]; loading?: boolean }) {
           { title: 'Jurnal', dataIndex: 'journal' },
           { title: 'Partner', dataIndex: 'partner', render: (v) => v || '-' },
           { title: 'Referensi', dataIndex: 'ref', render: (v) => v || '-' },
-          { title: 'Jumlah', dataIndex: 'amountTotal', align: 'right', render: (v: any) => nf(v) },
+          { title: 'Jumlah', dataIndex: 'amountTotal', align: 'right', render: (v: any) => idr(v) },
           { title: 'Status', dataIndex: 'state', render: (v) => <Pill v={v} kind="je" /> },
         ]}
       />
@@ -487,18 +487,18 @@ export function JournalDetail() {
                 <b>Total</b>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={2} align="right">
-                <b>{nf(d.reduce((a, l: any) => a + Number(l.debit), 0))}</b>
+                <b>{idr(d.reduce((a, l: any) => a + Number(l.debit), 0))}</b>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={3} align="right">
-                <b>{nf(d.reduce((a, l: any) => a + Number(l.credit), 0))}</b>
+                <b>{idr(d.reduce((a, l: any) => a + Number(l.credit), 0))}</b>
               </Table.Summary.Cell>
             </Table.Summary.Row>
           )}
           columns={[
             { title: 'Akun', dataIndex: 'account' },
             { title: 'Keterangan', dataIndex: 'name', render: (v) => v || '-' },
-            { title: 'Debit', dataIndex: 'debit', align: 'right', render: (v) => (Number(v) ? nf(v) : '') },
-            { title: 'Kredit', dataIndex: 'credit', align: 'right', render: (v) => (Number(v) ? nf(v) : '') },
+            { title: 'Debit', dataIndex: 'debit', align: 'right', render: (v) => (Number(v) ? idr(v) : '') },
+            { title: 'Kredit', dataIndex: 'credit', align: 'right', render: (v) => (Number(v) ? idr(v) : '') },
           ]}
         />
       </div>
@@ -566,10 +566,10 @@ export function LedgerPage() {
               <b style={{ minWidth: 260 }}>
                 {a.account.code} {a.account.name}
               </b>
-              <span className="muted">Awal {nf(a.opening)}</span>
-              <span className="muted">Debit {nf(a.debit)}</span>
-              <span className="muted">Kredit {nf(a.credit)}</span>
-              <b>Akhir {nf(a.closing)}</b>
+              <span className="muted">Awal {idr(a.opening)}</span>
+              <span className="muted">Debit {idr(a.debit)}</span>
+              <span className="muted">Kredit {idr(a.credit)}</span>
+              <b>Akhir {idr(a.closing)}</b>
             </div>
           ),
           children: (
@@ -587,9 +587,9 @@ export function LedgerPage() {
                 },
                 { title: 'Partner', dataIndex: 'partner', render: (v) => v || '-' },
                 { title: 'Keterangan', key: 'k', render: (_, r) => r.label || r.ref || '-' },
-                { title: 'Debit', dataIndex: 'debit', align: 'right', render: (v) => (Number(v) ? nf(v) : '') },
-                { title: 'Kredit', dataIndex: 'credit', align: 'right', render: (v) => (Number(v) ? nf(v) : '') },
-                { title: 'Saldo', dataIndex: 'balance', align: 'right', render: (v: any) => nf(v) },
+                { title: 'Debit', dataIndex: 'debit', align: 'right', render: (v) => (Number(v) ? idr(v) : '') },
+                { title: 'Kredit', dataIndex: 'credit', align: 'right', render: (v) => (Number(v) ? idr(v) : '') },
+                { title: 'Saldo', dataIndex: 'balance', align: 'right', render: (v: any) => idr(v) },
               ]}
             />
           ),
@@ -641,10 +641,10 @@ export function TrialBalancePage() {
                 <b>Total</b>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={4} align="right">
-                <b>{nf(d?.totalDebit)}</b>
+                <b>{idr(d?.totalDebit)}</b>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={5} align="right">
-                <b>{nf(d?.totalCredit)}</b>
+                <b>{idr(d?.totalCredit)}</b>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={6} />
             </Table.Summary.Row>
@@ -659,10 +659,10 @@ export function TrialBalancePage() {
               ),
             },
             { title: 'Jenis', dataIndex: 'type', render: typeLabel },
-            { title: 'Saldo awal', dataIndex: 'opening', align: 'right', render: (v: any) => nf(v) },
-            { title: 'Debit', dataIndex: 'debit', align: 'right', render: (v: any) => nf(v) },
-            { title: 'Kredit', dataIndex: 'credit', align: 'right', render: (v: any) => nf(v) },
-            { title: 'Saldo akhir', dataIndex: 'closing', align: 'right', render: (v) => <b>{nf(v)}</b> },
+            { title: 'Saldo awal', dataIndex: 'opening', align: 'right', render: (v: any) => idr(v) },
+            { title: 'Debit', dataIndex: 'debit', align: 'right', render: (v: any) => idr(v) },
+            { title: 'Kredit', dataIndex: 'credit', align: 'right', render: (v: any) => idr(v) },
+            { title: 'Saldo akhir', dataIndex: 'closing', align: 'right', render: (v) => <b>{idr(v)}</b> },
           ]}
         />
       </div>
@@ -718,7 +718,7 @@ export function BankReconPage() {
               title: 'Jumlah',
               dataIndex: 'amount',
               align: 'right',
-              render: (v) => <span className={Number(v) < 0 ? 'loss' : 'gain'}>{nf(v)}</span>,
+              render: (v) => <span className={Number(v) < 0 ? 'loss' : 'gain'}>{idr(v)}</span>,
             },
             {
               title: 'Pembayaran',
@@ -848,7 +848,7 @@ export function BankReconPage() {
                 { title: 'Pembayaran', dataIndex: 'name' },
                 { title: 'Tanggal', dataIndex: 'date', render: tgl },
                 { title: 'Partner', dataIndex: 'partner' },
-                { title: 'Jumlah', dataIndex: 'amount', align: 'right', render: (v: any) => nf(v) },
+                { title: 'Jumlah', dataIndex: 'amount', align: 'right', render: (v: any) => idr(v) },
                 {
                   title: '',
                   key: 'a',
