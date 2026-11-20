@@ -1,3 +1,4 @@
+import { nowDate } from '../../shared/clock';
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
 import { AuthUser, dataRule, stripCost } from '../../shared/auth';
@@ -342,7 +343,7 @@ export class SalesService {
         where: { id },
         data: revoke
           ? { mtppReleaseUid: null, mtppReleaseDate: null, mtppReleaseNote: null }
-          : { mtppReleaseUid: u.id, mtppReleaseDate: new Date(), mtppReleaseNote: String(b.note).trim() },
+          : { mtppReleaseUid: u.id, mtppReleaseDate: nowDate(), mtppReleaseNote: String(b.note).trim() },
       });
       await this.chatter.log(
         MODEL,
@@ -571,7 +572,7 @@ export class SalesService {
       }
       const [r] = await tx.salesOrders.updateManyAndReturn({
         where: { id: id },
-        data: { ...head, writeUid: u.id, writeDate: new Date() },
+        data: { ...head, writeUid: u.id, writeDate: nowDate() },
       });
       if (changes.length) await this.chatter.log(MODEL, id, u.id, 'Data diubah', changes, tx);
       return r;
@@ -582,7 +583,7 @@ export class SalesService {
     const o = must(await this.db.salesOrders.findFirst({ where: { id: id } }), 'Sales order');
     await this.db.salesOrders.updateMany({
       where: { id: id },
-      data: { state, ...extra, writeUid: u.id, writeDate: new Date() },
+      data: { state, ...extra, writeUid: u.id, writeDate: nowDate() },
     });
     await this.chatter.log(MODEL, id, u.id, body, [{ field: 'Status', old: SO_STATE[o.state], new: SO_STATE[state] }]);
   }
@@ -611,7 +612,7 @@ export class SalesService {
           dateConfirm: today(),
           invoiceStatus: 'no',
           writeUid: u.id,
-          writeDate: new Date(),
+          writeDate: nowDate(),
         },
       });
       if (count === 0) fail(notConfirmable);

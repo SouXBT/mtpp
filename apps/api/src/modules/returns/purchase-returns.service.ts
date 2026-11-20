@@ -1,3 +1,4 @@
+import { nowDate } from '../../shared/clock';
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
 import { AuthUser } from '../../shared/auth';
@@ -359,7 +360,7 @@ export class PurchaseReturnsService {
       }
       await tx.purchaseReturns.updateMany({
         where: { id },
-        data: { state: 'done', receiptId, refundEntryId: refundId, writeUid: u.id, writeDate: new Date() },
+        data: { state: 'done', receiptId, refundEntryId: refundId, writeUid: u.id, writeDate: nowDate() },
       });
       await this.chatter.log(
         MODEL,

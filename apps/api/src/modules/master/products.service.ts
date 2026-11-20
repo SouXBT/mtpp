@@ -1,3 +1,4 @@
+import { nowDate } from '../../shared/clock';
 import { Injectable } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
@@ -100,7 +101,7 @@ export class ProductsService {
       if (Object.keys(tv).length)
         await tx.productTemplates.updateMany({
           where: { id: p.productTmplId },
-          data: { ...tv, writeDate: new Date() },
+          data: { ...tv, writeDate: nowDate() },
         });
       const pv = pick(b, ['active']);
       if (b.code) (pv as any).defaultCode = b.code;

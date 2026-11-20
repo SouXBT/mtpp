@@ -1,3 +1,4 @@
+import { nowDate } from '../../shared/clock';
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
 import { AuthUser, dataRule } from '../../shared/auth';
@@ -187,7 +188,7 @@ export class BillingService {
     await this.db.$transaction(async (tx) => {
       await tx.invoiceInstallments.updateMany({
         where: { invoiceId: id },
-        data: { state: 'approved', approveUid: u.id, approveDate: new Date(), writeUid: u.id },
+        data: { state: 'approved', approveUid: u.id, approveDate: nowDate(), writeUid: u.id },
       });
       await this.chatter.log(MODEL, id, u.id, `Jadwal cicilan ${rows.length} termin disetujui`, [], tx);
     });

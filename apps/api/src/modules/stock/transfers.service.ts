@@ -1,3 +1,4 @@
+import { nowDate } from '../../shared/clock';
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
 import { AuthUser, dataRule } from '../../shared/auth';
@@ -364,7 +365,7 @@ export class TransfersService {
         const ch = this.chatter.diff(t, head, [{ key: 'scheduledDate', label: 'Tanggal rencana' }]);
         await tx.stockTransfers.updateMany({
           where: { id: id },
-          data: { ...head, writeUid: u.id, writeDate: new Date() },
+          data: { ...head, writeUid: u.id, writeDate: nowDate() },
         });
         if (ch.length) await this.chatter.log(MODEL, id, u.id, 'Data diubah', ch, tx);
       }
@@ -424,7 +425,7 @@ export class TransfersService {
         const from = await tx.locations.findFirst({ where: { id: m.locationId } });
         const to = await tx.locations.findFirst({ where: { id: m.locationDestId } });
         await this.stock.applyMove(tx, m.productId, from, to, q);
-        await tx.stockMoves.updateMany({ where: { id: m.id }, data: { state: 'done', date: new Date() } });
+        await tx.stockMoves.updateMany({ where: { id: m.id }, data: { state: 'done', date: nowDate() } });
         if (m.purchaseLineId)
           await tx.purchaseOrderLines.updateMany({
             where: { id: m.purchaseLineId },
@@ -447,7 +448,7 @@ export class TransfersService {
       }
       await tx.stockTransfers.updateMany({
         where: { id: id },
-        data: { state: 'done', dateDone: new Date(), writeUid: u.id },
+        data: { state: 'done', dateDone: nowDate(), writeUid: u.id },
       });
       let msg =
         t.kind === 'incoming'

@@ -52,6 +52,15 @@ async function bootstrap() {
   const { appValidationPipe } = await import('./shared/validation');
   app.useGlobalPipes(appValidationPipe());
   app.setGlobalPrefix('api');
+  const { clock, mockDateEnabled } = await import('./shared/clock');
+  if (mockDateEnabled()) {
+    log.warn('MOCK_DATE_HEADER aktif: header x-mock-date mengganti tanggal transaksi (hanya untuk data contoh)');
+    app.use((req: any, _res: any, next: () => void) => {
+      const d = String(req.headers['x-mock-date'] || '');
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) clock.run(d, next);
+      else next();
+    });
+  }
   app.enableCors({ origin: process.env.CORS_ORIGIN?.split(',') || true });
   const port = Number(process.env.PORT || 3000);
   await app.listen(port, '0.0.0.0');

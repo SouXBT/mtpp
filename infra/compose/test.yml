@@ -8,3 +8,5 @@ services:
       BREVO_API_KEY: ""
       APP_ENV: development
       SEED_DEMO: "true"
+      # tanggal simulasi untuk data contoh beberapa bulan ke belakang (scripts/seed/mock-3-bulan.mjs)
+      MOCK_DATE_HEADER: "true"

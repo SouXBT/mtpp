@@ -30,6 +30,8 @@ services:
       WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:-ganti-token-webhook}
       STORAGE_DIR: /app/storage
       SEED_DEMO: ${SEED_DEMO:-true}
+      # true hanya sementara untuk mengisi data contoh bertanggal mundur (mock-3-bulan); selalu mati di produksi
+      MOCK_DATE_HEADER: ${MOCK_DATE_HEADER:-false}
       TZ: Asia/Jakarta
     volumes: [storage:/app/storage]
 

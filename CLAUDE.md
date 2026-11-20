@@ -38,7 +38,7 @@ Schema change, from `apps/api`: edit `prisma/schema/*.prisma`, then `npm run db:
 
 ## Rules for working here
 
-- **Never run write scripts against the main database on `:8080`.** That covers `demo-flow`, `edge-flow`, `collection-flow`, `validation-flow`, the `alur-*` scripts and `mock-data`. Only `nav-audit` is safe there (`BASE=http://localhost:8080`). The owner's test quotation `SO/MTPP/2026/11/0001` (`rdadad`, Rp 0) must stay unchanged.
+- **Never run write scripts against the main database on `:8080`.** That covers `demo-flow`, `edge-flow`, `collection-flow`, `validation-flow`, the `alur-*` scripts, `mock-data` and `mock-3-bulan`. Only `nav-audit` is safe there (`BASE=http://localhost:8080`). The owner's test quotation `SO/MTPP/2026/11/0001` (`rdadad`, Rp 0) must stay unchanged.
 - **The test stack must be named `-p mtpp-nav`,** because `edge-flow` hardcodes it, and it runs on port 8081.
 - **Keep `docker-compose.yml` in the root and the folder name `mtpp`.** The compose project name comes from the folder, so changing either points at new, empty `mtpp_dbdata` and `mtpp_storage` volumes.
 - **`docker compose up -d --build` on the main stack applies pending migrations to the main database,** because the API image runs `prisma migrate deploy` at start. A failing migration keeps the API down.
@@ -61,7 +61,7 @@ Schema change, from `apps/api`: edit `prisma/schema/*.prisma`, then `npm run db:
 
 **Stock:** free stock is physical minus reserved, and the earlier-confirmed SO owns stock first (`StockService.reservedAhead`). Stock moves create no journal entries (periodic inventory).
 
-**Environment flags:** the Docker image always sets `NODE_ENV=production`, so the production safety checks in `main.ts` key off `APP_ENV`. Without `BREVO_API_KEY`, email runs in simulation mode and logs a `simulasi` status. Production settings are in `infra/compose/production.yml`, enabled through `COMPOSE_FILE` in `.env`.
+**Environment flags:** `MOCK_DATE_HEADER=true` (test stack only, ignored when `APP_ENV=production`) lets the `x-mock-date` header set the business date of a request through `shared/clock.ts`; `today()` and `nowDate()` read it, so use `nowDate()` instead of `new Date()` for business timestamps. The Docker image always sets `NODE_ENV=production`, so the production safety checks in `main.ts` key off `APP_ENV`. Without `BREVO_API_KEY`, email runs in simulation mode and logs a `simulasi` status. Production settings are in `infra/compose/production.yml`, enabled through `COMPOSE_FILE` in `.env`.
 
 **Frontend:** `apps/web/src/app` has the entry point, shell and menu (`nav.ts`, pure and unit-tested). `features/<area>` holds pages and their helpers, and `shared` holds common components. Pages call the `api` axios instance from `shared/lib.ts`.
 

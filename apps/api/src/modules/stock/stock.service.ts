@@ -1,3 +1,4 @@
+import { nowDate } from '../../shared/clock';
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
 import { fail, must, round2 } from '../../shared/util';
@@ -93,7 +94,7 @@ export class StockService {
       const b = await tx.stockBalances.findFirst({ where: { productId, locationId: loc.id } });
       const newQ = round2(Number(b?.quantity || 0) + sign * qty);
       if (newQ < 0) fail('Stok fisik tidak cukup di ' + loc.completeName);
-      if (b) await tx.stockBalances.updateMany({ where: { id: b.id }, data: { quantity: newQ, inDate: new Date() } });
+      if (b) await tx.stockBalances.updateMany({ where: { id: b.id }, data: { quantity: newQ, inDate: nowDate() } });
       else await tx.stockBalances.create({ data: { productId, locationId: loc.id, quantity: newQ } });
     }
   }

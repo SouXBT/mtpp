@@ -1,3 +1,4 @@
+import { nowDate } from './clock';
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../db/db.module';
 
@@ -20,7 +21,9 @@ export class ChatterService {
     changes: Change[] = [],
     tx: any = this.db,
   ) {
-    const m = await tx.messages.create({ data: { model, resId, authorId, body, messageType: 'log' } });
+    const m = await tx.messages.create({
+      data: { model, resId, authorId, body, messageType: 'log', createDate: nowDate(), writeDate: nowDate() },
+    });
     if (changes.length) {
       await tx.changeLogs.createMany({
         data: changes.map((c) => {

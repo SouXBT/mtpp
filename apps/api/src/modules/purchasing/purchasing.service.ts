@@ -1,3 +1,4 @@
+import { nowDate } from '../../shared/clock';
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
 import { AuthUser, dataRule } from '../../shared/auth';
@@ -212,7 +213,7 @@ export class PurchasingService {
       }
       const [r] = await tx.purchaseOrders.updateManyAndReturn({
         where: { id: id },
-        data: { ...head, writeUid: u.id, writeDate: new Date() },
+        data: { ...head, writeUid: u.id, writeDate: nowDate() },
       });
       if (changes.length) await this.chatter.log(MODEL, id, u.id, 'Data diubah', changes, tx);
       if (head.datePlanned)
@@ -293,7 +294,7 @@ export class PurchasingService {
         });
       await tx.purchaseOrders.updateMany({
         where: { id: id },
-        data: { ...(await this.totals(next)), writeUid: u.id, writeDate: new Date() },
+        data: { ...(await this.totals(next)), writeUid: u.id, writeDate: nowDate() },
       });
       const changes = lines
         .filter((l) => Number(l.qtyReceived) < Number(l.productQty))

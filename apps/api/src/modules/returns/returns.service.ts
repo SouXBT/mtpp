@@ -1,3 +1,4 @@
+import { nowDate } from '../../shared/clock';
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
 import { AuthUser } from '../../shared/auth';
@@ -298,7 +299,7 @@ export class ReturnsService {
           amountTax: x.tax.tax,
           amountTotal: x.total,
           writeUid: u.id,
-          writeDate: new Date(),
+          writeDate: nowDate(),
         },
       });
       await tx.salesReturnLines.deleteMany({ where: { returnId: id } });
@@ -497,7 +498,7 @@ export class ReturnsService {
           refundEntryId: refundId,
           replacementPickingId: replacementId,
           writeUid: u.id,
-          writeDate: new Date(),
+          writeDate: nowDate(),
         },
       });
       await this.chatter.log(

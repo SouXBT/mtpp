@@ -1,3 +1,4 @@
+import { nowDate } from '../../shared/clock';
 import { Injectable } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
@@ -112,7 +113,7 @@ export class PartnersService {
     checkPerm(u, menu, 'write');
     checkColumnTypes('Partners', b, [...P_FIELDS, ...PIMPINAN_FIELDS, 'active']);
     checkGrace(b);
-    const v: any = { ...pick(b, [...P_FIELDS, 'active']), writeUid: u.id, writeDate: new Date() };
+    const v: any = { ...pick(b, [...P_FIELDS, 'active']), writeUid: u.id, writeDate: nowDate() };
     // Pimpinan menetapkan term of payment, penanda pelanggan baru, pricelist penjualan, dan masa tenggang
     if (u.group === 'PIMPINAN') Object.assign(v, pick(b, PIMPINAN_FIELDS));
     if (v.mtppGraceDays !== undefined && v.mtppGraceDays !== null) v.mtppGraceDays = Number(v.mtppGraceDays);

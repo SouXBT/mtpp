@@ -1,9 +1,12 @@
+import { mockDay } from './clock';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 export const round2 = (n: number) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 export const roundRp = (n: number) => Math.round(Number(n));
 export const today = () => {
-  // tanggal hari ini di zona WIB (UTC+7)
+  // tanggal hari ini di zona WIB (UTC+7); tanggal simulasi bila request membawanya (lihat clock.ts)
+  const m = mockDay();
+  if (m) return m;
   const d = new Date(Date.now() + 7 * 3600 * 1000);
   return d.toISOString().slice(0, 10);
 };
