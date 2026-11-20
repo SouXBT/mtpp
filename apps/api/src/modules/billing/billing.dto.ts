@@ -8,6 +8,8 @@ export class PaymentDto {
   @IsText() method?: 'BNK' | 'KAS';
   @IsDateLike() date?: string;
   @IsText() memo?: string;
+  @IsText() kind?: 'dp' | 'lunas';
+  @IsDateLike() settleDate?: string;
 }
 
 export class InvoiceSourceDto {

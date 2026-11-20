@@ -25,7 +25,7 @@ import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom
 import type { ShellContext } from '../../app/Shell';
 import { useAuth, useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
-import { api, idr, nf, openFile, pct, qf, rp, run, tgl, today } from '../../shared/lib';
+import { api, idr, nf, openFile, paymentForm, pct, qf, rp, run, tgl, today } from '../../shared/lib';
 import { EmailTag, LABEL, emptyText, PageHead, Pill, SearchBar, StatusBar } from '../../shared/ui';
 import { GroupSelect, groupCols, groupRows } from '../../shared/ui';
 import Chatter from '../../shared/Chatter';
@@ -220,7 +220,6 @@ export function SalesDetail() {
   const priceTimer = useRef<any>(null);
   const [pfOpen, setPfOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
-  const [refundOpen, setRefundOpen] = useState(false);
 
   useEffect(() => {
     if (isNew)
@@ -499,7 +498,10 @@ export function SalesDetail() {
         onClick: () =>
           Modal.confirm({
             title: 'Batalkan dokumen ini?',
-            content: 'Dokumen tetap tersimpan sebagai riwayat dengan status Batal.',
+            content:
+              Number(pay.advanceAvailable) > 0
+                ? `Uang muka ${rp(pay.advanceAvailable)} yang belum terpakai tidak dikembalikan: uang muka hangus dan dicatat sebagai pendapatan lain-lain. Dokumen tetap tersimpan sebagai riwayat dengan status Batal.`
+                : 'Dokumen tetap tersimpan sebagai riwayat dengan status Batal.',
             okText: 'Batalkan',
             cancelText: 'Tidak',
             onOk: () => act('cancel', 'Dokumen dibatalkan'),
@@ -603,10 +605,7 @@ export function SalesDetail() {
           <Button onClick={() => setPfOpen(true)}>Proforma Invoice</Button>
         )}
         {o.state === 'sale' && can('penagihan', 'create') && o.partner?.mtppIsNewCustomer && !pay.paidFull && (
-          <Button onClick={() => setPayOpen(true)}>Catat Uang Muka / Pelunasan</Button>
-        )}
-        {['sale', 'cancel'].includes(o.state) && can('penagihan', 'write') && Number(pay.advanceAvailable) > 0 && (
-          <Button onClick={() => setRefundOpen(true)}>Kembalikan Uang Muka</Button>
+          <Button onClick={() => setPayOpen(true)}>Catat Pembayaran (DP / Lunas)</Button>
         )}
         {o.state === 'cancel' && can('penjualan', 'write') && (
           <Button onClick={() => act('draft', 'Dikembalikan ke draf')}>Kembalikan ke Draf</Button>
@@ -630,7 +629,11 @@ export function SalesDetail() {
           message={
             pay.paidFull
               ? 'Pelanggan baru: sales order sudah lunas, surat jalan dapat diterbitkan.'
-              : `Pelanggan baru: dibayar ${rp(pay.amount)} dari ${rp(o.amountTotal)}. Surat jalan diterbitkan setelah lunas.`
+              : `Pelanggan baru: dibayar ${rp(pay.amount)} dari ${rp(o.amountTotal)}. Surat jalan diterbitkan setelah lunas.${
+                  o.mtppSettleDate
+                    ? ` Sisa ${rp(Number(o.amountTotal) - Number(pay.amount || 0))} dilunasi paling lambat ${tgl(o.mtppSettleDate)}${o.mtppSettleDate < today() ? ' (terlambat)' : ''}.`
+                    : ''
+                }`
           }
           description={
             o.mtppProformaNumber
@@ -735,7 +738,18 @@ export function SalesDetail() {
                 format="D MMMM YYYY"
                 allowClear={false}
                 value={dayjs(o.dateOrder)}
-                onChange={(d) => upd({ dateOrder: d.format('YYYY-MM-DD') })}
+                onChange={(d) => {
+                  const date = d.format('YYYY-MM-DD');
+                  // berlaku sampai harus setelah tanggal penawaran; geser bila tidak lagi sah
+                  upd(
+                    o.validityDate && o.validityDate <= date
+                      ? {
+                          dateOrder: date,
+                          validityDate: d.add(settings?.terms?.validityDays || 30, 'day').format('YYYY-MM-DD'),
+                        }
+                      : { dateOrder: date },
+                  );
+                }}
               />
             </Form.Item>
           </Col>
@@ -747,6 +761,7 @@ export function SalesDetail() {
                 format="D MMMM YYYY"
                 value={o.validityDate ? dayjs(o.validityDate) : null}
                 placeholder="otomatis"
+                disabledDate={(d) => !!o.dateOrder && !d.isAfter(dayjs(o.dateOrder), 'day')}
                 onChange={(d) => upd({ validityDate: d?.format('YYYY-MM-DD') })}
               />
             </Form.Item>
@@ -943,7 +958,29 @@ export function SalesDetail() {
                         : []),
                       ...(!editable
                         ? [
-                            { title: 'Terkirim', dataIndex: 'qtyDelivered', align: 'right' as const, render: qf },
+                            {
+                              title: 'Terkirim',
+                              dataIndex: 'qtyDelivered',
+                              align: 'right' as const,
+                              render: (v: any, l: any) => (
+                                <>
+                                  {qf(v)}
+                                  {Number(l.qtyReplaced) > 0 &&
+                                    Number(v) < Number(l.productUomQty) &&
+                                    Number(v) + Number(l.qtyReplaced) >= Number(l.productUomQty) && (
+                                      <div className="muted" style={{ fontSize: 12 }}>
+                                        {qf(Number(l.productUomQty) - Number(v))} menunggu pengganti
+                                      </div>
+                                    )}
+                                </>
+                              ),
+                            },
+                            {
+                              title: 'Diretur',
+                              dataIndex: 'qtyReturned',
+                              align: 'right' as const,
+                              render: (v: any) => (Number(v) ? <Tag color="orange">{qf(v)} retur</Tag> : '-'),
+                            },
                             { title: 'Tertagih', dataIndex: 'qtyInvoiced', align: 'right' as const, render: qf },
                           ]
                         : []),
@@ -1042,15 +1079,6 @@ export function SalesDetail() {
           }}
         />
       )}
-      {refundOpen && (
-        <RefundAdvanceModal
-          o={o}
-          onClose={(ok) => {
-            setRefundOpen(false);
-            if (ok) reload();
-          }}
-        />
-      )}
     </>
   );
 }
@@ -1101,6 +1129,7 @@ function Related({ o }: { o: any }) {
             {(o.transfers || []).map((t: any) => (
               <div key={t.id}>
                 <Link to={`/stok/dok/${t.id}`}>{t.name}</Link> <Pill v={t.state} kind="tr" />{' '}
+                {t.replacement && <Tag color="orange">pengganti retur</Tag>}
                 <span className="muted">{tgl(t.scheduledDate)}</span>
               </div>
             ))}
@@ -1126,7 +1155,9 @@ function Related({ o }: { o: any }) {
             {!o.returns?.length && '-'}
           </Descriptions.Item>
           <Descriptions.Item label="Pembayaran diterima">
-            {rp(o.payment?.amount)} dari {rp(o.amountTotal)}
+            {rp(o.payment?.amount)} dari {rp(o.amountTotal)}{' '}
+            <Link to={`/penjualan/pembayaran?q=${encodeURIComponent(o.name)}`}>riwayat</Link>
+            {Number(o.payment?.forfeited) > 0 && <div className="loss">Uang muka hangus {rp(o.payment.forfeited)}</div>}
           </Descriptions.Item>
         </Descriptions>
       </Col>
@@ -1137,14 +1168,22 @@ function Related({ o }: { o: any }) {
 // Algoritma 3.2: persen dan nominal saling dihitung, nomor PI tetap jika diterbitkan ulang
 function ProformaModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void }) {
   const total = Number(o.amountTotal);
-  const [mode, setMode] = useState<'persen' | 'nominal'>(o.mtppDpMode || 'persen');
+  const [mode, setMode] = useState<'persen' | 'nominal' | 'lunas'>(o.mtppDpMode || 'persen');
+  const [settleDate, setSettleDate] = useState<string>(o.mtppSettleDate || dayjs().add(14, 'day').format('YYYY-MM-DD'));
   const [percent, setPercent] = useState<number>(Number(o.mtppDpPercent || 30));
   const [amount, setAmount] = useState<number>(Number(o.mtppDpAmount || Math.round(total * 0.3)));
   const [note, setNote] = useState(o.mtppProformaNote || '');
   const [date, setDate] = useState(o.mtppProformaDate || today());
   const issue = async (send: boolean) => {
     const r = await run(
-      api.post(`/sales-orders/${o.id}/proforma`, { mode, percent, amount, note, date }),
+      api.post(`/sales-orders/${o.id}/proforma`, {
+        mode,
+        percent,
+        amount,
+        note,
+        date,
+        settleDate: mode === 'lunas' ? undefined : settleDate,
+      }),
       'Proforma diterbitkan (tanpa jurnal)',
     );
     if (!r) return;
@@ -1183,11 +1222,17 @@ function ProformaModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void
         optionType="button"
         buttonStyle="solid"
         options={[
-          { value: 'persen', label: 'Berdasarkan persen' },
-          { value: 'nominal', label: 'Berdasarkan nominal' },
+          { value: 'persen', label: 'Uang muka (persen)' },
+          { value: 'nominal', label: 'Uang muka (nominal)' },
+          { value: 'lunas', label: 'Langsung lunas' },
         ]}
         style={{ marginBottom: 16 }}
       />
+      {mode === 'lunas' && (
+        <p className="muted">
+          Pelanggan diminta melunasi seluruh nilai sales order <b>{rp(total)}</b> sekaligus.
+        </p>
+      )}
       <Row gutter={12}>
         <Col span={10}>
           <div className="muted">Persen</div>
@@ -1230,6 +1275,20 @@ function ProformaModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void
         allowClear={false}
         onChange={(d) => setDate(d.format('YYYY-MM-DD'))}
       />
+      {mode !== 'lunas' && (
+        <>
+          <div style={{ marginTop: 12 }} className="muted">
+            Sisa dilunasi paling lambat
+          </div>
+          <DatePicker
+            value={dayjs(settleDate)}
+            format="D MMMM YYYY"
+            allowClear={false}
+            disabledDate={(d) => !d.isAfter(dayjs(date), 'day')}
+            onChange={(d) => setSettleDate(d.format('YYYY-MM-DD'))}
+          />
+        </>
+      )}
       <div style={{ marginTop: 12 }} className="muted">
         Catatan pembayaran
       </div>
@@ -1243,58 +1302,111 @@ function ProformaModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void
   );
 }
 
+// Pembayaran pelanggan atas SO: pilih uang muka (dengan tanggal pelunasan sisa) atau langsung lunas; bukti wajib
 export function AdvanceModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void }) {
-  const left = Math.max(0, Number(o.amountTotal) - Number(o.payment?.amount || 0));
+  const left = Math.max(0, Math.round((Number(o.amountTotal) - Number(o.payment?.amount || 0)) * 100) / 100);
+  const firstDp =
+    Number(o.mtppDpAmount) && Number(o.mtppDpAmount) < left ? Number(o.mtppDpAmount) : Math.round(left * 0.3);
+  const [kind, setKind] = useState<'dp' | 'lunas'>(o.mtppDpMode === 'lunas' ? 'lunas' : 'dp');
   const [v, setV] = useState<any>({
-    amount: Number(o.mtppDpAmount) && Number(o.mtppDpAmount) <= left ? Number(o.mtppDpAmount) : left,
+    amount: o.mtppDpMode === 'lunas' ? left : firstDp,
     method: 'BNK',
     date: today(),
     memo: '',
+    settleDate: o.mtppSettleDate || dayjs().add(14, 'day').format('YYYY-MM-DD'),
   });
+  const [file, setFile] = useState<File | null>(null);
+  const amount = kind === 'lunas' ? left : Number(v.amount || 0);
+  const invalid = !file || (kind === 'dp' && (!(amount > 0) || amount >= left || !v.settleDate));
   return (
     <Modal
       open
-      title={`Uang muka ${o.name}`}
+      title={`Pembayaran ${o.name}`}
       okText="Catat pembayaran"
       cancelText="Batal"
+      okButtonProps={{ disabled: invalid }}
       onCancel={() => onClose()}
       onOk={async () => {
-        if (await run(api.post('/payments', { saleId: o.id, ...v }), 'Uang muka dicatat')) onClose(true);
+        const body = {
+          saleId: o.id,
+          kind,
+          amount,
+          method: v.method,
+          date: v.date,
+          memo: v.memo,
+          settleDate: kind === 'dp' ? v.settleDate : undefined,
+        };
+        if (
+          await run(
+            api.post('/payments', paymentForm(body, file)),
+            kind === 'lunas' ? 'Pelunasan dicatat' : 'Uang muka dicatat',
+          )
+        )
+          onClose(true);
       }}
     >
       <p className="muted">
-        Sisa nilai sales order: <b>{rp(left)}</b>. Uang muka dicatat ke akun Uang Muka Pelanggan dan otomatis dipakai
+        Sisa nilai sales order: <b>{rp(left)}</b>. Pembayaran dicatat ke akun Uang Muka Pelanggan dan otomatis dipakai
         saat invoice diposting.
       </p>
-      <PaymentFields v={v} setV={setV} max={left} />
+      <Radio.Group
+        style={{ marginBottom: 12 }}
+        optionType="button"
+        buttonStyle="solid"
+        value={kind}
+        onChange={(e) => {
+          setKind(e.target.value);
+          setV({ ...v, amount: e.target.value === 'lunas' ? left : firstDp });
+        }}
+        options={[
+          { value: 'dp', label: 'Uang muka (DP)' },
+          { value: 'lunas', label: 'Lunasi langsung' },
+        ]}
+      />
+      <PaymentFields v={{ ...v, amount }} setV={setV} max={left} lockAmount={kind === 'lunas'} />
+      {kind === 'dp' && (
+        <div style={{ marginTop: 8 }}>
+          <div className="muted">Sisa {rp(Math.max(left - amount, 0))} dilunasi paling lambat</div>
+          <DatePicker
+            value={v.settleDate ? dayjs(v.settleDate) : null}
+            format="D MMMM YYYY"
+            allowClear={false}
+            disabledDate={(d) => d.isBefore(dayjs(v.date), 'day')}
+            onChange={(d) => setV({ ...v, settleDate: d.format('YYYY-MM-DD') })}
+          />
+        </div>
+      )}
+      <ProofInput file={file} setFile={setFile} />
     </Modal>
   );
 }
 
-function RefundAdvanceModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void }) {
-  const max = Number(o.payment?.advanceAvailable || 0);
-  const [v, setV] = useState<any>({ amount: max, method: 'BNK', date: today(), memo: '' });
+// Bukti transfer wajib untuk pembayaran pelanggan (gambar atau PDF)
+export function ProofInput({ file, setFile }: { file: File | null; setFile: (f: File | null) => void }) {
   return (
-    <Modal
-      open
-      title={`Kembalikan uang muka ${o.name}`}
-      okText="Kembalikan Uang Muka"
-      cancelText="Batal"
-      onCancel={() => onClose()}
-      onOk={async () => {
-        if (await run(api.post(`/sales-orders/${o.id}/refund-advance`, v), 'Uang muka dikembalikan')) onClose(true);
-      }}
-    >
-      <p className="muted">
-        Uang muka yang belum terpakai: <b>{rp(max)}</b>. Pengembalian dicatat sebagai uang keluar dari bank atau kas dan
-        mengurangi Uang Muka Pelanggan.
-      </p>
-      <PaymentFields v={v} setV={setV} max={max} />
-    </Modal>
+    <div style={{ marginTop: 12 }}>
+      <div className="muted">Bukti transfer / bukti pembayaran (wajib)</div>
+      <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+      {!file && (
+        <div className="loss" style={{ fontSize: 12 }}>
+          Lampirkan bukti sebelum mencatat pembayaran.
+        </div>
+      )}
+    </div>
   );
 }
 
-export function PaymentFields({ v, setV, max }: { v: any; setV: (x: any) => void; max?: number }) {
+export function PaymentFields({
+  v,
+  setV,
+  max,
+  lockAmount,
+}: {
+  v: any;
+  setV: (x: any) => void;
+  max?: number;
+  lockAmount?: boolean;
+}) {
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
       <div>
@@ -1302,6 +1414,7 @@ export function PaymentFields({ v, setV, max }: { v: any; setV: (x: any) => void
         <InputNumber
           min={0}
           max={max}
+          disabled={lockAmount}
           style={{ width: '100%' }}
           value={v.amount}
           formatter={(x) => Number(x || 0).toLocaleString('id-ID')}

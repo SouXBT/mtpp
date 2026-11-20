@@ -161,6 +161,10 @@ try {
   await idle(fin);
   await fin.getByRole('button', { name: 'Catat Pembayaran' }).click();
   await fin.locator('.ant-modal').waitFor();
+  // pembayaran pelanggan wajib melampirkan bukti transfer; tombol simpan aktif setelah berkas dipilih
+  await fin
+    .locator('.ant-modal input[type=file]')
+    .setInputFiles({ name: 'bukti.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 bukti') });
   await fin.locator('.ant-modal-footer .ant-btn-primary').click();
   await idle(fin);
   r = await catat(adm, '6 invoice lunas');

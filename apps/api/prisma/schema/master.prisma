@@ -43,6 +43,7 @@ model Partners {
   parent                            Partners?            @relation("partners_parentId", fields: [parentId], references: [id], map: "partners_parent_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
   children                          Partners[]           @relation("partners_parentId")
   revSalesReturnsPartnerId          SalesReturns[]       @relation("salesReturns_partnerId")
+  revPurchaseReturnsPartnerId       PurchaseReturns[]    @relation("purchaseReturns_partnerId")
 
   @@index([salesPricelistId], map: "partners_sales_pricelist_id_idx")
   @@index([parentId], map: "partners_parent_id_idx")
@@ -168,6 +169,7 @@ model Products {
   revSalesPricelistItemsProductId SalesPricelistItems[] @relation("salesPricelistItems_productId")
   revStockRulesProductId          StockRules[]          @relation("stockRules_productId")
   revSalesReturnLinesProductId    SalesReturnLines[]    @relation("salesReturnLines_productId")
+  revPurchaseReturnLinesProductId PurchaseReturnLines[] @relation("purchaseReturnLines_productId")
 
   @@index([productTmplId], map: "products_product_tmpl_id_idx")
   @@map("products")

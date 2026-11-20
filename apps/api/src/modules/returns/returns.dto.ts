@@ -15,3 +15,11 @@ export class ReturnRefundDto {
   @IsDateLike() date?: string;
   @IsText() memo?: string;
 }
+
+export class PurchaseReturnDto {
+  @IsId() purchaseId!: number;
+  @IsDateLike() date?: string;
+  @IsText() resolution!: string;
+  @IsText() note?: string;
+  @IsRows() lines!: { purchaseLineId: number; quantity: number }[];
+}

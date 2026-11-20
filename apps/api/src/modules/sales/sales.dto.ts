@@ -30,11 +30,12 @@ export class SendSalesOrderDto {
 }
 
 export class ProformaDto {
-  @IsText() mode!: 'persen' | 'nominal';
+  @IsText() mode!: 'persen' | 'nominal' | 'lunas';
   @IsNumeric() percent?: number;
   @IsNumeric() amount?: number;
   @IsText() note?: string;
   @IsDateLike() date?: string;
+  @IsDateLike() settleDate?: string;
 }
 
 export class ReleaseDto {

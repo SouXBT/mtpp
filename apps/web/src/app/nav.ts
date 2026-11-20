@@ -24,6 +24,7 @@ export const MODULES: Module[] = [
     items: [
       { label: 'Penawaran', to: '/penjualan?tab=quote', menu: 'penjualan', match: 'tab=quote' },
       { label: 'Sales Order', to: '/penjualan?tab=order', menu: 'penjualan', match: 'tab=order' },
+      { label: 'Riwayat Pembayaran', to: '/penjualan/pembayaran', menu: 'penjualan' },
     ],
   },
   {
@@ -35,6 +36,7 @@ export const MODULES: Module[] = [
       { label: 'PO Principal', to: '/pengadaan', menu: 'pengadaan' },
       { label: 'Perlu PO Principal', to: '/pengadaan/perlu-pesanan', menu: 'pengadaan' },
       { label: 'Tagihan Principal', to: '/pengadaan/tagihan', menu: 'pengadaan' },
+      { label: 'Retur ke Principal', to: '/pengadaan/retur', menu: 'pengadaan' },
       { label: 'Pricelist Principal', to: '/pengadaan/pricelist', menu: 'pricelist_principal' },
     ],
   },
@@ -145,6 +147,9 @@ export function activeModule(pathname: string, mods: Module[]): Module | null {
 export function activeItem(pathname: string, search: string, m: Module, hint?: string | null): NavItem | null {
   if (!m.items.length) return null;
   if (m.items.some((i) => i.match)) {
+    // submenu tanpa query (mis. Riwayat Pembayaran) cocok lewat rutenya
+    const exact = m.items.find((i) => !i.match && (pathname === i.to || pathname.startsWith(i.to + '/')));
+    if (exact) return exact;
     const byHint = hint && m.items.find((i) => i.match === hint);
     if (byHint) return byHint;
     const base = m.to.split('?')[0];

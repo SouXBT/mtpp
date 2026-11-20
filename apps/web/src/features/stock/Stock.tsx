@@ -225,7 +225,8 @@ export function TransferList({ kind }: { kind: 'incoming' | 'outgoing' }) {
                 dataIndex: 'name',
                 render: (v: any, r: any) => (
                   <>
-                    <b>{v}</b> {r.dropship && <Tag color="purple">dropship</Tag>} {r.backorderId && <Tag>susulan</Tag>}
+                    <b>{v}</b> {r.dropship && <Tag color="purple">dropship</Tag>}{' '}
+                    {r.replacement && <Tag color="orange">pengganti retur</Tag>} {r.backorderId && <Tag>susulan</Tag>}
                   </>
                 ),
               },
@@ -378,6 +379,11 @@ export function TransferDetail() {
         sub={
           <>
             {t.dropship && <Tag color="purple">dropship dari principal</Tag>}
+            {t.replacement && (
+              <Tag color="orange">
+                Pengganti retur <Link to={`/stok/retur/${t.replacement.id}`}>{t.replacement.name}</Link>
+              </Tag>
+            )}
             {t.backorderId && <Tag>Susulan dari {t.backorderName}</Tag>}
             {t.late && <Tag color="red">terlambat</Tag>}
           </>

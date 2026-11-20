@@ -12,6 +12,8 @@ import { JournalService } from '../accounting/journal.service';
 import { StockService } from '../stock/stock.service';
 
 const MODEL = 'sales_returns';
+// awalan catatan surat jalan pengganti; ikut tersalin ke surat jalan susulannya
+export const REPLACEMENT_NOTE = 'Pengganti retur ';
 export const RETURN_STATE: Record<string, string> = { draft: 'Draf', done: 'Selesai', cancel: 'Batal' };
 export const REASONS: Record<string, string> = {
   rusak: 'Barang rusak',
@@ -143,6 +145,7 @@ export class ReturnsService {
           sale: { select: { id: true, name: true, clientOrderRef: true } },
           picking: { select: { id: true, name: true, dateDone: true } },
           refundEntry: { select: { id: true, name: true, amountResidual: true, amountTotal: true } },
+          replacementPicking: { select: { id: true, name: true, state: true } },
           lines: {
             include: { product: { include: { template: { include: { uom: { select: { name: true } } } } } } },
             orderBy: { id: 'asc' },
@@ -342,6 +345,7 @@ export class ReturnsService {
       id,
     );
     const so = must(await this.db.salesOrders.findFirst({ where: { id: r.saleId } }), 'Sales order');
+    let replacementId: number | null = null;
     await this.db.$transaction(async (tx) => {
       const msgs: string[] = [];
       // barang kembali dari pelanggan ke lokasi Barang Rusak gudang asal (dropship: kembali ke principal, tanpa stok)
@@ -373,7 +377,45 @@ export class ReturnsService {
             data: { qtyDelivered: { decrement: l.q } },
           });
         await refreshSale(tx, r.saleId);
-        msgs.push(`buat surat jalan pengganti dari ${so.name}`);
+        // surat jalan pengganti dibuat langsung, ditandai sebagai pengganti retur
+        const src = x.info.picking;
+        const wid = src.pickingType.warehouseId!;
+        const loc = await this.stock.internalLocation(wid, tx);
+        const cust = await this.stock.virtualLocation('customer', tx);
+        const name = await this.numbering.next(tx, 'DO', today());
+        const rep = await tx.stockTransfers.create({
+          data: {
+            name,
+            pickingTypeId: src.pickingTypeId,
+            partnerId: src.partnerId,
+            saleId: r.saleId,
+            locationId: loc.id,
+            locationDestId: cust.id,
+            origin: `${so.name} / ${r.name}`,
+            scheduledDate: today(),
+            state: 'draft',
+            note: `${REPLACEMENT_NOTE}${r.name} (pengganti barang dari ${src.name})`,
+            createUid: u.id,
+          },
+        });
+        for (const l of x.out) {
+          const phys = await this.stock.physical(l.m.productId, wid, tx);
+          const other = await this.stock.reservedAhead(l.m.productId, wid, r.saleId, tx);
+          await tx.stockMoves.create({
+            data: {
+              pickingId: rep.id,
+              productId: l.m.productId,
+              locationId: loc.id,
+              locationDestId: cust.id,
+              saleLineId: l.m.saleLineId,
+              productUomQty: l.q,
+              quantity: Math.max(0, Math.min(l.q, phys - other)),
+            },
+          });
+        }
+        replacementId = rep.id;
+        await this.chatter.log('stock_transfers', rep.id, u.id, `Surat jalan pengganti untuk retur ${r.name}`, [], tx);
+        msgs.push(`surat jalan pengganti ${name} dibuat`);
       }
       let refundId: number | null = null;
       if (isCredit(r.resolution)) {
@@ -449,7 +491,13 @@ export class ReturnsService {
       }
       await tx.salesReturns.updateMany({
         where: { id },
-        data: { state: 'done', refundEntryId: refundId, writeUid: u.id, writeDate: new Date() },
+        data: {
+          state: 'done',
+          refundEntryId: refundId,
+          replacementPickingId: replacementId,
+          writeUid: u.id,
+          writeDate: new Date(),
+        },
       });
       await this.chatter.log(
         MODEL,

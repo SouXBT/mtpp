@@ -24,6 +24,7 @@ import { PricingService } from '../master/pricing.service';
 import { StockService } from '../stock/stock.service';
 import { EmailService } from '../email/email.service';
 import { Prisma } from '@prisma/client';
+import { JournalService } from '../accounting/journal.service';
 
 const sql = Prisma.sql;
 
@@ -62,6 +63,15 @@ export interface LineIn {
   mtppIsDropship?: boolean;
 }
 
+// Tanggal berlaku penawaran wajib setelah tanggal penawaran (tidak boleh sama atau lebih awal)
+const FORFEIT_REF = 'Uang muka hangus ';
+
+function checkValidity(dateOrder: string | null, validity: string | null) {
+  if (!validity) fail('Tanggal berlaku sampai wajib diisi');
+  if (dateOrder && String(validity) <= String(dateOrder))
+    fail('Tanggal berlaku sampai harus setelah tanggal penawaran (tidak boleh sama)');
+}
+
 @Injectable()
 export class SalesService {
   constructor(
@@ -73,6 +83,7 @@ export class SalesService {
     private stock: StockService,
     private pdf: PdfService,
     private email: EmailService,
+    private journal: JournalService,
   ) {}
 
   async list(u: AuthUser, q: any) {
@@ -162,6 +173,8 @@ export class SalesService {
     const partner = must(await this.db.partners.findFirst({ where: { id: +b.partnerId } }), 'Pelanggan');
     const date = b.dateOrder || today();
     const terms = await this.settings.get('terms');
+    const validity = b.validityDate || addDays(date, terms.validityDays || 30);
+    checkValidity(date, validity);
     const lines = await this.computeLines(b.lines || [], partner.id, date);
     const tot = await this.totals(lines);
     return this.db.$transaction(async (tx) => {
@@ -177,7 +190,7 @@ export class SalesService {
           userId: u.id,
           paymentTermId: b.paymentTermId || partner.paymentTermId,
           dateOrder: date,
-          validityDate: b.validityDate || addDays(date, terms.validityDays || 30),
+          validityDate: validity,
           commitmentDate: b.commitmentDate || null,
           clientOrderRef: b.clientOrderRef,
           mtppTermPayment: b.mtppTermPayment ?? terms.payment,
@@ -223,10 +236,21 @@ export class SalesService {
     const transfers = (
       await this.db.stockTransfers.findMany({
         where: { saleId: id },
-        select: { id: true, name: true, state: true, scheduledDate: true, pickingType: { select: { code: true } } },
+        select: {
+          id: true,
+          name: true,
+          state: true,
+          scheduledDate: true,
+          note: true,
+          pickingType: { select: { code: true } },
+        },
         orderBy: { id: 'asc' },
       })
-    ).map(({ pickingType, ...t }) => ({ ...t, code: pickingType.code }));
+    ).map(({ pickingType, note, ...t }) => ({
+      ...t,
+      code: pickingType.code,
+      replacement: pickingType.code === 'outgoing' && String(note || '').startsWith('Pengganti retur '),
+    }));
     const invoices = await this.db.journalEntries.findMany({
       select: { id: true, name: true, state: true, paymentState: true, amountTotal: true, moveType: true },
       where: { AND: [{ saleId: id }, { moveType: { in: ['out_invoice', 'out_refund'] } }] },
@@ -236,8 +260,21 @@ export class SalesService {
       where: { saleId: id },
     });
     const pay = await this.paid(id, o.amountTotal);
+    // qty diretur per baris (retur yang sudah diproses), menurut penyelesaiannya
+    const retLines = await this.db.salesReturnLines.findMany({
+      where: { saleLineId: { in: lines.map((r) => r.l.id) }, ret: { state: 'done' } },
+      select: { saleLineId: true, quantity: true, ret: { select: { resolution: true } } },
+    });
+    const retQty = (lid: number, res?: string) =>
+      round2(
+        retLines
+          .filter((x) => x.saleLineId === lid && (!res || x.ret.resolution === res))
+          .reduce((a2, x) => a2 + Number(x.quantity), 0),
+      );
     const ls = lines.map((r) => ({
       ...r.l,
+      qtyReturned: retQty(r.l.id),
+      qtyReplaced: retQty(r.l.id, 'ganti'),
       code: r.code,
       uom: r.uom,
       warehouse: r.warehouse,
@@ -321,6 +358,117 @@ export class SalesService {
     return this.get(u, id);
   }
 
+  // Riwayat pembayaran pelanggan per sales order: uang muka ke-n, pelunasan, pembayaran invoice, uang muka hangus
+  async paymentHistory(q: any) {
+    const pays = await this.db.payments.findMany({
+      where: {
+        AND: [
+          { partnerType: 'customer' },
+          { paymentType: 'inbound' },
+          { OR: [{ mtppSaleOrderId: { not: null } }, { invoice: { saleId: { not: null } } }] },
+        ],
+      },
+      include: {
+        partner: { select: { name: true } },
+        journal: { select: { name: true } },
+        invoice: { select: { id: true, name: true, saleId: true } },
+      },
+      orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    });
+    const saleIds = [...new Set(pays.map((p) => p.mtppSaleOrderId ?? p.invoice?.saleId).filter(Boolean))] as number[];
+    const sos = await this.db.salesOrders.findMany({
+      where: { id: { in: saleIds } },
+      select: {
+        id: true,
+        name: true,
+        amountTotal: true,
+        state: true,
+        mtppSettleDate: true,
+        partner: { select: { mtppIsNewCustomer: true } },
+      },
+    });
+    const proofs = await this.db.attachments.findMany({
+      where: { resModel: 'payments', resId: { in: pays.map((p) => p.id) } },
+      select: { id: true, resId: true, name: true },
+      orderBy: { id: 'asc' },
+    });
+    const forfeits = await this.db.journalEntries.findMany({
+      where: { AND: [{ saleId: { in: saleIds } }, { ref: { startsWith: FORFEIT_REF } }, { state: 'posted' }] },
+    });
+    const t = today();
+    const rows: any[] = [];
+    for (const so of sos) {
+      const total = Number(so.amountTotal);
+      let paid = 0,
+        dp = 0;
+      for (const p of pays.filter((x) => (x.mtppSaleOrderId ?? x.invoice?.saleId) === so.id)) {
+        const live = p.state !== 'cancel';
+        if (live) paid = round2(paid + Number(p.amount));
+        const full = live && paid >= total - 0.5;
+        const isAdvance = !!p.mtppSaleOrderId;
+        if (isAdvance && live && !full) dp++;
+        const kind = !live
+          ? 'batal'
+          : full
+            ? dp === 0 && isAdvance
+              ? 'lunas_langsung'
+              : 'pelunasan'
+            : isAdvance
+              ? 'uang_muka'
+              : 'invoice';
+        rows.push({
+          id: p.id,
+          name: p.name,
+          date: p.date,
+          saleId: so.id,
+          sale: so.name,
+          partner: p.partner.name,
+          invoice: p.invoice?.name ?? null,
+          invoiceId: p.invoice?.id ?? null,
+          method: p.journal.name,
+          memo: p.memo,
+          amount: Number(p.amount),
+          kind,
+          kindLabel: {
+            batal: 'Dibatalkan',
+            lunas_langsung: 'Lunas langsung',
+            pelunasan: 'Pelunasan',
+            uang_muka: `Uang muka ke-${dp}`,
+            invoice: 'Pembayaran invoice',
+          }[kind],
+          paidAfter: paid,
+          remaining: round2(Math.max(total - paid, 0)),
+          total,
+          settleDate: so.mtppSettleDate,
+          settleLate:
+            !!so.mtppSettleDate && String(so.mtppSettleDate) < t && paid < total - 0.5 && so.state !== 'cancel',
+          proof: proofs.find((a) => a.resId === p.id) ?? null,
+        });
+      }
+      for (const f of forfeits.filter((x) => x.saleId === so.id))
+        rows.push({
+          id: `f${f.id}`,
+          name: f.name,
+          date: f.date,
+          saleId: so.id,
+          sale: so.name,
+          partner: pays.find((p) => (p.mtppSaleOrderId ?? p.invoice?.saleId) === so.id)?.partner.name,
+          amount: Number(f.amountTotal),
+          kind: 'hangus',
+          kindLabel: 'Uang muka hangus',
+          total,
+          remaining: null,
+          proof: null,
+        });
+    }
+    const qq = String(q.q || '').toLowerCase();
+    return rows
+      .filter((r) => !q.saleId || r.saleId === +q.saleId)
+      .filter((r) => !q.kind || String(q.kind).split(',').includes(r.kind))
+      .filter((r) => !qq || `${r.name} ${r.sale} ${r.partner} ${r.invoice || ''}`.toLowerCase().includes(qq))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id)));
+  }
+
   // uang muka pelanggan yang sudah dibayar untuk SO ini (rencana bagian 3)
   async paid(id: number, total: number) {
     // uang muka bersih ditambah pembayaran atas invoice SO ini
@@ -331,6 +479,7 @@ export class SalesService {
       amount: p.amount,
       total: Number(total),
       paidFull: p.amount >= Number(total) - 0.5 && Number(total) > 0,
+      forfeited: await this.forfeited(id),
     };
   }
 
@@ -344,6 +493,11 @@ export class SalesService {
     }
     const head: any = {};
     for (const k of HEAD_FIELDS) if (b[k] !== undefined) head[k] = b[k] === '' ? null : b[k];
+    if (head.dateOrder !== undefined || head.validityDate !== undefined)
+      checkValidity(
+        head.dateOrder ?? o.dateOrder,
+        head.validityDate !== undefined ? head.validityDate : o.validityDate,
+      );
     if (b.name && b.name !== o.name) {
       if (!['draft', 'sent'].includes(o.state)) fail('Nomor hanya dapat diubah sebelum dikonfirmasi');
       if (o.quotationNumber && o.name !== o.quotationNumber) fail('Nomor sales order tidak dapat diubah');
@@ -474,11 +628,9 @@ export class SalesService {
       where: { saleId: id, state: { in: ['draft', 'sent', 'purchase'] } },
       select: { name: true },
     });
-    const hasAdvance = (await salePayments(this.db, id)).available > 0.5;
-    if (activePo.length && hasAdvance)
-      fail(`Batalkan PO Principal ${activePo.map((p) => p.name).join(', ')} dan kembalikan uang muka dulu`);
     if (activePo.length) fail(`Batalkan PO Principal ${activePo.map((p) => p.name).join(', ')} dulu`);
-    if (hasAdvance) fail('Kembalikan uang muka dulu');
+    // uang muka yang belum terpakai tidak dikembalikan: hangus menjadi pendapatan lain-lain
+    await this.db.$transaction((tx) => this.forfeitAdvances(tx, u, o));
     await this.db.stockTransfers.updateMany({
       where: { AND: [{ saleId: id }, { state: { in: ['draft', 'waiting', 'assigned'] } }] },
       data: { state: 'cancel' },
@@ -487,9 +639,56 @@ export class SalesService {
     return this.get(u, id);
   }
 
+  // Uang muka hangus saat SO dibatalkan: Debit Uang Muka Pelanggan, Kredit Pendapatan Lain-lain
+  private async forfeitAdvances(tx: any, u: AuthUser, o: any) {
+    const adv = await tx.payments.findMany({
+      where: { AND: [{ mtppSaleOrderId: o.id }, { state: { not: 'cancel' } }, { paymentType: 'inbound' }] },
+      orderBy: { id: 'asc' },
+    });
+    let total = 0;
+    for (const p of adv) {
+      const x = round2(Number(p.amount) - Number(p.amountApplied));
+      if (x <= 0.009) continue;
+      await this.journal.create(tx, {
+        journal: 'UMM',
+        partnerId: o.partnerId,
+        saleId: o.id,
+        ref: `${FORFEIT_REF}${p.name} untuk ${o.name}`,
+        post: true,
+        uid: u.id,
+        lines: [
+          { accountId: await this.journal.map('advance', tx), debit: x, name: `Uang muka hangus ${o.name}` },
+          { accountId: await this.journal.map('otherIncome', tx), credit: x, name: `Uang muka hangus ${o.name}` },
+        ],
+      });
+      await tx.payments.updateMany({ where: { id: p.id }, data: { amountApplied: Number(p.amount) } });
+      total = round2(total + x);
+    }
+    if (total > 0)
+      await this.chatter.log(
+        MODEL,
+        o.id,
+        u.id,
+        `Uang muka ${rupiah(total)} hangus karena sales order dibatalkan`,
+        [],
+        tx,
+      );
+    return total;
+  }
+
+  private async forfeited(saleId: number) {
+    const rows = await this.db.journalEntries.findMany({
+      where: { AND: [{ saleId }, { ref: { startsWith: FORFEIT_REF } }, { state: 'posted' }] },
+      select: { amountTotal: true },
+    });
+    return round2(rows.reduce((a, r) => a + Number(r.amountTotal), 0));
+  }
+
   async toDraft(u: AuthUser, id: number) {
     const o = must(await this.db.salesOrders.findFirst({ where: { id: id } }), 'Sales order');
     if (o.state !== 'cancel') fail('Hanya dokumen batal yang dapat dikembalikan ke Draf');
+    if (await this.forfeited(id))
+      fail('Uang muka sales order ini sudah hangus; gunakan Salin penawaran untuk membuat penawaran baru');
     await this.setState(u, id, 'draft', 'Dokumen dikembalikan ke Draf');
     return this.get(u, id);
   }
@@ -633,17 +832,34 @@ export class SalesService {
   async proforma(
     u: AuthUser,
     id: number,
-    b: { mode: 'persen' | 'nominal'; percent?: number; amount?: number; note?: string; date?: string },
+    b: {
+      mode: 'persen' | 'nominal' | 'lunas';
+      percent?: number;
+      amount?: number;
+      note?: string;
+      date?: string;
+      settleDate?: string;
+    },
   ) {
     const o = must(await this.db.salesOrders.findFirst({ where: { id: id } }), 'Sales order');
     if (o.state !== 'sale') fail('Proforma hanya diterbitkan dari sales order yang sudah dikonfirmasi');
     const total = Number(o.amountTotal);
     let percent = Number(b.percent || 0),
       amount = Number(b.amount || 0);
-    if (b.mode === 'persen') amount = round2((total * percent) / 100);
+    if (!['persen', 'nominal', 'lunas'].includes(b.mode))
+      fail('Pilih uang muka (persen atau nominal) atau langsung lunas');
+    if (b.mode === 'lunas') {
+      percent = 100;
+      amount = total;
+    } else if (b.mode === 'persen') amount = round2((total * percent) / 100);
     else percent = total > 0 ? round2((amount / total) * 100) : 0;
     if (amount <= 0 || amount > total + 0.5)
       fail('Nilai proforma harus lebih dari 0 dan tidak melebihi total sales order');
+    // uang muka: tanggal pelunasan sisa wajib disepakati
+    const partial = amount < total - 0.5;
+    const pDate = b.date || today();
+    if (partial && !b.settleDate) fail('Isi tanggal pelunasan sisa pembayaran');
+    if (partial && String(b.settleDate) <= pDate) fail('Tanggal pelunasan harus setelah tanggal proforma');
     return this.db.$transaction(async (tx) => {
       const nomor = o.mtppProformaNumber || (await this.numbering.next(tx, 'PI', b.date || today()));
       await tx.salesOrders.updateMany({
@@ -655,6 +871,7 @@ export class SalesService {
           mtppDpPercent: percent,
           mtppDpAmount: amount,
           mtppProformaNote: b.note ?? o.mtppProformaNote,
+          mtppSettleDate: partial ? b.settleDate : null,
         },
       });
       await this.chatter.log(
@@ -727,8 +944,15 @@ export class SalesService {
           [
             'Pembayaran',
             'Payment',
-            o.mtppDpMode === 'persen' ? `${num(o.mtppDpPercent, 0)}% dari total` : 'Nominal tetap',
+            o.mtppDpMode === 'lunas'
+              ? 'Pelunasan penuh'
+              : o.mtppDpMode === 'persen'
+                ? `Uang muka ${num(o.mtppDpPercent, 0)}% dari total`
+                : 'Uang muka nominal tetap',
           ],
+          ...(o.mtppSettleDate && o.mtppDpMode !== 'lunas'
+            ? [['Pelunasan paling lambat', 'Balance due by', tglIndo(o.mtppSettleDate)]]
+            : []),
         ] as any,
         totals: [...base.totals, ['Jumlah yang diminta / Amount due', rupiah(o.mtppDpAmount)]] as any,
         words: terbilang(Number(o.mtppDpAmount)),

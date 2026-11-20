@@ -52,6 +52,8 @@ import {
 } from '../features/settings/Settings';
 import { ReportView, ReportsHome } from '../features/reports/Reports';
 import { ReturnDetail, ReturnList } from '../features/stock/Returns';
+import { PaymentHistory } from '../features/sales/PaymentHistory';
+import { PurchaseReturnDetail, PurchaseReturnList } from '../features/purchasing/PurchaseReturns';
 import { DocumentEditor, DocumentList } from '../features/documents/Documents';
 
 const theme = {
@@ -116,6 +118,7 @@ function AppRoutes() {
         <Route path="penjualan/pelanggan" element={<PartnerList kind="customer" />} />
         <Route path="penjualan/pelanggan/:id" element={<PartnerDetail kind="customer" />} />
         <Route path="penjualan/pricelist" element={<SalesPricelists />} />
+        <Route path="penjualan/pembayaran" element={<PaymentHistory />} />
         <Route path="penjualan/:id" element={<SalesDetail />} />
         <Route path="pengadaan" element={<POList />} />
         <Route path="pengadaan/tagihan" element={<InvoiceList type="bill" />} />
@@ -124,6 +127,8 @@ function AppRoutes() {
         <Route path="pengadaan/principal" element={<PartnerList kind="supplier" />} />
         <Route path="pengadaan/principal/:id" element={<PartnerDetail kind="supplier" />} />
         <Route path="pengadaan/perlu-pesanan" element={<NeedPurchaseList />} />
+        <Route path="pengadaan/retur" element={<PurchaseReturnList />} />
+        <Route path="pengadaan/retur/:id" element={<PurchaseReturnDetail />} />
         <Route path="pengadaan/:id" element={<PODetail />} />
         <Route path="stok" element={<StockOverview />} />
         <Route path="stok/penerimaan" element={<TransferList kind="incoming" />} />

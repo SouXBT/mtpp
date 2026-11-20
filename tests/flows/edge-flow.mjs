@@ -13,10 +13,26 @@ const PASS = process.env.DEMO_PASSWORD || 'mtpp12345';
 let passed = 0,
   failed = 0;
 
+// pembayaran pelanggan wajib disertai bukti transfer: kirim sebagai multipart dengan berkas contoh
+const withProof = (method, path, body) => {
+  if (method !== 'POST' || path !== '/payments' || !body || body instanceof FormData) return body;
+  // uang muka SO wajib punya tanggal pelunasan sisa; skrip lama memakai 14 hari setelah tanggal bayar
+  if (body.saleId && !body.settleDate && !body.kind) {
+    const d = new Date((body.date ? Date.parse(body.date) : Date.now()) + 14 * 86400000);
+    body = { ...body, settleDate: d.toISOString().slice(0, 10) };
+  }
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(body)) if (v !== undefined && v !== null) fd.append(k, String(v));
+  fd.append('file', new Blob(['%PDF-1.4 bukti transfer uji'], { type: 'application/pdf' }), 'bukti-transfer.pdf');
+  return fd;
+};
+
 async function call(token, method, path, body, raw = false) {
+  body = withProof(method, path, body);
   const headers = { Authorization: `Bearer ${token}` };
   let payload;
-  if (body !== undefined) {
+  if (body instanceof FormData) payload = body;
+  else if (body !== undefined) {
     headers['Content-Type'] = 'application/json';
     payload = JSON.stringify(body);
   }
@@ -565,7 +581,7 @@ await test('B2 Tutup sisa PO', async () => {
   check(s.state === 'done', `PO ${s.state} sesudah tagihan lengkap`);
 });
 
-await test('B3 batal SO dengan PO atau uang muka', async () => {
+await test('B3 batal SO dengan PO atau uang muka (uang muka hangus)', async () => {
   const c = await newCustomer();
   const p = await newProduct();
   const q = await quote(c, [line(p, 5)]);
@@ -576,47 +592,30 @@ await test('B3 batal SO dengan PO atau uang muka', async () => {
   await rejected(
     call(S, 'POST', `/sales-orders/${q.id}/cancel`),
     400,
-    new RegExp(`Batalkan PO Principal ${po.name} dan kembalikan uang muka dulu`),
-    'SO dengan PO dan uang muka',
+    new RegExp(`Batalkan PO Principal ${po.name} dulu`),
+    'SO dengan PO berjalan',
   );
   await call(F, 'POST', `/purchase-orders/${po.id}/cancel`);
-  await rejected(call(S, 'POST', `/sales-orders/${q.id}/cancel`), 400, /kembalikan uang muka/i, 'SO dengan uang muka');
   await rejected(
-    call(S, 'POST', `/sales-orders/${q.id}/refund-advance`, { amount: 1000, method: 'BNK' }),
-    403,
+    call(F, 'POST', `/sales-orders/${q.id}/refund-advance`, { amount: 1000, method: 'BNK' }),
+    404,
     null,
-    'Sales mengembalikan uang muka',
+    'pengembalian uang muka sudah tidak tersedia',
   );
-  await rejected(
-    call(F, 'POST', `/sales-orders/${q.id}/refund-advance`, { amount: 999999, method: 'BNK' }),
-    400,
-    /melebihi/,
-    'pengembalian melebihi uang muka',
-  );
-  const before = await call(F, 'GET', '/cash/balance');
-  const rf = await call(F, 'POST', `/sales-orders/${q.id}/refund-advance`, {
-    amount: 50000,
-    method: 'BNK',
-    memo: 'Sebagian',
-  });
-  check((await call(F, 'GET', '/cash/balance')).bank === before.bank - 50000, 'saldo bank berkurang');
-  let d = await call(S, 'GET', `/sales-orders/${q.id}`);
-  check(
-    d.payment.amount === 150000 && d.payment.advanceAvailable === 150000,
-    `uang muka ${d.payment.amount}, tersedia ${d.payment.advanceAvailable}`,
-  );
-  await rejected(
-    call(F, 'POST', `/payments/${rf.id}/cancel`, {}),
-    400,
-    /tidak dapat dibatalkan/,
-    'membatalkan pengembalian',
-  );
-  await rejected(call(F, 'GET', `/payments/${rf.id}/receipt`), 400, null, 'kuitansi pengembalian');
-  await call(F, 'POST', `/sales-orders/${q.id}/refund-advance`, { amount: 150000, method: 'KAS' });
-  d = await call(S, 'GET', `/sales-orders/${q.id}`);
-  check(d.payment.advanceAvailable === 0, 'uang muka habis');
   const r = await call(S, 'POST', `/sales-orders/${q.id}/cancel`);
-  check(r.state === 'cancel', 'SO dapat dibatalkan');
+  check(r.state === 'cancel', 'SO dengan uang muka dapat dibatalkan');
+  check(r.payment.forfeited === 200000 && r.payment.advanceAvailable === 0, `uang muka hangus ${r.payment.forfeited}`);
+  const hist = await call(S, 'GET', `/sales-orders/payment-history?q=${encodeURIComponent(r.name)}`);
+  check(
+    hist.some((h) => h.kind === 'hangus' && h.amount === 200000),
+    'riwayat pembayaran mencatat uang muka hangus',
+  );
+  await rejected(
+    call(S, 'POST', `/sales-orders/${q.id}/draft`),
+    400,
+    /hangus/,
+    'kembali ke draf setelah uang muka hangus',
+  );
   check(await balanced(), 'neraca saldo seimbang');
   void so;
 });

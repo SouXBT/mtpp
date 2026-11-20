@@ -5,10 +5,26 @@
 const API = process.env.API || 'http://localhost:8081/api';
 const PASS = process.env.DEMO_PASSWORD || 'mtpp12345';
 
+// pembayaran pelanggan wajib disertai bukti transfer: kirim sebagai multipart dengan berkas contoh
+const withProof = (method, path, body) => {
+  if (method !== 'POST' || path !== '/payments' || !body || body instanceof FormData) return body;
+  // uang muka SO wajib punya tanggal pelunasan sisa; skrip lama memakai 14 hari setelah tanggal bayar
+  if (body.saleId && !body.settleDate && !body.kind) {
+    const d = new Date((body.date ? Date.parse(body.date) : Date.now()) + 14 * 86400000);
+    body = { ...body, settleDate: d.toISOString().slice(0, 10) };
+  }
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(body)) if (v !== undefined && v !== null) fd.append(k, String(v));
+  fd.append('file', new Blob(['%PDF-1.4 bukti transfer uji'], { type: 'application/pdf' }), 'bukti-transfer.pdf');
+  return fd;
+};
+
 async function call(token, method, path, body) {
+  body = withProof(method, path, body);
   const headers = { Authorization: `Bearer ${token}` };
   let payload;
-  if (body !== undefined) {
+  if (body instanceof FormData) payload = body;
+  else if (body !== undefined) {
     headers['Content-Type'] = 'application/json';
     payload = JSON.stringify(body);
   }

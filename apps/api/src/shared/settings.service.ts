@@ -53,6 +53,7 @@ export const DEFAULT_SETTINGS: Record<string, any> = {
     roundingIncome: '4-2000',
     roundingExpense: '6-9000',
     salesReturn: '4-1100',
+    otherIncome: '4-2000',
   },
   // masa tenggang bawaan (bisa diganti per pelanggan), blokir surat jalan, batas cicilan, batas klaim retur
   collection: COLLECTION_DEFAULTS,

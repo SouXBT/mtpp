@@ -59,6 +59,13 @@ export const fileUrl = (path: string) =>
   `/api${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(getToken())}`;
 export const openFile = (path: string) => window.open(fileUrl(path), '_blank');
 
+// pembayaran dikirim sebagai multipart supaya bukti transfer (field "file") ikut tersimpan
+export const paymentForm = (body: Record<string, any>, file?: File | null) => {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(body)) if (v !== undefined && v !== null && v !== '') fd.append(k, String(v));
+  if (file) fd.append('file', file);
+  return fd;
+};
 export const nf = (n: any, d = 0) =>
   Number(n || 0).toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d });
 // rupiah selalu dengan dua desimal, mis. 1.500.000,00

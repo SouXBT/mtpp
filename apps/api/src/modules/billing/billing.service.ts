@@ -261,7 +261,12 @@ export class BillingService {
         orderBy: { id: 'asc' },
       })
     ).map(({ account, ...l }) => ({ l, account: account.name, code: account.code }));
-    const pays = await this.db.payments.findMany({ where: { invoiceId: id, state: { not: 'cancel' } } });
+    const pays0 = await this.db.payments.findMany({ where: { invoiceId: id, state: { not: 'cancel' } } });
+    const proofs = await this.db.attachments.findMany({
+      where: { resModel: 'payments', resId: { in: pays0.map((p) => p.id) } },
+      select: { id: true, resId: true, name: true },
+    });
+    const pays = pays0.map((p) => ({ ...p, proof: proofs.find((a) => a.resId === p.id) ?? null }));
     // hanya uang muka yang dipakai invoice ini
     const uses =
       e.moveType === 'out_invoice'
@@ -712,6 +717,8 @@ export class BillingService {
       method?: 'BNK' | 'KAS';
       date?: string;
       memo?: string;
+      kind?: 'dp' | 'lunas';
+      settleDate?: string;
     },
   ) {
     const amount = round2(Number(b.amount));
@@ -773,13 +780,24 @@ export class BillingService {
         const so = must(await tx.salesOrders.findFirst({ where: { id: b.saleId } }), 'Sales order');
         if (!['sale', 'done'].includes(so.state)) fail('Uang muka dicatat untuk sales order yang sudah dikonfirmasi');
         const net = (await salePayments(tx, so.id)).advance;
-        if (amount > Number(so.amountTotal) - net + 0.5)
-          fail(`Jumlah melebihi sisa nilai sales order (${rupiah(Number(so.amountTotal) - net)})`);
+        const left = round2(Number(so.amountTotal) - net);
+        if (amount > left + 0.5) fail(`Jumlah melebihi sisa nilai sales order (${rupiah(left)})`);
+        // pilihan: uang muka (sisanya dilunasi pada tanggal yang disepakati) atau langsung lunas
+        const kind = b.kind || (amount >= left - 0.5 ? 'lunas' : 'dp');
+        if (kind === 'lunas' && Math.abs(amount - left) > 0.5)
+          fail(`Pelunasan harus sebesar sisa nilai sales order (${rupiah(left)})`);
+        if (kind === 'dp') {
+          if (amount >= left - 0.5) fail('Jumlah ini melunasi sales order; pilih Lunasi langsung');
+          const settle = b.settleDate || so.mtppSettleDate;
+          if (!settle) fail('Isi tanggal pelunasan sisa pembayaran');
+          if (String(settle) < date) fail('Tanggal pelunasan tidak boleh sebelum tanggal pembayaran');
+          await tx.salesOrders.updateMany({ where: { id: so.id }, data: { mtppSettleDate: settle } });
+        }
         const e = await this.journal.create(tx, {
           journal: method,
           date,
           partnerId: so.partnerId,
-          ref: `Uang muka ${so.name}${b.memo ? ' – ' + b.memo : ''}`,
+          ref: `${kind === 'lunas' ? 'Pelunasan' : 'Uang muka'} ${so.name}${b.memo ? ' – ' + b.memo : ''}`,
           post: true,
           uid: u.id,
           lines: [
@@ -802,7 +820,16 @@ export class BillingService {
             createUid: u.id,
           },
         });
-        await this.chatter.log('sales_orders', so.id, u.id, `Uang muka ${rupiah(amount)} diterima (${e.name})`, [], tx);
+        await this.chatter.log(
+          'sales_orders',
+          so.id,
+          u.id,
+          kind === 'lunas'
+            ? `Pelunasan ${rupiah(amount)} diterima (${e.name})`
+            : `Uang muka ${rupiah(amount)} diterima (${e.name}); sisa ${rupiah(left - amount)} dilunasi paling lambat ${tglIndo(b.settleDate || so.mtppSettleDate)}`,
+          [],
+          tx,
+        );
         // jika sudah ada invoice diposting yang belum lunas, uang muka langsung dipakai
         const invs = await tx.journalEntries.findMany({
           where: {
@@ -883,73 +910,44 @@ export class BillingService {
     });
   }
 
-  // Kembalikan uang muka yang belum terpakai kepada pelanggan: Debit Uang Muka Pelanggan, Kredit Bank atau Kas
-  async refundAdvance(
-    u: AuthUser,
-    saleId: number,
-    b: { amount: number; method?: 'BNK' | 'KAS'; date?: string; memo?: string },
-  ) {
-    const amount = round2(Number(b.amount));
-    if (!(amount > 0)) fail('Jumlah pengembalian harus lebih dari 0');
-    const method = b.method === 'KAS' ? 'KAS' : 'BNK';
-    const date = b.date || today();
-    return this.db.$transaction(async (tx) => {
-      const so = must(await tx.salesOrders.findFirst({ where: { id: saleId } }), 'Sales order');
-      const adv = await this.liveAdvances(tx, saleId);
-      const avail = round2(adv.reduce((a: number, p: any) => a + Number(p.amount) - Number(p.amountApplied), 0));
-      if (amount > avail + 0.5) fail(`Jumlah melebihi sisa uang muka (${rupiah(avail)})`);
-      const jr = await this.journal.journal(method, tx);
-      const e = await this.journal.create(tx, {
-        journal: method,
-        date,
-        partnerId: so.partnerId,
-        ref: `Pengembalian uang muka ${so.name}${b.memo ? ' – ' + b.memo : ''}`,
-        post: true,
-        uid: u.id,
-        lines: [
-          {
-            accountId: await this.journal.map('advance', tx),
-            debit: amount,
-            name: `Pengembalian uang muka ${so.name}`,
-          },
-          { accountId: await this.journal.map(method === 'KAS' ? 'cash' : 'bank', tx), credit: amount, name: so.name },
+  // riwayat pembayaran satu SO (dipakai kuitansi); logika sama dengan SalesService.paymentHistory
+  private async sales(saleId: number) {
+    const so = await this.db.salesOrders.findFirst({ where: { id: saleId } });
+    if (!so) return [];
+    const pays = await this.db.payments.findMany({
+      where: {
+        AND: [
+          { partnerType: 'customer' },
+          { paymentType: 'inbound' },
+          { state: { not: 'cancel' } },
+          { OR: [{ mtppSaleOrderId: saleId }, { invoice: { saleId } }] },
         ],
-      });
-      const r = await tx.payments.create({
-        data: {
-          name: e.name,
-          moveId: e.id,
-          journalId: jr.id,
-          partnerId: so.partnerId,
-          mtppSaleOrderId: so.id,
-          amount,
-          date,
-          paymentType: 'outbound',
-          partnerType: 'customer',
-          memo: b.memo,
-          createUid: u.id,
-        },
-      });
-      let left = amount;
-      for (const p of adv) {
-        if (left <= 0) break;
-        const x = round2(Math.min(left, Number(p.amount) - Number(p.amountApplied)));
-        if (x <= 0) continue;
-        await tx.payments.updateMany({
-          where: { id: p.id },
-          data: { amountApplied: round2(Number(p.amountApplied) + x) },
-        });
-        left = round2(left - x);
-      }
-      await this.chatter.log(
-        'sales_orders',
-        so.id,
-        u.id,
-        `Uang muka ${rupiah(amount)} dikembalikan kepada pelanggan (${e.name})`,
-        [],
-        tx,
-      );
-      return r;
+      },
+      orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    });
+    const total = Number(so.amountTotal);
+    let paid = 0,
+      dp = 0;
+    return pays.map((p) => {
+      paid = round2(paid + Number(p.amount));
+      const full = paid >= total - 0.5;
+      const adv = !!p.mtppSaleOrderId;
+      if (adv && !full) dp++;
+      const kind = full ? (dp === 0 && adv ? 'lunas_langsung' : 'pelunasan') : adv ? 'uang_muka' : 'invoice';
+      return {
+        id: p.id,
+        kind,
+        kindLabel: {
+          lunas_langsung: 'Lunas langsung',
+          pelunasan: 'Pelunasan',
+          uang_muka: `Uang muka ke-${dp}`,
+          invoice: 'Pembayaran invoice',
+        }[kind],
+        total,
+        paidAfter: paid,
+        remaining: round2(Math.max(total - paid, 0)),
+        settleDate: so.mtppSettleDate,
+      };
     });
   }
 
@@ -962,8 +960,8 @@ export class BillingService {
     const p = await this.payment(id);
     if (p.state === 'cancel') fail('Pembayaran sudah dibatalkan');
     if (p.partnerType === 'customer' && p.paymentType === 'outbound')
-      fail('Pengembalian uang muka tidak dapat dibatalkan; catat uang muka baru bila perlu');
-    if (Number(p.amountApplied) > 0) fail('Uang muka sudah terpakai atau dikembalikan; batalkan invoice itu dulu');
+      fail('Pengembalian dana kepada pelanggan tidak dapat dibatalkan');
+    if (Number(p.amountApplied) > 0) fail('Uang muka sudah terpakai atau hangus; batalkan invoice itu dulu');
     if (await this.db.bankStatementLines.findFirst({ where: { paymentId: id, isReconciled: true } }))
       fail('Pembayaran sudah direkonsiliasi; batalkan pencocokan mutasi bank dulu');
     await this.db.$transaction(async (tx) => {
@@ -1019,8 +1017,13 @@ export class BillingService {
       jr: journal.name,
     }));
     const sos = await this.db.salesOrders.findMany({ select: { id: true, name: true } });
+    const proofs = await this.db.attachments.findMany({
+      where: { resModel: 'payments', resId: { in: rows.map((r) => r.p.id) } },
+      select: { id: true, resId: true, name: true },
+    });
     return rows.map((r) => ({
       ...r.p,
+      proof: proofs.find((a) => a.resId === r.p.id) ?? null,
       partner: r.partner,
       invoice: r.inv,
       journal: r.jr,
@@ -1139,7 +1142,12 @@ export class BillingService {
     if (p.partnerType !== 'customer' || p.paymentType === 'outbound') fail('Kuitansi hanya untuk pembayaran pelanggan');
     const so = p.mtppSaleOrderId ? await this.db.salesOrders.findFirst({ where: { id: p.mtppSaleOrderId } }) : null;
     const sg = await this.signer(p.createUid || u.id);
-    const purpose = p.memo || (p.invoice ? `Pembayaran invoice ${p.invoice.name}` : `Uang muka ${so?.name || ''}`);
+    // jenis pembayaran SO: uang muka ke-n, pelunasan, atau lunas langsung, beserta total, terbayar, dan sisa
+    const saleId = p.mtppSaleOrderId ?? p.invoice?.saleId ?? null;
+    const hist = saleId ? (await this.sales(saleId)).find((x: any) => x.id === p.id) : null;
+    const kindText = hist ? (hist.kind === 'invoice' ? null : hist.kindLabel) : null;
+    const purpose =
+      p.memo || (p.invoice ? `Pembayaran invoice ${p.invoice.name}` : `${kindText || 'Uang muka'} ${so?.name || ''}`);
     const spec: any = {
       title: 'KUITANSI',
       titleEn: 'Official Receipt',
@@ -1153,7 +1161,8 @@ export class BillingService {
       infoRight: [
         ['Tanggal', 'Date', tglIndo(p.date)],
         ['Metode', 'Method', p.journal.name],
-        ['Untuk', 'For', p.invoice?.name || (so ? `Uang muka ${so.name}` : '-')],
+        ['Untuk', 'For', p.invoice?.name || (so ? `${kindText || 'Uang muka'} ${so.name}` : '-')],
+        ...(kindText ? [['Jenis', 'Type', kindText]] : []),
       ],
       columns: [
         { h: 'Keterangan', en: 'Description', w: '*' },
@@ -1162,7 +1171,20 @@ export class BillingService {
       rows: [
         [p.memo || (p.invoice ? `Pembayaran invoice ${p.invoice.name}` : `Uang muka ${so?.name || ''}`), idr(p.amount)],
       ],
-      totals: [['Total', rupiah(p.amount)]],
+      totals: [
+        ['Total', rupiah(p.amount)],
+        ...(hist
+          ? [
+              ['Nilai sales order / Order total', rupiah(hist.total)],
+              ['Sudah dibayar / Paid to date', rupiah(hist.paidAfter)],
+              ['Sisa / Balance', rupiah(hist.remaining)],
+            ]
+          : []),
+      ],
+      note:
+        hist?.settleDate && hist.remaining > 0.5
+          ? `Sisa pembayaran dilunasi paling lambat ${tglIndo(String(hist.settleDate))}.`
+          : undefined,
       words: terbilang(Number(p.amount)),
       wordsEn: terbilangEn(Number(p.amount)),
       signer: { name: sg?.name || u.name, role: 'Finance – PT Mentari Timur Prima Perkasa', signatureId: sg?.sig },

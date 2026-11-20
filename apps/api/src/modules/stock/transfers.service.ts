@@ -78,6 +78,7 @@ export class TransfersService {
       warehouse: r.wh,
       stateLabel: TR_STATE[r.t.state],
       dropship: locs.find((l) => l.id === r.t.locationId)?.usage === 'supplier' && r.code === 'outgoing',
+      replacement: r.code === 'outgoing' && String(r.t.note || '').startsWith('Pengganti retur '),
       late: !!r.t.scheduledDate && r.t.scheduledDate < t && !['done', 'cancel'].includes(r.t.state),
     }));
   }
@@ -120,8 +121,11 @@ export class TransfersService {
         available: whId && t.location.usage === 'internal' ? await this.stock.physical(r.m.productId, whId) : null,
       });
     const dropship = t.location.usage === 'supplier' && t.pickingType.code === 'outgoing';
+    const replacement = await this.replacementOf(t);
     let payBlock = null;
-    if (t.pickingType.code === 'outgoing' && t.sale) payBlock = await this.paymentBlock(t.saleId, dropship);
+    // pengganti barang retur tidak ditahan oleh aturan pembayaran
+    if (t.pickingType.code === 'outgoing' && t.sale && !replacement)
+      payBlock = await this.paymentBlock(t.saleId, dropship);
     const backorders = await this.db.stockTransfers.findMany({
       select: { id: true, name: true, state: true },
       where: { backorderId: id },
@@ -136,10 +140,30 @@ export class TransfersService {
       stateLabel: TR_STATE[t.state],
       moves: ms,
       paymentBlock: payBlock,
+      replacement,
       backorders,
       backorderName: parent?.name ?? null,
       late: !!t.scheduledDate && t.scheduledDate < today() && !['done', 'cancel'].includes(t.state),
     };
+  }
+
+  // Retur pelanggan yang dipenuhi surat jalan ini (langsung atau lewat surat jalan susulannya)
+  private async replacementOf(t: { id: number; backorderId: number | null }) {
+    let cur: any = t;
+    for (let i = 0; cur && i < 10; i++) {
+      const r = await this.db.salesReturns.findFirst({
+        where: { replacementPickingId: cur.id },
+        select: { id: true, name: true },
+      });
+      if (r) return r;
+      cur = cur.backorderId
+        ? await this.db.stockTransfers.findFirst({
+            where: { id: cur.backorderId },
+            select: { id: true, backorderId: true },
+          })
+        : null;
+    }
+    return null;
   }
 
   // Surat jalan ditolak untuk pelanggan baru yang belum lunas, dan untuk pelanggan dengan tagihan lewat masa tenggang
@@ -507,7 +531,7 @@ export class TransfersService {
     ]);
     const isOut = t.kind === 'outgoing';
     const spec: any = {
-      title: isOut ? 'SURAT JALAN' : 'BUKTI PENERIMAAN BARANG',
+      title: isOut ? (t.replacement ? 'SURAT JALAN PENGGANTI RETUR' : 'SURAT JALAN') : 'BUKTI PENERIMAAN BARANG',
       titleEn: isOut ? 'Delivery Order' : 'Goods Receipt',
       number: t.name,
       notesKey: isOut ? 'surat_jalan' : undefined,
@@ -526,6 +550,7 @@ export class TransfersService {
         ['Dokumen asal', 'Source', t.origin || '-'],
         ['Gudang asal', 'From warehouse', isOut ? (t.dropship ? 'Dropship dari principal' : wh?.name || '-') : '-'],
         ...(t.backorderName ? [['Susulan dari', 'Backorder of', t.backorderName]] : []),
+        ...(t.replacement ? [['Pengganti retur', 'Return replacement', t.replacement.name]] : []),
       ],
       columns: [
         { h: 'No', en: 'No', w: 18 },

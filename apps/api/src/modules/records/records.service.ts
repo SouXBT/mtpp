@@ -13,6 +13,8 @@ export const MODEL_MENU: Record<string, string[]> = {
   purchase_orders: ['pengadaan'],
   stock_transfers: ['gudang'],
   sales_returns: ['gudang', 'penjualan', 'penagihan'],
+  purchase_returns: ['gudang', 'pengadaan'],
+  payments: ['penagihan', 'pengadaan', 'penjualan'],
   journal_entries: ['penagihan', 'pengadaan', 'akuntansi'],
   partners: ['pelanggan', 'principal'],
   products: ['produk'],

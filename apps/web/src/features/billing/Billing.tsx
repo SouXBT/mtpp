@@ -36,6 +36,16 @@ const cancelPayment = (p: any, after: () => void) =>
     },
   });
 
+// tautan bukti transfer yang dilampirkan saat pembayaran dicatat
+export function ProofLink({ p }: { p: any }) {
+  if (!p?.proof) return <span className="muted">-</span>;
+  return (
+    <a title={p.proof.name} onClick={(e) => (e.stopPropagation(), openFile(`/attachments/${p.proof.id}/download`))}>
+      Lihat bukti
+    </a>
+  );
+}
+
 // status penagihan menurut masa tenggang pelanggan
 export function DueTag({ s, until }: { s?: string | null; until?: string | null }) {
   if (s === 'tenggang') return <Tag color="gold">Masa tenggang s.d. {tgl(until)}</Tag>;
@@ -732,6 +742,7 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
                     { title: 'Jenis', key: 'k', render: (_, p) => (p.adv ? 'uang muka SO' : 'pembayaran invoice') },
                     { title: 'Keterangan', dataIndex: 'memo', render: (v) => v || '-' },
                     { title: 'Jumlah', dataIndex: 'amount', align: 'right', render: (v: any) => idr(v) },
+                    { title: 'Bukti', key: 'b', render: (_, p) => <ProofLink p={p} /> },
                     {
                       title: '',
                       key: 'r',
@@ -769,6 +780,7 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
         <PayModal
           title={`Pembayaran ${e.name}`}
           body={{ invoiceId: e.id }}
+          proof={cust}
           max={Number(e.amountResidual)}
           onClose={(ok) => {
             setPayOpen(false);
@@ -828,6 +840,7 @@ export function PaymentsList() {
             { title: 'Metode', dataIndex: 'journal' },
             { title: 'Keterangan', dataIndex: 'memo', render: (v) => v || '-' },
             { title: 'Jumlah', dataIndex: 'amount', align: 'right', render: (v: any) => idr(v) },
+            { title: 'Bukti', key: 'b', render: (_, r) => <ProofLink p={r} /> },
             {
               title: '',
               key: 'k',

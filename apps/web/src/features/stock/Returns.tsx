@@ -306,7 +306,7 @@ export function ReturnDetail() {
                 title: 'Proses retur?',
                 content:
                   r.resolution === 'ganti'
-                    ? 'Barang masuk ke lokasi Barang Rusak dan sales order kembali menunggu surat jalan pengganti.'
+                    ? 'Barang masuk ke lokasi Barang Rusak dan surat jalan pengganti (bertanda pengganti retur) dibuat otomatis.'
                     : r.resolution === 'nota_kredit'
                       ? `Barang masuk ke lokasi Barang Rusak dan nota kredit ${rp(r.amountTotal)} mengurangi piutang.`
                       : `Nota kredit potongan ${rp(r.amountTotal)} mengurangi piutang.`,
@@ -326,9 +326,9 @@ export function ReturnDetail() {
         <Button icon={<PrinterOutlined />} onClick={() => openFile(`/returns/${id}/pdf`)}>
           Cetak Berita Acara
         </Button>
-        {r.state === 'done' && r.resolution === 'ganti' && (
-          <Link to={`/penjualan/${r.saleId}`}>
-            <Button>Buka sales order untuk surat jalan pengganti</Button>
+        {r.state === 'done' && r.replacementPicking && (
+          <Link to={`/stok/dok/${r.replacementPicking.id}`}>
+            <Button>Buka surat jalan pengganti {r.replacementPicking.name}</Button>
           </Link>
         )}
         {r.state === 'done' && Number(r.creditLeft) > 0.5 && can('penagihan', 'write') && (
@@ -384,6 +384,17 @@ export function ReturnDetail() {
               </Tag>
             )}
           </Descriptions.Item>
+          {r.resolution === 'ganti' && (
+            <Descriptions.Item label="Surat jalan pengganti">
+              {r.replacementPicking ? (
+                <Link to={`/stok/dok/${r.replacementPicking.id}`}>
+                  {r.replacementPicking.name} ({LABEL.tr[r.replacementPicking.state]})
+                </Link>
+              ) : (
+                'dibuat saat retur diproses'
+              )}
+            </Descriptions.Item>
+          )}
           <Descriptions.Item label="Nota kredit">
             {r.refundEntry ? <Link to={`/penagihan/${r.refundEntry.id}`}>{r.refundEntry.name}</Link> : '-'}
           </Descriptions.Item>

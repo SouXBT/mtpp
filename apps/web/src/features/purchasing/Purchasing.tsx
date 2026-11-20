@@ -20,12 +20,13 @@ import dayjs from 'dayjs';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
-import { api, idr, nf, openFile, qf, rp, run, tgl, today } from '../../shared/lib';
+import { api, idr, nf, openFile, paymentForm, qf, rp, run, tgl, today } from '../../shared/lib';
 import { EmailTag, LABEL, emptyText, PageHead, Pill, SearchBar, StatusBar } from '../../shared/ui';
 import { GroupSelect, groupCols, groupRows } from '../../shared/ui';
 import Chatter from '../../shared/Chatter';
 import Crud from '../../shared/Crud';
-import { PaymentFields } from '../sales/Sales';
+import { PaymentFields, ProofInput } from '../sales/Sales';
+import { PurchaseReturnModal } from './PurchaseReturns';
 import { isCreatingPO, useCreatePO } from './createPO';
 
 const PAY_STATES = ['menunggu barang', 'menunggu tagihan', 'belum dikonfirmasi', 'belum dibayar', 'sebagian', 'lunas'];
@@ -244,6 +245,7 @@ export function PODetail() {
   const [billOpen, setBillOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
+  const [retOpen, setRetOpen] = useState(false);
   useEffect(() => {
     if (doc.data) {
       setO(JSON.parse(JSON.stringify(doc.data)));
@@ -343,6 +345,9 @@ export function PODetail() {
         {due > 0 && can('pengadaan', 'create') && <Button onClick={() => setPayOpen(true)}>Bayar Principal</Button>}
         {bills.some((b: any) => b.state === 'posted') && can('pengadaan', 'create') && (
           <Button onClick={() => setRefundOpen(true)}>Nota Kredit</Button>
+        )}
+        {['purchase', 'done'].includes(o.state) && (can('gudang', 'create') || can('pengadaan', 'create')) && (
+          <Button onClick={() => setRetOpen(true)}>Retur ke Principal</Button>
         )}
         {o.state === 'purchase' &&
           can('pengadaan', 'write') &&
@@ -592,6 +597,15 @@ export function PODetail() {
           }}
         />
       )}
+      {retOpen && (
+        <PurchaseReturnModal
+          purchaseId={+id!}
+          onClose={(r) => {
+            setRetOpen(false);
+            if (r) nav(`/pengadaan/retur/${r.id}`);
+          }}
+        />
+      )}
       {payOpen && (
         <PayModal
           title={`Bayar ${o.partner?.name}`}
@@ -708,29 +722,34 @@ export function PayModal({
   title,
   body,
   max,
+  proof,
   onClose,
 }: {
   title: string;
   body: any;
   max: number;
+  proof?: boolean;
   onClose: (ok?: boolean) => void;
 }) {
   const [v, setV] = useState<any>({ amount: max, method: 'BNK', date: today(), memo: '' });
+  const [file, setFile] = useState<File | null>(null);
   return (
     <Modal
       open
       title={title}
       okText="Catat pembayaran"
       cancelText="Batal"
+      okButtonProps={{ disabled: !!proof && !file }}
       onCancel={() => onClose()}
       onOk={async () => {
-        if (await run(api.post('/payments', { ...body, ...v }), 'Pembayaran dicatat')) onClose(true);
+        if (await run(api.post('/payments', paymentForm({ ...body, ...v }, file)), 'Pembayaran dicatat')) onClose(true);
       }}
     >
       <p className="muted">
         Sisa yang harus dibayar: <b>{rp(max)}</b>
       </p>
       <PaymentFields v={v} setV={setV} max={max} />
+      {proof && <ProofInput file={file} setFile={setFile} />}
     </Modal>
   );
 }

@@ -26,6 +26,9 @@ export class SalesController {
   @Get('worklist/ready') @Perm('penjualan', 'read') ready() {
     return this.sales.readyToShip();
   }
+  @Get('payment-history') @Perm('penjualan', 'read') history(@Query() q: any) {
+    return this.sales.paymentHistory(q);
+  }
   @Get(':id') @Perm('penjualan', 'read') get(@CurrentUser() u: AuthUser, @Param('id', ParseIntPipe) id: number) {
     return this.sales.get(u, id);
   }

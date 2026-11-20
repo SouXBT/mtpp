@@ -10,7 +10,12 @@ import {
   Query,
   Res,
   ForbiddenException,
+  BadRequestException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { FilesService } from '../../shared/files.service';
 import { Response } from 'express';
 import { AuthUser, CurrentUser, Perm, checkPerm } from '../../shared/auth';
 import { BillingService } from './billing.service';
@@ -19,7 +24,10 @@ const menuOf = (type?: string) => (type === 'bill' ? 'pengadaan' : 'penagihan');
 
 @Controller()
 export class BillingController {
-  constructor(private b: BillingService) {}
+  constructor(
+    private b: BillingService,
+    private files: FilesService,
+  ) {}
 
   @Get('invoices') list(@CurrentUser() u: AuthUser, @Query() q: any) {
     checkPerm(u, menuOf(q.type), 'read');
@@ -113,17 +121,27 @@ export class BillingController {
     if (!u.perms.penagihan?.read && !u.perms.pengadaan?.read) throw new ForbiddenException('Anda tidak memiliki akses');
     return this.b.payments(q);
   }
-  @Post('payments') pay(@CurrentUser() u: AuthUser, @Body() body: PaymentDto) {
+  // Pembayaran pelanggan (uang muka, pelunasan, invoice) wajib disertai bukti transfer: multipart, field "file"
+  @Post('payments')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  async pay(@CurrentUser() u: AuthUser, @Body() body: PaymentDto, @UploadedFile() file?: Express.Multer.File) {
+    const n = (v: any) => (v === undefined || v === null || v === '' ? undefined : Number(v));
+    const b = {
+      ...body,
+      invoiceId: n(body.invoiceId),
+      saleId: n(body.saleId),
+      purchaseId: n(body.purchaseId),
+      amount: Number(body.amount),
+    };
     // pembayaran principal oleh Finance (pengadaan), pembayaran pelanggan (penagihan)
-    checkPerm(u, body.purchaseId ? 'pengadaan' : 'penagihan', 'create');
-    return this.b.pay(u, body);
-  }
-  @Post('sales-orders/:id/refund-advance') @Perm('penagihan', 'write') refundAdvance(
-    @CurrentUser() u: AuthUser,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() body: PaymentDto,
-  ) {
-    return this.b.refundAdvance(u, id, body || ({} as PaymentDto));
+    checkPerm(u, b.purchaseId ? 'pengadaan' : 'penagihan', 'create');
+    const customer = !!b.saleId || (!!b.invoiceId && (await this.b.get(b.invoiceId)).moveType === 'out_invoice');
+    if (customer && !file) throw new BadRequestException('Lampirkan bukti transfer atau bukti pembayaran');
+    if (file && !/^(image\/|application\/pdf)/.test(file.mimetype))
+      throw new BadRequestException('Bukti pembayaran harus berupa gambar atau PDF');
+    const p = await this.b.pay(u, b as any);
+    if (file && p) await this.files.save(file.buffer, file.originalname, file.mimetype, 'payments', p.id, u.id);
+    return p;
   }
   @Post('payments/:id/cancel') async cancelPayment(@CurrentUser() u: AuthUser, @Param('id', ParseIntPipe) id: number) {
     const p = await this.b.payment(id);

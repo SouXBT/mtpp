@@ -12,7 +12,22 @@ const ok = (c, m) => {
   }
 };
 
+// pembayaran pelanggan wajib disertai bukti transfer: kirim sebagai multipart dengan berkas contoh
+const withProof = (method, path, body) => {
+  if (method !== 'POST' || path !== '/payments' || !body || body instanceof FormData) return body;
+  // uang muka SO wajib punya tanggal pelunasan sisa; skrip lama memakai 14 hari setelah tanggal bayar
+  if (body.saleId && !body.settleDate && !body.kind) {
+    const d = new Date((body.date ? Date.parse(body.date) : Date.now()) + 14 * 86400000);
+    body = { ...body, settleDate: d.toISOString().slice(0, 10) };
+  }
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(body)) if (v !== undefined && v !== null) fd.append(k, String(v));
+  fd.append('file', new Blob(['%PDF-1.4 bukti transfer uji'], { type: 'application/pdf' }), 'bukti-transfer.pdf');
+  return fd;
+};
+
 async function call(token, method, path, body, raw = false) {
+  body = withProof(method, path, body);
   const headers = { Authorization: `Bearer ${token}` };
   let payload;
   if (body instanceof FormData) payload = body;
@@ -183,6 +198,7 @@ const pi = await call(F, 'POST', `/sales-orders/${q1.id}/proforma`, {
   mode: 'persen',
   percent: 30,
   note: 'Uang muka 30%',
+  settleDate: new Date(Date.now() + 21 * 86400000).toISOString().slice(0, 10),
 });
 ok(
   pi.number?.startsWith('PI/'),
