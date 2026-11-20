@@ -304,6 +304,7 @@ export class PurchaseReturnsService {
           date: r.date,
           partnerId: r.partnerId,
           moveType: 'in_refund',
+          invoiceDate: r.date,
           purchaseId: po.id,
           invoiceOrigin: po.name,
           ref: `Retur principal ${r.name}`,

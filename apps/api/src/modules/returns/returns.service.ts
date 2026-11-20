@@ -425,6 +425,7 @@ export class ReturnsService {
           date: r.date,
           partnerId: r.partnerId,
           moveType: 'out_refund',
+          invoiceDate: r.date,
           saleId: r.saleId,
           invoiceOrigin: so.name,
           ref: `${label} ${r.name}`,

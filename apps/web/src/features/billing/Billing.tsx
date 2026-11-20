@@ -398,7 +398,16 @@ export function InvoiceList({ type }: { type: 'invoice' | 'bill' }) {
                 title: 'Status',
                 dataIndex: 'state',
                 render: (v: any, r: any) =>
-                  v === 'posted' ? <Pill v={r.paymentState} kind="pay" /> : <Pill v={v} kind="je" />,
+                  v !== 'posted' ? (
+                    <Pill v={v} kind="je" />
+                  ) : r.moveType.endsWith('refund') ? (
+                    // nota kredit: lunas berarti sudah terpakai seluruhnya untuk mengurangi tagihan atau dikembalikan
+                    <Pill v={r.paymentState === 'paid' ? 'paid' : 'partial'}>
+                      {r.paymentState === 'paid' ? 'kredit terpakai' : 'sisa kredit'}
+                    </Pill>
+                  ) : (
+                    <Pill v={r.paymentState} kind="pay" />
+                  ),
               },
             ],
             ['amountTotal', 'amountResidual'],

@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { nextSteps } from './nextSteps.ts';
 
 const PO = 'Berikutnya: Finance membuat PO Principal.';
-const BAYAR = 'Berikutnya: Finance mencatat pembayaran pelanggan.';
+const BAYAR =
+  'Berikutnya: Finance mencatat pembayaran pelanggan (uang muka atau langsung lunas) beserta bukti transfer.';
 const KIRIM = 'Berikutnya: Operasional membuat surat jalan.';
 const POSTING = 'Berikutnya: Finance memposting invoice.';
 const BAYARINV = 'Berikutnya: Finance mencatat pembayaran invoice.';
@@ -82,4 +83,14 @@ test('tagihan lewat masa tenggang menahan surat jalan', () => {
   const s = nextSteps({ state: 'sale', canDeliver: false, readyItems: 2, creditHold: { blocking: true } });
   assert.ok(s.some((x) => x.includes('lewat masa tenggang')));
   assert.ok(!s.some((x) => x.includes('membuat surat jalan')));
+});
+
+test('pelanggan baru sudah DP: tagih pelunasan pada tanggal yang disepakati', () => {
+  const s = nextSteps({
+    state: 'sale',
+    partner: { mtppIsNewCustomer: true },
+    payment: { paidFull: false, amount: 1000 },
+    mtppSettleDate: '2026-12-04',
+  });
+  assert.ok(s.some((x) => x.includes('menagih pelunasan sisa paling lambat') && x.includes('2026')));
 });

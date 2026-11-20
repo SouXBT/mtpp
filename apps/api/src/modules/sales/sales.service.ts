@@ -473,11 +473,35 @@ export class SalesService {
   async paid(id: number, total: number) {
     // uang muka bersih ditambah pembayaran atas invoice SO ini
     const p = await salePayments(this.db, id);
+    // nota kredit retur/potongan mengurangi nilai yang harus dibayar; dana yang dikembalikan mengurangi yang diterima
+    const rets = await this.db.salesReturns.findMany({
+      where: { saleId: id, state: 'done', refundEntryId: { not: null } },
+      select: { refundEntryId: true, amountTotal: true },
+    });
+    const credit = round2(rets.reduce((a, r) => a + Number(r.amountTotal), 0));
+    const refunded = rets.length
+      ? round2(
+          (
+            await this.db.payments.findMany({
+              where: {
+                invoiceId: { in: rets.map((r) => r.refundEntryId!) },
+                state: { not: 'cancel' },
+                paymentType: 'outbound',
+              },
+              select: { amount: true },
+            })
+          ).reduce((a, x) => a + Number(x.amount), 0),
+        )
+      : 0;
     return {
       advance: p.advance,
       advanceAvailable: p.available,
       amount: p.amount,
       total: Number(total),
+      credit,
+      refunded,
+      netTotal: round2(Number(total) - credit),
+      netPaid: round2(p.amount - refunded),
       paidFull: p.amount >= Number(total) - 0.5 && Number(total) > 0,
       forfeited: await this.forfeited(id),
     };

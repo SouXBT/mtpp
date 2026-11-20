@@ -12,7 +12,15 @@ export async function salePayments(tx: any, saleId: number) {
   const available = round2(inbound.reduce((a: number, p: any) => a + Number(p.amount) - Number(p.amountApplied), 0));
   const onInvoices = (
     await tx.payments.findMany({
-      where: { AND: [{ mtppSaleOrderId: null }, { state: { not: 'cancel' } }, { invoice: { saleId } }] },
+      // hanya uang masuk; pengembalian dana atas nota kredit retur bukan pembayaran pelanggan
+      where: {
+        AND: [
+          { mtppSaleOrderId: null },
+          { state: { not: 'cancel' } },
+          { paymentType: 'inbound' },
+          { invoice: { saleId } },
+        ],
+      },
       select: { amount: true },
     })
   ).reduce((a: number, p: any) => a + Number(p.amount), 0);

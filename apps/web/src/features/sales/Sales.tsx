@@ -18,8 +18,16 @@ import {
   Table,
   Tabs,
   Tag,
+  Upload,
 } from 'antd';
-import { DeleteOutlined, MailOutlined, MoreOutlined, PlusOutlined, PrinterOutlined } from '@ant-design/icons';
+import {
+  DeleteOutlined,
+  MailOutlined,
+  MoreOutlined,
+  PlusOutlined,
+  PrinterOutlined,
+  UploadOutlined,
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import type { ShellContext } from '../../app/Shell';
@@ -1155,7 +1163,19 @@ function Related({ o }: { o: any }) {
             {!o.returns?.length && '-'}
           </Descriptions.Item>
           <Descriptions.Item label="Pembayaran diterima">
-            {rp(o.payment?.amount)} dari {rp(o.amountTotal)}{' '}
+            {Number(o.payment?.credit) > 0 ? (
+              <>
+                {rp(o.payment.netPaid)} dari {rp(o.payment.netTotal)}
+                <div className="muted" style={{ fontSize: 12 }}>
+                  nilai SO {rp(o.amountTotal)} dikurangi nota kredit retur {rp(o.payment.credit)}
+                  {Number(o.payment.refunded) > 0 && `; dana dikembalikan ${rp(o.payment.refunded)}`}
+                </div>
+              </>
+            ) : (
+              <>
+                {rp(o.payment?.amount)} dari {rp(o.amountTotal)}
+              </>
+            )}{' '}
             <Link to={`/penjualan/pembayaran?q=${encodeURIComponent(o.name)}`}>riwayat</Link>
             {Number(o.payment?.forfeited) > 0 && <div className="loss">Uang muka hangus {rp(o.payment.forfeited)}</div>}
           </Descriptions.Item>
@@ -1372,6 +1392,7 @@ export function AdvanceModal({ o, onClose }: { o: any; onClose: (ok?: boolean) =
             format="D MMMM YYYY"
             allowClear={false}
             disabledDate={(d) => d.isBefore(dayjs(v.date), 'day')}
+            style={{ width: 200 }}
             onChange={(d) => setV({ ...v, settleDate: d.format('YYYY-MM-DD') })}
           />
         </div>
@@ -1385,10 +1406,21 @@ export function AdvanceModal({ o, onClose }: { o: any; onClose: (ok?: boolean) =
 export function ProofInput({ file, setFile }: { file: File | null; setFile: (f: File | null) => void }) {
   return (
     <div style={{ marginTop: 12 }}>
-      <div className="muted">Bukti transfer / bukti pembayaran (wajib)</div>
-      <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+      <div className="muted">Bukti transfer / bukti pembayaran (wajib, gambar atau PDF)</div>
+      <Upload
+        accept="image/*,application/pdf"
+        maxCount={1}
+        fileList={file ? [{ uid: '1', name: file.name, status: 'done' } as any] : []}
+        beforeUpload={(f) => {
+          setFile(f);
+          return false;
+        }}
+        onRemove={() => setFile(null)}
+      >
+        <Button icon={<UploadOutlined />}>{file ? 'Ganti berkas bukti' : 'Pilih berkas bukti'}</Button>
+      </Upload>
       {!file && (
-        <div className="loss" style={{ fontSize: 12 }}>
+        <div className="loss" style={{ fontSize: 12, marginTop: 4 }}>
           Lampirkan bukti sebelum mencatat pembayaran.
         </div>
       )}
@@ -1439,6 +1471,7 @@ export function PaymentFields({
           value={dayjs(v.date)}
           format="D MMMM YYYY"
           allowClear={false}
+          style={{ width: 200 }}
           onChange={(d) => setV({ ...v, date: d.format('YYYY-MM-DD') })}
         />
       </div>

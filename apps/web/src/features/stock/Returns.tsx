@@ -12,7 +12,7 @@ import Chatter from '../../shared/Chatter';
 const opts = (m: Record<string, string>) => Object.entries(m).map(([value, label]) => ({ value, label }));
 const RES_HELP: Record<string, string> = {
   ganti:
-    'Barang dikembalikan ke lokasi Barang Rusak, lalu barang pengganti dikirim dengan surat jalan baru. Invoice tidak berubah.',
+    'Barang dikembalikan ke lokasi Barang Rusak. Saat retur diproses, surat jalan pengganti dibuat otomatis dan ditandai "pengganti retur". Invoice tidak berubah.',
   nota_kredit:
     'Barang dikembalikan ke lokasi Barang Rusak dan nota kredit mengurangi piutang. Hanya untuk barang yang sudah ditagih.',
   potongan: 'Barang tetap di pelanggan. Nota kredit sebesar potongan yang disepakati mengurangi piutang.',
@@ -395,9 +395,15 @@ export function ReturnDetail() {
               )}
             </Descriptions.Item>
           )}
-          <Descriptions.Item label="Nota kredit">
-            {r.refundEntry ? <Link to={`/penagihan/${r.refundEntry.id}`}>{r.refundEntry.name}</Link> : '-'}
-          </Descriptions.Item>
+          {credit && (
+            <Descriptions.Item label="Nota kredit">
+              {r.refundEntry ? (
+                <Link to={`/penagihan/${r.refundEntry.id}`}>{r.refundEntry.name}</Link>
+              ) : (
+                'dibuat saat retur diproses'
+              )}
+            </Descriptions.Item>
+          )}
         </Descriptions>
         <Table<any>
           style={{ marginTop: 12 }}

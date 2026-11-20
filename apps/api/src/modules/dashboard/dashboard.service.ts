@@ -244,6 +244,15 @@ export class DashboardService {
           tone: lowRows.length ? 'warning' : undefined,
           link: '/stok?low=true',
         });
+        // retur yang menunggu Operasional: kirim pengganti ke pelanggan dan barang pengganti dari principal
+        const rw = await this.one(sql`select
+          (select count(*) from sales_returns where state = 'draft' and resolution = 'ganti')::int as s,
+          (select count(*) from purchase_returns where state = 'draft' and resolution = 'ganti')::int as p`);
+        k('returns', 'Retur menunggu diproses', rw.s + rw.p, {
+          hint: `${rw.s} retur pelanggan, ${rw.p} retur ke principal`,
+          tone: rw.s + rw.p ? 'warning' : undefined,
+          link: '/stok/retur?state=draft',
+        });
         const st = await this.stock.overview({});
         const agg: Record<string, any> = {};
         for (const r of st) {
@@ -301,13 +310,23 @@ export class DashboardService {
           link: '/pengadaan/perlu-pesanan',
         });
         const pre = await this
-          .q(sql`select so.id, so.name, p.name as c, so.amount_total::float as total, coalesce((select sum(case when payment_type = 'outbound' then -amount else amount end) from payments where mtpp_sale_order_id = so.id and state <> 'cancel'),0)::float as paid
+          .q(sql`select so.id, so.name, p.name as c, so.mtpp_settle_date as settle, so.amount_total::float as total, coalesce((select sum(case when payment_type = 'outbound' then -amount else amount end) from payments where mtpp_sale_order_id = so.id and state <> 'cancel'),0)::float as paid
           from sales_orders so join partners p on p.id = so.partner_id where so.state = 'sale' and p.mtpp_is_new_customer = true order by so.id desc`);
         const unpaid = pre.filter((r) => r.paid < r.total - 0.5);
         const bank = await this.one(
           sql`select count(*)::int as n from bank_statement_lines where is_reconciled = false`,
         );
         k('toinvoice', 'Sales order siap ditagih', ti.n, { link: '/penagihan/siap' });
+        // pekerjaan Finance yang menunggu: jadwal cicilan belum disetujui, retur yang perlu nota kredit
+        const fw = await this.one(sql`select
+          (select count(distinct invoice_id) from invoice_installments where state = 'draft')::int as inst,
+          (select count(*) from sales_returns where state = 'draft' and resolution in ('nota_kredit','potongan'))::int as sr,
+          (select count(*) from purchase_returns where state = 'draft' and resolution = 'nota_kredit')::int as pr`);
+        k('approvals', 'Menunggu tindakan Finance', fw.inst + fw.sr + fw.pr, {
+          hint: `${fw.inst} jadwal cicilan, ${fw.sr} retur pelanggan, ${fw.pr} retur ke principal`,
+          tone: fw.inst + fw.sr + fw.pr ? 'warning' : undefined,
+          link: fw.inst ? '/penagihan' : fw.sr ? '/stok/retur?state=draft' : '/pengadaan/retur?state=draft',
+        });
         k('overdue', 'Piutang jatuh tempo', od.v, {
           money: true,
           hint: `${od.n} invoice`,
@@ -350,10 +369,15 @@ export class DashboardService {
         out.lists.push({
           key: 'proforma',
           title: 'Pelanggan baru menunggu pelunasan',
-          columns: ['Sales order', 'Pelanggan', 'Total', 'Sudah dibayar'],
+          columns: ['Sales order', 'Pelanggan', 'Sisa', 'Lunas paling lambat'],
           rows: unpaid
             .slice(0, 8)
-            .map((r) => [{ text: r.name, link: `/penjualan/${r.id}` }, r.c, { money: r.total }, { money: r.paid }]),
+            .map((r) => [
+              { text: r.name, link: `/penjualan/${r.id}` },
+              r.c,
+              { money: round2(r.total - r.paid) },
+              r.settle ? { date: r.settle, late: r.settle < t } : 'belum ada DP',
+            ]),
         });
         break;
       }
