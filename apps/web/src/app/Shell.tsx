@@ -126,9 +126,12 @@ export default function Shell() {
                     header={<b>Stok rendah</b>}
                     dataSource={lowRows.slice(0, 5)}
                     footer={
-                      <Link to="/stok?low=true">
-                        {lowRows.length > 5 ? `Lihat semua ${lowRows.length} produk` : 'Buka Stok per Gudang'}
-                      </Link>
+                      <span style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                        <Link to="/stok?low=true">
+                          {lowRows.length > 5 ? `Lihat semua ${lowRows.length} produk` : 'Buka Stok per Gudang'}
+                        </Link>
+                        {can('pengadaan', 'create') && <Link to="/stok?low=true">Isi ulang stok ke principal</Link>}
+                      </span>
                     }
                     renderItem={(r: any) => (
                       <List.Item style={{ cursor: 'pointer' }} onClick={() => nav('/stok?low=true')}>

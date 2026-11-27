@@ -45,6 +45,13 @@ a { color: var(--primary); text-decoration: none; }
 .page-title .crumb a { color: var(--muted); }
 .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
 .toolbar .spacer { flex: 1; }
+/* baris dokumen terkait */
+.related { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 16px; }
+.related .rel { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 12px; background: #fff; border: 1px solid var(--line, #e5e0dc); border-radius: 8px; cursor: pointer; font: inherit; color: var(--text); }
+.related .rel:hover { border-color: #90241D; color: #90241D; }
+.related .rel b { font-size: 15px; }
+.related .rel .rel-warn { color: #90241D; }
+.related .rel .rel-ok { color: #2f7d32; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 22px 26px; }
 .card + .card { margin-top: 16px; }
 .card-title { font-size: 16px; font-weight: 600; margin: 0 0 14px; }

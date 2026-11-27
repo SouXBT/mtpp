@@ -6,7 +6,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
 import { api, openFile, qf, run, tgl, tglJam } from '../../shared/lib';
-import { LABEL, emptyText, PageHead, Pill, SearchBar, StatusBar } from '../../shared/ui';
+import { LABEL, emptyText, PageHead, Pill, RelatedBar, SearchBar, StatusBar } from '../../shared/ui';
+import { ReplenishButton } from '../purchasing/Replenish';
 import { GroupSelect, groupCols, groupRows } from '../../shared/ui';
 import Chatter from '../../shared/Chatter';
 import Crud from '../../shared/Crud';
@@ -75,6 +76,8 @@ export function StockOverview() {
             <WarningFilled /> Stok rendah: {low.data!.length} produk
           </span>
         )}
+        {/* masalah dan tindakannya di satu tempat: stok rendah langsung bisa dipesan ulang ke principal */}
+        <ReplenishButton type={(low.data?.length || 0) > 0 ? 'primary' : 'default'} />
       </div>
       <div className="card" style={{ padding: 0 }}>
         <Table<any>
@@ -421,6 +424,27 @@ export function TransferDetail() {
           }
         />
       </div>
+      <RelatedBar
+        items={[
+          {
+            label: 'Sales Order',
+            docs: t.sale ? [{ id: t.saleId, name: t.sale.name, to: `/penjualan/${t.saleId}` }] : [],
+          },
+          {
+            label: 'PO Principal',
+            docs: t.purchase ? [{ id: t.purchaseId, name: t.purchase.name, to: `/pengadaan/${t.purchaseId}` }] : [],
+          },
+          {
+            label: 'Dokumen susulan',
+            docs: (t.backorders || []).map((b: any) => ({
+              id: b.id,
+              name: b.name,
+              to: `/stok/dok/${b.id}`,
+              note: LABEL.tr[b.state] || b.state,
+            })),
+          },
+        ]}
+      />
       {t.paymentBlock && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message={t.paymentBlock} />}
       <div className="card">
         <Descriptions column={{ xs: 1, md: 3 }} size="small">

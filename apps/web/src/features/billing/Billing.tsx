@@ -13,13 +13,15 @@ import {
   Table,
   Tabs,
   Tag,
+  Segmented,
 } from 'antd';
 import { MailOutlined, PrinterOutlined } from '@ant-design/icons';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
 import { api, idr, nf, openFile, qf, rp, run, tgl, today } from '../../shared/lib';
-import { EmailTag, LABEL, emptyText, PageHead, Pill, SearchBar, StatusBar } from '../../shared/ui';
+import { PaymentHistory } from '../sales/PaymentHistory';
+import { EmailTag, LABEL, emptyText, PageHead, Pill, RelatedBar, SearchBar, StatusBar } from '../../shared/ui';
 import { GroupSelect, groupCols, groupRows } from '../../shared/ui';
 import Chatter from '../../shared/Chatter';
 import { PayModal } from '../purchasing/Purchasing';
@@ -473,6 +475,7 @@ export function ReadyToInvoice() {
 export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
   const { id } = useParams();
   const nav = useNavigate();
+  const loc = useLocation();
   const can = useCan();
   const doc = useFetch<any>(`/invoices/${id}`);
   const [rk, setRk] = useState(0);
@@ -588,6 +591,37 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
           }
         />
       </div>
+      <RelatedBar
+        items={[
+          {
+            label: 'Sales Order',
+            docs: e.sale ? [{ id: e.sale.id, name: e.sale.name, to: `/penjualan/${e.sale.id}` }] : [],
+          },
+          {
+            label: 'PO Principal',
+            docs: e.purchase ? [{ id: e.purchase.id, name: e.purchase.name, to: `/pengadaan/${e.purchase.id}` }] : [],
+          },
+          {
+            label: 'Pembayaran',
+            docs: [...(e.payments || []), ...(e.advances || [])].map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              to: `/penagihan/pembayaran?q=${encodeURIComponent(p.name)}`,
+              note: rp(p.amount),
+            })),
+          },
+          ...(e.installments?.rows?.length
+            ? [
+                {
+                  label: e.installments.state === 'approved' ? 'termin cicilan' : 'termin menunggu persetujuan',
+                  value: e.installments.rows.length,
+                  tone: (e.installments.state === 'approved' ? 'ok' : 'warn') as 'ok' | 'warn',
+                  to: `${loc.pathname}?tab=cicilan`,
+                },
+              ]
+            : []),
+        ]}
+      />
       {e.dueState === 'lewat_tenggang' ? (
         <Alert
           type="error"
@@ -651,6 +685,8 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
           <Descriptions.Item label="Jurnal">{e.journal?.name}</Descriptions.Item>
         </Descriptions>
         <Tabs
+          key={loc.search}
+          defaultActiveKey={new URLSearchParams(loc.search).get('tab') === 'cicilan' ? 'inst' : undefined}
           style={{ marginTop: 8 }}
           items={[
             {
@@ -801,13 +837,38 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
   );
 }
 
-export function PaymentsList() {
+// Satu tempat untuk semua pembayaran: daftar per transaksi, atau riwayat per sales order (uang muka ke-n,
+// pembayaran invoice, pelunasan, hangus) yang dulu ada di Penjualan > Riwayat Pembayaran.
+export function PaymentsPage() {
+  const [qs, set] = useQueryState({});
+  const tab = qs.tab === 'so' ? 'so' : 'all';
+  return (
+    <>
+      <PageHead
+        title="Pembayaran"
+        sub="Pembayaran dari pelanggan dan ke principal; tab Per sales order menunjukkan uang muka, pelunasan, dan sisa per pesanan."
+      />
+      <Segmented
+        style={{ marginBottom: 14 }}
+        value={tab}
+        onChange={(v) => set({ tab: v === 'so' ? 'so' : undefined, partnerType: undefined, kind: undefined })}
+        options={[
+          { value: 'all', label: 'Semua pembayaran' },
+          { value: 'so', label: 'Per sales order' },
+        ]}
+      />
+      {tab === 'so' ? <PaymentHistory embedded /> : <PaymentsList embedded />}
+    </>
+  );
+}
+
+export function PaymentsList({ embedded = false }: { embedded?: boolean }) {
   const [qs, set] = useQueryState({ partnerType: 'customer' });
   const list = useFetch<any[]>('/payments', { partnerType: qs.partnerType, q: qs.q });
   const can = useCan();
   return (
     <>
-      <PageHead title="Pembayaran" />
+      {!embedded && <PageHead title="Pembayaran" />}
       <SearchBar resource="payments" value={qs.q} onChange={(q) => set({ q })} filter={qs} onApply={(f) => set(f)}>
         <Radio.Group
           optionType="button"

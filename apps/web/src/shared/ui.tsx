@@ -1,7 +1,7 @@
 import { ReactNode, useState } from 'react';
 import { Button, Dropdown, Input, Modal, Segmented, Select, Space, Tag, Tooltip, message } from 'antd';
 import { FilterOutlined, SaveOutlined, SearchOutlined, StarOutlined } from '@ant-design/icons';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api, run, tglJam } from './lib';
 import { useFetch } from './hooks';
 
@@ -93,6 +93,67 @@ export function EmailTag({ s }: { s?: any }) {
     <Tooltip title={s.failureReason || tglJam(s.statusAt || s.sentAt)}>
       <span className={`pill ${C[s.state] || 'gray'}`}>Email: {s.state}</span>
     </Tooltip>
+  );
+}
+
+// Baris dokumen terkait (seperti smart button Odoo): tiap tombol menunjukkan jumlah dokumen; satu dokumen langsung
+// dibuka, beberapa dokumen dipilih dari daftar. Tombol tanpa dokumen tidak ditampilkan.
+export interface RelatedDoc {
+  id: number | string;
+  name: string;
+  to: string;
+  note?: ReactNode;
+}
+export interface RelatedItem {
+  label: string;
+  docs?: RelatedDoc[];
+  to?: string; // untuk ringkasan tanpa daftar, misalnya riwayat pembayaran
+  value?: ReactNode; // teks pengganti jumlah, misalnya nilai yang sudah dibayar
+  tone?: 'warn' | 'ok';
+}
+export function RelatedBar({ items }: { items: RelatedItem[] }) {
+  const nav = useNavigate();
+  const shown = items.filter((i) => (i.docs && i.docs.length > 0) || (!i.docs && i.to));
+  if (!shown.length) return null;
+  return (
+    <nav className="related" aria-label="Dokumen terkait">
+      {shown.map((i) => {
+        const n = i.docs?.length ?? 0;
+        const body = (
+          <>
+            <b className={i.tone ? `rel-${i.tone}` : undefined}>{i.value ?? n}</b>
+            <span>{i.label}</span>
+          </>
+        );
+        if (!i.docs || n === 1)
+          return (
+            <button key={i.label} type="button" className="rel" onClick={() => nav(i.docs ? i.docs[0].to : i.to!)}>
+              {body}
+            </button>
+          );
+        return (
+          <Dropdown
+            key={i.label}
+            trigger={['click']}
+            menu={{
+              items: i.docs.map((d) => ({
+                key: String(d.id),
+                label: (
+                  <span>
+                    {d.name} {d.note && <span className="muted">· {d.note}</span>}
+                  </span>
+                ),
+                onClick: () => nav(d.to),
+              })),
+            }}
+          >
+            <button type="button" className="rel">
+              {body}
+            </button>
+          </Dropdown>
+        );
+      })}
+    </nav>
   );
 }
 

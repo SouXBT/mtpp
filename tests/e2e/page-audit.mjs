@@ -18,7 +18,7 @@ const DAFTAR = [
   '/penjualan?tab=order',
   '/penjualan/pelanggan',
   '/penjualan/pricelist',
-  '/penjualan/pembayaran',
+  '/penagihan/pembayaran?tab=so',
   '/pengadaan',
   '/pengadaan/tagihan',
   '/pengadaan/pricelist',

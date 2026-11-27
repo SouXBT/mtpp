@@ -24,7 +24,6 @@ export const MODULES: Module[] = [
     items: [
       { label: 'Penawaran', to: '/penjualan?tab=quote', menu: 'penjualan', match: 'tab=quote' },
       { label: 'Sales Order', to: '/penjualan?tab=order', menu: 'penjualan', match: 'tab=order' },
-      { label: 'Riwayat Pembayaran', to: '/penjualan/pembayaran', menu: 'penjualan' },
     ],
   },
   {
@@ -80,7 +79,7 @@ export const MODULES: Module[] = [
   },
   {
     key: 'dokumen',
-    label: 'Surat & Berita Acara',
+    label: 'Dokumen',
     to: '/dokumen?type=all',
     menu: 'dokumen',
     items: [

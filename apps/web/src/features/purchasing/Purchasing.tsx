@@ -22,12 +22,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth, useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
 import { api, idr, nf, openFile, paymentForm, qf, rp, run, tgl, today } from '../../shared/lib';
-import { EmailTag, LABEL, emptyText, PageHead, Pill, SearchBar, StatusBar } from '../../shared/ui';
+import { EmailTag, LABEL, emptyText, PageHead, Pill, RelatedBar, SearchBar, StatusBar } from '../../shared/ui';
 import { GroupSelect, groupCols, groupRows } from '../../shared/ui';
 import Chatter from '../../shared/Chatter';
 import Crud from '../../shared/Crud';
 import { PaymentFields, ProofInput } from '../sales/Sales';
 import { isCreatingPO, useCreatePO } from './createPO';
+import { ReplenishButton } from './Replenish';
 
 const PAY_STATES = ['menunggu barang', 'menunggu tagihan', 'belum dikonfirmasi', 'belum dibayar', 'sebagian', 'lunas'];
 
@@ -191,51 +192,13 @@ export function POList() {
 export function NeedPurchaseList() {
   const list = useFetch<any[]>('/sales-orders/worklist/need-po');
   const can = useCan();
-  const nav = useNavigate();
   const createPO = useCreatePO(list.reload);
-  // isi ulang stok minimum: produk yang proyeksi stok bebasnya (termasuk PO yang belum datang) di bawah minimum
-  const plan = useFetch<any[]>('/purchase-orders/replenish/plan');
-  const [busy, setBusy] = useState(false);
-  const replenish = () =>
-    Modal.confirm({
-      title: 'Buat PO isi ulang stok minimum?',
-      width: 560,
-      content: (
-        <>
-          <p>Dipesan sampai 2× batas minimum, satu PO per principal:</p>
-          <ul style={{ paddingLeft: 18, maxHeight: 260, overflow: 'auto' }}>
-            {(plan.data || []).map((x) => (
-              <li key={`${x.productId}-${x.warehouseId}`}>
-                {x.product} ({x.warehouse}): {qf(x.qty)} · bebas {qf(x.free)}, dalam perjalanan {qf(x.incoming)},
-                minimum {qf(x.minQty)}
-              </li>
-            ))}
-          </ul>
-        </>
-      ),
-      okText: 'Buat PO',
-      cancelText: 'Batal',
-      onOk: async () => {
-        setBusy(true);
-        const r = await run(api.post('/purchase-orders/replenish'), 'PO isi ulang stok dibuat');
-        setBusy(false);
-        plan.reload();
-        if (r?.length === 1) nav(`/pengadaan/${r[0].id}`);
-        else if (r?.length) nav('/pengadaan?state=draft');
-      },
-    });
   return (
     <>
       <PageHead
         title="Perlu PO Principal"
         sub="Sales order terkonfirmasi yang stoknya kurang dan belum dipesan kepada principal."
-        extra={
-          can('pengadaan', 'create') ? (
-            <Button loading={busy} disabled={!plan.data?.length} onClick={replenish}>
-              Isi Ulang Stok Minimum{plan.data?.length ? ` (${plan.data.length} produk)` : ''}
-            </Button>
-          ) : undefined
-        }
+        extra={<ReplenishButton />}
       />
       <div className="card" style={{ padding: 0 }}>
         <Table<any>
@@ -490,6 +453,48 @@ export function PODetail() {
           ]}
         />
       </div>
+
+      <RelatedBar
+        items={[
+          {
+            label: 'Sales Order',
+            docs: o.sale
+              ? [
+                  {
+                    id: o.sale.id,
+                    name: o.sale.name,
+                    to: `/penjualan/${o.sale.id}`,
+                    note: o.sale.partner?.name,
+                  },
+                ]
+              : [],
+          },
+          {
+            label: o.isDropship ? 'Surat Jalan Dropship' : 'Penerimaan Barang',
+            docs: (o.transfers || []).map((t: any) => ({
+              id: t.id,
+              name: t.name,
+              to: `/stok/dok/${t.id}`,
+              note: LABEL.tr[t.state] || t.state,
+            })),
+          },
+          {
+            label: 'Tagihan',
+            docs: bills.map((b: any) => ({
+              id: b.id,
+              name: b.name,
+              to: `/pengadaan/tagihan/${b.id}`,
+              note: b.state === 'posted' ? LABEL.pay[b.paymentState] : LABEL.je[b.state],
+            })),
+          },
+          {
+            label: 'Nota Kredit',
+            docs: (o.bills || [])
+              .filter((b: any) => b.moveType === 'in_refund')
+              .map((b: any) => ({ id: b.id, name: b.name, to: `/pengadaan/tagihan/${b.id}` })),
+          },
+        ]}
+      />
 
       {['purchase', 'done'].includes(o.state) && (
         <div

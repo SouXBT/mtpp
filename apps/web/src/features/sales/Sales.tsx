@@ -34,12 +34,12 @@ import type { ShellContext } from '../../app/Shell';
 import { useAuth, useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
 import { api, idr, nf, openFile, paymentForm, pct, qf, rp, run, tgl, today } from '../../shared/lib';
-import { EmailTag, LABEL, emptyText, PageHead, Pill, SearchBar, StatusBar } from '../../shared/ui';
+import { EmailTag, LABEL, emptyText, PageHead, Pill, RelatedBar, SearchBar, StatusBar } from '../../shared/ui';
 import { GroupSelect, groupCols, groupRows } from '../../shared/ui';
 import Chatter from '../../shared/Chatter';
 import { isCreatingPO, useCreatePO } from '../purchasing/createPO';
 import { useCreateDelivery } from '../stock/createDelivery';
-import { nextSteps } from './nextSteps';
+import { nextStepItems, type StepAction } from './nextSteps';
 
 const TABS = [
   { key: 'quote', label: 'Penawaran', state: 'draft,sent' },
@@ -48,6 +48,14 @@ const TABS = [
   { key: 'all', label: 'Semua', state: '' },
 ];
 const FILTER_TABS = TABS.filter((t) => t.key === 'cancel' || t.key === 'all');
+
+// status pembayaran sales order di daftar: lunas, sebagian, belum dibayar, atau ada invoice lewat jatuh tempo
+const PAY_STATUS: Record<string, { label: string; color: string }> = {
+  lunas: { label: 'lunas', color: 'green' },
+  sebagian: { label: 'dibayar sebagian', color: 'gold' },
+  belum_bayar: { label: 'belum dibayar', color: 'default' },
+  terlambat: { label: 'lewat jatuh tempo', color: 'red' },
+};
 
 export function SalesList() {
   const [qs, set] = useQueryState({ tab: 'quote' });
@@ -59,6 +67,7 @@ export function SalesList() {
     to: qs.to,
     partnerId: qs.partnerId,
     expired: qs.expired,
+    pay: qs.pay,
   };
   const list = useFetch<any[]>('/sales-orders', params);
   const can = useCan();
@@ -97,7 +106,7 @@ export function SalesList() {
         <Select
           allowClear
           placeholder="Pelanggan"
-          style={{ width: 220 }}
+          style={{ width: 190 }}
           value={qs.partnerId ? +qs.partnerId : undefined}
           onChange={(v) => set({ partnerId: v ? String(v) : undefined })}
           showSearch
@@ -109,6 +118,16 @@ export function SalesList() {
           value={qs.from ? [dayjs(qs.from), dayjs(qs.to)] : null}
           onChange={(r) => set({ from: r?.[0]?.format('YYYY-MM-DD'), to: r?.[1]?.format('YYYY-MM-DD') })}
         />
+        {tab.key !== 'quote' && (
+          <Select
+            allowClear
+            placeholder="Pembayaran"
+            style={{ width: 150 }}
+            value={qs.pay}
+            onChange={(v) => set({ pay: v })}
+            options={Object.entries(PAY_STATUS).map(([value, x]) => ({ value, label: x.label }))}
+          />
+        )}
         {tab.key === 'quote' && (
           <Button
             type={qs.expired ? 'primary' : 'default'}
@@ -182,6 +201,22 @@ export function SalesList() {
               },
               { title: 'Total', dataIndex: 'amountTotal', align: 'right', render: (v: any) => idr(v) },
               { title: 'Status', dataIndex: 'state', render: (v: any) => <Pill v={v} kind="so" /> },
+              ...(tab.key !== 'quote'
+                ? [
+                    {
+                      title: 'Pembayaran',
+                      dataIndex: 'payStatus',
+                      render: (v: any, r: any) =>
+                        v ? (
+                          <span title={`Diterima ${idr(r.paid)} dari ${idr(r.amountTotal)}`}>
+                            <Tag color={PAY_STATUS[v]?.color}>{PAY_STATUS[v]?.label}</Tag>
+                          </span>
+                        ) : (
+                          '-'
+                        ),
+                    },
+                  ]
+                : []),
               {
                 title: 'Penagihan',
                 dataIndex: 'invoiceStatus',
@@ -418,7 +453,7 @@ export function SalesDetail() {
   const step = o.state === 'cancel' ? 'draft' : o.state;
   const pay = o.payment || {};
   const hold = o.creditHold || {};
-  const steps = nextSteps(o);
+  const steps = nextStepItems(o);
   const release = () => {
     let note = '';
     Modal.confirm({
@@ -441,6 +476,49 @@ export function SalesDetail() {
       onOk: () => act('release', 'Pengiriman diizinkan', { note }),
     });
   };
+  // tombol langsung untuk langkah berikutnya, sesuai hak peran; tanpa hak hanya teksnya yang tampil
+  const invs = (o.invoices || []).filter((i: any) => i.moveType === 'out_invoice');
+  const stepButton = (a: StepAction) => {
+    const go = (to: string, label: string) => (
+      <Button size="small" type="primary" onClick={() => nav(to)}>
+        {label}
+      </Button>
+    );
+    switch (a) {
+      // aksi yang sudah ada di toolbar tidak digandakan; tombol toolbar itu yang disorot (lihat stepNow)
+      case 'po':
+      case 'pay':
+      case 'deliver':
+      case 'invoice':
+        return null;
+      case 'hold': {
+        const first = hold.invoices?.[0];
+        if (me?.group === 'PIMPINAN')
+          return (
+            <Button size="small" type="primary" onClick={release}>
+              Izinkan Kirim
+            </Button>
+          );
+        return first && can('penagihan') ? go(`/penagihan/${first.id}`, `Tagih ${first.name}`) : null;
+      }
+      case 'validate': {
+        const t = (o.transfers || []).find(
+          (x: any) => x.code === 'outgoing' && ['draft', 'waiting', 'assigned'].includes(x.state),
+        );
+        return t && can('gudang') ? go(`/stok/dok/${t.id}`, `Buka ${t.name}`) : null;
+      }
+      case 'post': {
+        const d = invs.find((i: any) => i.state === 'draft');
+        return d && can('penagihan') ? go(`/penagihan/${d.id}`, `Buka ${d.name}`) : null;
+      }
+      case 'payinv': {
+        const u = invs.find((i: any) => i.state === 'posted' && ['not_paid', 'partial'].includes(i.paymentState));
+        return u && can('penagihan') ? go(`/penagihan/${u.id}`, `Bayar ${u.name}`) : null;
+      }
+    }
+  };
+  // tombol toolbar yang menjadi langkah berikutnya diberi warna utama
+  const stepNow = (k: StepAction) => (steps.some((x) => x.action === k) ? 'primary' : 'default');
   const fromQuote = o.quotationNumber && o.name !== o.quotationNumber;
   // draf bekas SO dan penawaran lama yang nomornya tidak diganti tetap memakai nomor yang ada
   const getsSoNumber = !fromQuote && (o.quotationNumber || (o.nameEdit && o.nameEdit !== o.name));
@@ -573,6 +651,7 @@ export function SalesDetail() {
         )}
         {o.state === 'sale' && can('pengadaan', 'create') && (o.shortage || []).some((x: any) => x.shortage > 0) && (
           <Button
+            type={stepNow('po')}
             disabled={isCreatingPO(+id!)}
             onClick={() =>
               createPO({ id: +id!, isNewCustomer: !!o.partner?.mtppIsNewCustomer, paidAmount: Number(pay.amount || 0) })
@@ -583,6 +662,7 @@ export function SalesDetail() {
         )}
         {o.state === 'sale' && can('gudang', 'create') && o.deliverable && (
           <Button
+            type={stepNow('deliver')}
             disabled={!o.canDeliver || delivery.isCreating(+id!)}
             title={
               !o.canDeliver
@@ -601,6 +681,7 @@ export function SalesDetail() {
           o.invoiceStatus === 'to_invoice' &&
           !(o.invoices || []).some((i: any) => i.moveType === 'out_invoice' && i.state === 'draft') && (
             <Button
+              type={stepNow('invoice')}
               onClick={async () => {
                 const r = await run(api.post(`/invoices/from-sale/${id}`, {}), 'Invoice draf dibuat');
                 if (r) nav(`/penagihan/${r.id}`);
@@ -613,7 +694,9 @@ export function SalesDetail() {
           <Button onClick={() => setPfOpen(true)}>Proforma Invoice</Button>
         )}
         {o.state === 'sale' && can('penagihan', 'create') && o.partner?.mtppIsNewCustomer && !pay.paidFull && (
-          <Button onClick={() => setPayOpen(true)}>Catat Pembayaran (DP / Lunas)</Button>
+          <Button type={stepNow('pay')} onClick={() => setPayOpen(true)}>
+            Catat Pembayaran (DP / Lunas)
+          </Button>
         )}
         {o.state === 'cancel' && can('penjualan', 'write') && (
           <Button onClick={() => act('draft', 'Dikembalikan ke draf')}>Kembalikan ke Draf</Button>
@@ -628,6 +711,58 @@ export function SalesDetail() {
         <span className="spacer" />
         <StatusBar steps={STEPS} value={step} />
       </div>
+
+      {!isNew && (
+        <RelatedBar
+          items={[
+            {
+              label: 'PO Principal',
+              docs: (o.purchaseOrders || []).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                to: `/pengadaan/${p.id}`,
+                note: LABEL.po[p.state] || p.state,
+              })),
+            },
+            {
+              label: 'Surat Jalan',
+              docs: (o.transfers || [])
+                .filter((t: any) => t.code !== 'incoming')
+                .map((t: any) => ({
+                  id: t.id,
+                  name: t.name,
+                  to: `/stok/dok/${t.id}`,
+                  note: LABEL.tr[t.state] || t.state,
+                })),
+            },
+            {
+              label: 'Invoice',
+              docs: invs.map((i: any) => ({
+                id: i.id,
+                name: i.name,
+                to: `/penagihan/${i.id}`,
+                note: i.state === 'posted' ? LABEL.pay[i.paymentState] : LABEL.je[i.state],
+              })),
+            },
+            {
+              label: 'Nota Kredit',
+              docs: (o.invoices || [])
+                .filter((i: any) => i.moveType === 'out_refund')
+                .map((i: any) => ({ id: i.id, name: i.name, to: `/penagihan/${i.id}` })),
+            },
+            ...(['sale', 'done'].includes(o.state) && Number(pay.amount) > 0
+              ? [
+                  {
+                    label: `dari ${rp(o.amountTotal)} dibayar`,
+                    value: rp(pay.amount),
+                    tone: (Number(pay.amount) >= Number(o.amountTotal) - 0.5 ? 'ok' : 'warn') as 'ok' | 'warn',
+                    to: `/penagihan/pembayaran?tab=so&q=${encodeURIComponent(o.name)}`,
+                  },
+                ]
+              : []),
+          ]}
+        />
+      )}
 
       {o.partner?.mtppIsNewCustomer && ['sale'].includes(o.state) && (
         <Alert
@@ -711,7 +846,10 @@ export function SalesDetail() {
           }}
         >
           {steps.map((t) => (
-            <div key={t}>{t}</div>
+            <div key={t.text} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '3px 0' }}>
+              <span style={{ flex: 1 }}>{t.text}</span>
+              {stepButton(t.action)}
+            </div>
           ))}
         </div>
       )}
@@ -1137,7 +1275,7 @@ function Related({ o }: { o: any }) {
           </Descriptions.Item>
           <Descriptions.Item label="Pembayaran diterima">
             {rp(o.payment?.amount)} dari {rp(o.amountTotal)}{' '}
-            <Link to={`/penjualan/pembayaran?q=${encodeURIComponent(o.name)}`}>riwayat</Link>
+            <Link to={`/penagihan/pembayaran?tab=so&q=${encodeURIComponent(o.name)}`}>riwayat</Link>
             {Number(o.payment?.forfeited) > 0 && <div className="loss">Uang muka hangus {rp(o.payment.forfeited)}</div>}
           </Descriptions.Item>
         </Descriptions>

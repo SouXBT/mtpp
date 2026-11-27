@@ -7,37 +7,50 @@ interface Order {
   readyItems?: number;
   canDeliver?: boolean;
   invoiceStatus?: string;
-  invoices?: { moveType: string; state: string; paymentState?: string }[];
-  transfers?: { code?: string; state: string }[];
+  invoices?: { id?: number; moveType: string; state: string; paymentState?: string }[];
+  transfers?: { id?: number; code?: string; state: string }[];
   creditHold?: { blocking?: boolean };
 }
 
 const tglPendek = (d: string) =>
   new Date(d + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 
+export type StepAction = 'po' | 'pay' | 'hold' | 'deliver' | 'validate' | 'post' | 'invoice' | 'payinv';
+export interface Step {
+  text: string;
+  action: StepAction;
+}
+
 // Langkah berikutnya di detail sales order, menurut keadaan yang sama dengan tombol aksinya.
-export function nextSteps(o: Order): string[] {
-  const out: string[] = [];
+// action menunjuk tombol yang ditampilkan di samping teksnya (bila peran pengguna boleh melakukannya).
+export function nextStepItems(o: Order): Step[] {
+  const out: Step[] = [];
+  const add = (text: string, action: StepAction) => out.push({ text, action });
   if (o.state === 'sale') {
-    if ((o.shortage || []).some((x) => x.shortage > 0)) out.push('Berikutnya: Finance membuat PO Principal.');
+    if ((o.shortage || []).some((x) => x.shortage > 0)) add('Berikutnya: Finance membuat PO Principal.', 'po');
     if (o.partner?.mtppIsNewCustomer && !o.payment?.paidFull)
-      out.push(
+      add(
         Number(o.payment?.amount || 0) > 0 && o.mtppSettleDate
           ? `Berikutnya: Finance menagih pelunasan sisa paling lambat ${tglPendek(o.mtppSettleDate)}, lalu mencatatnya dengan bukti transfer.`
           : 'Berikutnya: Finance mencatat pembayaran pelanggan (uang muka atau langsung lunas) beserta bukti transfer.',
+        'pay',
       );
     else if (o.creditHold?.blocking)
-      out.push('Berikutnya: Finance menagih tagihan yang lewat masa tenggang, atau Pimpinan memberi izin kirim.');
-    else if (o.canDeliver && (o.readyItems || 0) > 0) out.push('Berikutnya: Operasional membuat surat jalan.');
+      add('Berikutnya: Finance menagih tagihan yang lewat masa tenggang, atau Pimpinan memberi izin kirim.', 'hold');
+    else if (o.canDeliver && (o.readyItems || 0) > 0) add('Berikutnya: Operasional membuat surat jalan.', 'deliver');
     if ((o.transfers || []).some((t) => t.code === 'outgoing' && ['draft', 'waiting', 'assigned'].includes(t.state)))
-      out.push('Berikutnya: Operasional memvalidasi surat jalan.');
+      add('Berikutnya: Operasional memvalidasi surat jalan.', 'validate');
   }
   if (['sale', 'done'].includes(o.state)) {
     const inv = (o.invoices || []).filter((i) => i.moveType === 'out_invoice');
-    if (inv.some((i) => i.state === 'draft')) out.push('Berikutnya: Finance memposting invoice.');
-    else if (o.invoiceStatus === 'to_invoice') out.push('Berikutnya: Finance membuat invoice.');
+    if (inv.some((i) => i.state === 'draft')) add('Berikutnya: Finance memposting invoice.', 'post');
+    else if (o.invoiceStatus === 'to_invoice') add('Berikutnya: Finance membuat invoice.', 'invoice');
     if (inv.some((i) => i.state === 'posted' && ['not_paid', 'partial'].includes(i.paymentState || '')))
-      out.push('Berikutnya: Finance mencatat pembayaran invoice.');
+      add('Berikutnya: Finance mencatat pembayaran invoice.', 'payinv');
   }
   return out;
+}
+
+export function nextSteps(o: Order): string[] {
+  return nextStepItems(o).map((x) => x.text);
 }

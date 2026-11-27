@@ -16,15 +16,18 @@ const KIND_COLOR: Record<string, string> = {
 };
 
 // Riwayat penagihan per sales order: uang muka ke-n, pelunasan, lunas langsung, pembayaran invoice, uang muka hangus
-export function PaymentHistory() {
+// embedded: tampil sebagai tab di Penagihan > Pembayaran, tanpa judul halaman sendiri
+export function PaymentHistory({ embedded = false }: { embedded?: boolean }) {
   const [qs, set] = useQueryState({});
   const list = useFetch<any[]>('/sales-orders/payment-history', { q: qs.q, kind: qs.kind });
   return (
     <>
-      <PageHead
-        title="Riwayat Pembayaran"
-        sub="Uang muka dan pelunasan pelanggan per sales order, beserta sisa, tanggal pelunasan, dan bukti transfer."
-      />
+      {!embedded && (
+        <PageHead
+          title="Riwayat Pembayaran"
+          sub="Uang muka dan pelunasan pelanggan per sales order, beserta sisa, tanggal pelunasan, dan bukti transfer."
+        />
+      )}
       <SearchBar
         resource="payment-history"
         value={qs.q}

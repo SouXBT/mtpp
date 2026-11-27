@@ -114,13 +114,37 @@ export class SalesService {
       })
     ).map(({ partner, ...o }) => ({ o, partner: partner.name, isNew: partner.mtppIsNewCustomer }));
     const t = today();
+    // status pembayaran per SO: uang yang diterima (uang muka dan pembayaran invoice) dan invoice yang lewat jatuh tempo
+    const ids = rows.filter((r) => ['sale', 'done'].includes(r.o.state)).map((r) => r.o.id);
+    const paidRows: any[] = ids.length
+      ? await this.db.$queryRaw(
+          sql`select coalesce(p.mtpp_sale_order_id, e.mtpp_sale_order_id) as sid, sum(case when p.payment_type = 'outbound' then -p.amount else p.amount end)::float as amt from payments p left join journal_entries e on e.id = p.invoice_id where p.state <> 'cancel' and p.partner_type = 'customer' and coalesce(p.mtpp_sale_order_id, e.mtpp_sale_order_id) = any(${ids}) group by 1`,
+        )
+      : [];
+    const lateRows: any[] = ids.length
+      ? await this.db.$queryRaw(
+          sql`select distinct mtpp_sale_order_id as sid from journal_entries where move_type = 'out_invoice' and state = 'posted' and amount_residual > 0.5 and invoice_date_due < ${t}::date and mtpp_sale_order_id = any(${ids})`,
+        )
+      : [];
+    const paidOf = new Map(paidRows.map((x) => [Number(x.sid), Number(x.amt)]));
+    const late = new Set(lateRows.map((x) => Number(x.sid)));
+    const payStatus = (o: any) => {
+      if (!['sale', 'done'].includes(o.state)) return null;
+      const paid = paidOf.get(o.id) || 0;
+      if (Number(o.amountTotal) > 0 && paid >= Number(o.amountTotal) - 0.5) return 'lunas';
+      if (late.has(o.id)) return 'terlambat';
+      return paid > 0 ? 'sebagian' : 'belum_bayar';
+    };
     let out = rows.map((r) => ({
       ...r.o,
       partner: r.partner,
       isNewCustomer: r.isNew,
       expired: !!r.o.validityDate && r.o.validityDate < t && ['draft', 'sent'].includes(r.o.state),
+      paid: paidOf.get(r.o.id) || 0,
+      payStatus: payStatus(r.o),
     }));
     if (q.expired === 'true') out = out.filter((r) => r.expired);
+    if (q.pay) out = out.filter((r) => String(q.pay).split(',').includes(String(r.payStatus)));
     return out;
   }
 

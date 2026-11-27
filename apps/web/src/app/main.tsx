@@ -1,6 +1,6 @@
 import React, { ReactElement } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { App as AntApp, ConfigProvider, Result, Spin } from 'antd';
 import idID from 'antd/locale/id_ID';
 import '@fontsource/inter/400.css';
@@ -13,7 +13,7 @@ import Shell from './Shell';
 import { Dashboard, Login, Profile } from '../features/home/Home';
 import { SalesDetail, SalesList } from '../features/sales/Sales';
 import { NeedPurchaseList, PODetail, POList, SupplierPricelist } from '../features/purchasing/Purchasing';
-import { InvoiceDetail, InvoiceList, PaymentsList, ReadyToInvoice } from '../features/billing/Billing';
+import { InvoiceDetail, InvoiceList, PaymentsPage, ReadyToInvoice } from '../features/billing/Billing';
 import {
   ReadyToShipList,
   StockMoves,
@@ -51,7 +51,6 @@ import {
   UsersList,
 } from '../features/settings/Settings';
 import { ReportView, ReportsHome } from '../features/reports/Reports';
-import { PaymentHistory } from '../features/sales/PaymentHistory';
 import { DocumentEditor, DocumentList } from '../features/documents/Documents';
 
 const theme = {
@@ -98,6 +97,11 @@ function Guard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 const NotFound = () => <Result status="404" title="Halaman tidak ditemukan" />;
+// alamat lama Penjualan > Riwayat Pembayaran: sekarang tab Per sales order di Penagihan > Pembayaran
+function LegacyPayments() {
+  const q = new URLSearchParams(useLocation().search).get('q');
+  return <Navigate replace to={`/penagihan/pembayaran?tab=so${q ? `&q=${encodeURIComponent(q)}` : ''}`} />;
+}
 // rute detail hanya untuk id angka atau 'baru' (formulir data baru); alamat lama atau salah ketik (mis. /pengadaan/retur) menjadi halaman 404
 function NumId({ el }: { el: ReactElement }) {
   const { id } = useParams();
@@ -121,7 +125,7 @@ function AppRoutes() {
         <Route path="penjualan/pelanggan" element={<PartnerList kind="customer" />} />
         <Route path="penjualan/pelanggan/:id" element={<NumId el={<PartnerDetail kind="customer" />} />} />
         <Route path="penjualan/pricelist" element={<SalesPricelists />} />
-        <Route path="penjualan/pembayaran" element={<PaymentHistory />} />
+        <Route path="penjualan/pembayaran" element={<LegacyPayments />} />
         <Route path="penjualan/:id" element={<NumId el={<SalesDetail />} />} />
         <Route path="pengadaan" element={<POList />} />
         <Route path="pengadaan/tagihan" element={<InvoiceList type="bill" />} />
@@ -140,7 +144,7 @@ function AppRoutes() {
         <Route path="stok/mutasi" element={<StockMoves />} />
         <Route path="penagihan" element={<InvoiceList type="invoice" />} />
         <Route path="penagihan/siap" element={<ReadyToInvoice />} />
-        <Route path="penagihan/pembayaran" element={<PaymentsList />} />
+        <Route path="penagihan/pembayaran" element={<PaymentsPage />} />
         <Route path="penagihan/:id" element={<NumId el={<InvoiceDetail type="invoice" />} />} />
         <Route path="akuntansi/kas" element={<CashPage />} />
         <Route path="akuntansi/jurnal" element={<JournalList />} />
