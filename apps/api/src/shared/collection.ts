@@ -20,12 +20,14 @@ export interface Termin {
 }
 
 // Jadwal dibuat untuk sisa tagihan saat itu; yang sudah dibayar sebelumnya (offset) tidak masuk termin.
-// Pembayaran sesudahnya (total - sisa - offset) dialokasikan ke termin dari jatuh tempo terlama.
-export function allocate(total: number, residual: number, termins: Termin[]) {
+// Pembayaran sesudahnya dialokasikan ke termin dari jatuh tempo terlama. Bila jumlah pembayaran sesudah jadwal
+// diketahui (paidAfter), angka itu yang dipakai; tanpa itu ditaksir dari total - sisa - offset, yang keliru bila
+// pembayaran lama dibatalkan setelah ada pembayaran baru.
+export function allocate(total: number, residual: number, termins: Termin[], paidAfter?: number) {
   const sorted = [...termins].sort((a, b) => a.sequence - b.sequence);
   const planned = round2(sorted.reduce((a, x) => a + Number(x.amount), 0));
   const offset = round2(total - planned);
-  let paid = round2(Math.max(total - residual - offset, 0));
+  let paid = round2(Math.max(paidAfter ?? total - residual - offset, 0));
   const rows = sorted.map((x) => {
     const amount = round2(Number(x.amount));
     const p = round2(Math.min(paid, amount));
@@ -84,12 +86,16 @@ export function planError(
 
 // ---------------------------------------------------------------- basis data
 
+// masa tenggang proforma invoice: paling sedikit 1 minggu setelah tanggal proforma, boleh diatur lebih lama
+export const PROFORMA_MIN_GRACE = 7;
+export const PROFORMA_MAX_GRACE = 90;
+
 export const COLLECTION_DEFAULTS = {
   graceDays: 7,
+  proformaGraceDays: 7,
   blockDelivery: true,
   maxInstallments: 12,
   maxMonths: 12,
-  returnDays: 7,
 };
 
 export async function collectionSettings(tx: any) {
@@ -147,7 +153,17 @@ export async function receivableSlices(tx: any, f: { partnerId?: number; invoice
       out.push({ ...base, due: e.invoiceDateDue, open: residual, sequence: null });
       continue;
     }
-    const a = allocate(Number(e.amountTotal), residual, e.installments);
+    // pembayaran yang masuk setelah jadwal diajukan (sama dengan detail invoice)
+    const since = e.installments.reduce(
+      (a: Date, r: any) => (r.createDate < a ? r.createDate : a),
+      e.installments[0].createDate,
+    );
+    const after = await tx.payments.findMany({
+      where: { invoiceId: e.id, state: { not: 'cancel' }, createDate: { gte: since } },
+      select: { amount: true },
+    });
+    const paidAfter = round2(after.reduce((x: number, p: any) => x + Number(p.amount), 0));
+    const a = allocate(Number(e.amountTotal), residual, e.installments, paidAfter);
     for (const x of a.rows) if (x.open > 0.5) out.push({ ...base, due: x.dateDue, open: x.open, sequence: x.sequence });
     if (a.outside > 0.5) out.push({ ...base, due: e.invoiceDateDue, open: a.outside, sequence: null });
   }

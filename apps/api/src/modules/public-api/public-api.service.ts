@@ -1,9 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { must } from '../../shared/util';
+import { fail, must } from '../../shared/util';
 import { StockService } from '../stock/stock.service';
 
-const page = (q: any) => ({ limit: Math.min(Number(q.limit) || 50, 200), offset: Number(q.offset) || 0 });
+// limit 1–200 dan offset tidak minus; nilai ngawur ditolak, bukan diam-diam mengembalikan baris lain
+const page = (q: any) => {
+  const limit = q.limit === undefined ? 50 : Number(q.limit),
+    offset = q.offset === undefined ? 0 : Number(q.offset);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) fail('limit harus angka bulat 1 sampai 200');
+  if (!Number.isInteger(offset) || offset < 0) fail('offset harus angka bulat 0 atau lebih');
+  return { limit, offset };
+};
 
 @Injectable()
 export class PublicApiService {

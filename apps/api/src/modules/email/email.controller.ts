@@ -30,7 +30,8 @@ export class EmailController {
 
   @Post('emails/:id/resend')
   async resend(@CurrentUser() u: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() b: { to?: string }) {
-    if (!u.perms.email?.write && !u.perms.email?.read) throw new ForbiddenException('Anda tidak memiliki akses');
+    // mengirim ulang ke alamat lain adalah tindakan menulis, bukan sekadar membaca log
+    if (!u.perms.email?.write) throw new ForbiddenException('Anda tidak memiliki akses');
     return this.email.resend(id, b.to, u.id);
   }
 

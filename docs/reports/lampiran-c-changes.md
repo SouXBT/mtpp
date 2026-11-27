@@ -97,3 +97,34 @@ Uang muka (DP) kepada principal: PO baru dapat dikonfirmasi setelah uang muka mi
 | `payments.mtpp_purchase_order_id` | `purchase_orders.id` | ditolak |
 
 **Jurnal**: pembayaran uang muka Debit 1-1500 Uang Muka Pembelian, Kredit Kas/Bank. Saat tagihan principal diposting, uang muka dipakai lewat jurnal UMM (Debit 2-1100 Utang Usaha, Kredit 1-1500 Uang Muka Pembelian). Persen uang muka disimpan di `settings` (kunci `po_terms`, nilai `dpPercent`), tanpa tabel baru.
+
+## Migrasi `20261128090000_drop_returns`
+
+Fitur retur pelanggan dan retur ke principal dihapus atas keputusan pemilik. Lampiran C tidak lagi memuat tabel-tabel berikut beserta relasinya (lihat dua migrasi di atas untuk daftar kolom dan relasi yang ikut hilang).
+
+**Tabel dihapus**
+
+| Tabel | Isi sebelumnya |
+| --- | --- |
+| `sales_returns` | Kepala retur pelanggan (RET/MTPP/…) |
+| `sales_return_lines` | Baris retur pelanggan |
+| `purchase_returns` | Kepala retur ke principal (RP/MTPP/…) |
+| `purchase_return_lines` | Baris retur ke principal |
+
+**Tetap ada**: akun `4-1100 Retur Penjualan` dan lokasi stok `usage = 'damaged'` (Barang Rusak) tidak dihapus karena bisa sudah dipakai jurnal atau mutasi stok lama. Jurnal nota kredit dan mutasi stok yang pernah dibuat retur tetap tersimpan sebagai riwayat. Pengaturan `collection.returnDays` tidak dipakai lagi.
+
+## Migrasi `20261128100000_proforma_due_date`
+
+Proforma invoice memiliki batas bayar: tanggal proforma ditambah masa tenggang, bawaan 7 hari (Pengaturan → Penagihan, `collection.proformaGraceDays`), paling sedikit 7 hari dan boleh diatur lebih lama (sampai 90 hari), baik bawaannya maupun per proforma.
+
+**Kolom baru**
+
+| Tabel | Kolom | Tipe | Arti |
+| --- | --- | --- | --- |
+| `sales_orders` | `mtpp_proforma_due_date` | date, boleh kosong | Batas bayar proforma invoice (tanggal proforma + masa tenggang, paling sedikit 7 hari) |
+
+**Tanpa relasi baru.** Proforma yang sudah ada diberi batas bayar 7 hari setelah tanggal proformanya.
+
+## Tanpa migrasi: tanggal kunci periode akuntansi
+
+Disimpan di `settings` (kunci `lock_date`, nilai `date`), tanpa tabel atau kolom baru. Jurnal bertanggal sampai tanggal kunci tidak dapat dibuat, diposting, dihapus, atau dibalik.

@@ -51,6 +51,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] });
   const { appValidationPipe } = await import('./shared/validation');
   app.useGlobalPipes(appValidationPipe());
+  const { AppErrorFilter } = await import('./shared/error.filter');
+  app.useGlobalFilters(new AppErrorFilter());
   app.setGlobalPrefix('api');
   const { clock, mockDateEnabled } = await import('./shared/clock');
   if (mockDateEnabled()) {

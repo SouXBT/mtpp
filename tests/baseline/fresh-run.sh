@@ -15,8 +15,10 @@ node "$FLOWS/demo-flow.mjs" >"$LOG/demo.txt" 2>&1 || { echo "demo-flow GAGAL"; f
 node "$FLOWS/edge-flow.mjs" >"$LOG/edge.txt" 2>&1 || { echo "edge-flow GAGAL"; fail=1; }; grep -a 'Ringkasan' "$LOG/edge.txt"
 node tests/baseline/capture.mjs "$OUT" || { echo "capture GAGAL"; fail=1; }
 node "$FLOWS/validation-flow.mjs" >"$LOG/validation.txt" 2>&1 && echo "validation ok" || { echo "validation GAGAL"; grep -a "✗" "$LOG/validation.txt"; fail=1; }
+# sesudah rekaman, supaya rekaman pembanding tidak berubah
+node "$FLOWS/collection-flow.mjs" >"$LOG/collection.txt" 2>&1 && echo "collection ok" || { echo "collection GAGAL"; grep -a "✗" "$LOG/collection.txt"; tail -3 "$LOG/collection.txt"; fail=1; }
 if [ "${SKIP_E2E:-}" != "1" ]; then
-  for s in nav-audit alur-po-pelanggan alur-surat-jalan alur-berikutnya; do
+  for s in nav-audit page-audit alur-po-pelanggan alur-surat-jalan alur-berikutnya; do
     node "$E2E/$s.mjs" >"$LOG/$s.txt" 2>&1 && echo "$s ok" || { echo "$s GAGAL"; tail -5 "$LOG/$s.txt"; fail=1; }
   done
 fi

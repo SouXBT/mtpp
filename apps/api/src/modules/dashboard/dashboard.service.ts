@@ -244,15 +244,6 @@ export class DashboardService {
           tone: lowRows.length ? 'warning' : undefined,
           link: '/stok?low=true',
         });
-        // retur yang menunggu Operasional: kirim pengganti ke pelanggan dan barang pengganti dari principal
-        const rw = await this.one(sql`select
-          (select count(*) from sales_returns where state = 'draft' and resolution = 'ganti')::int as s,
-          (select count(*) from purchase_returns where state = 'draft' and resolution = 'ganti')::int as p`);
-        k('returns', 'Retur menunggu diproses', rw.s + rw.p, {
-          hint: `${rw.s} retur pelanggan, ${rw.p} retur ke principal`,
-          tone: rw.s + rw.p ? 'warning' : undefined,
-          link: '/stok/retur?state=draft',
-        });
         const st = await this.stock.overview({});
         const agg: Record<string, any> = {};
         for (const r of st) {
@@ -317,15 +308,13 @@ export class DashboardService {
           sql`select count(*)::int as n from bank_statement_lines where is_reconciled = false`,
         );
         k('toinvoice', 'Sales order siap ditagih', ti.n, { link: '/penagihan/siap' });
-        // pekerjaan Finance yang menunggu: jadwal cicilan belum disetujui, retur yang perlu nota kredit
+        // pekerjaan Finance yang menunggu: jadwal cicilan belum disetujui
         const fw = await this.one(sql`select
-          (select count(distinct invoice_id) from invoice_installments where state = 'draft')::int as inst,
-          (select count(*) from sales_returns where state = 'draft' and resolution in ('nota_kredit','potongan'))::int as sr,
-          (select count(*) from purchase_returns where state = 'draft' and resolution = 'nota_kredit')::int as pr`);
-        k('approvals', 'Menunggu tindakan Finance', fw.inst + fw.sr + fw.pr, {
-          hint: `${fw.inst} jadwal cicilan, ${fw.sr} retur pelanggan, ${fw.pr} retur ke principal`,
-          tone: fw.inst + fw.sr + fw.pr ? 'warning' : undefined,
-          link: fw.inst ? '/penagihan' : fw.sr ? '/stok/retur?state=draft' : '/pengadaan/retur?state=draft',
+          (select count(distinct invoice_id) from invoice_installments where state = 'draft')::int as inst`);
+        k('approvals', 'Menunggu tindakan Finance', fw.inst, {
+          hint: `${fw.inst} jadwal cicilan`,
+          tone: fw.inst ? 'warning' : undefined,
+          link: '/penagihan',
         });
         k('overdue', 'Piutang jatuh tempo', od.v, {
           money: true,

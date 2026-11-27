@@ -21,7 +21,8 @@ export class StockController {
   async moves(@Query() q: any) {
     const [rows, locs] = await Promise.all([
       this.db.stockMoves.findMany({
-        where: q.productId ? { productId: +q.productId } : { state: 'done' },
+        // hanya mutasi yang benar-benar terjadi; dokumen draf atau batal tidak memindahkan stok
+        where: q.productId ? { productId: +q.productId || -1, state: 'done' } : { state: 'done' },
         include: {
           product: { include: { template: { select: { name: true } } } },
           picking: { select: { name: true } },
@@ -38,10 +39,7 @@ export class StockController {
       qty: m.quantity,
       product: m.product.template.name,
       code: m.product.defaultCode,
-      // retur pelanggan tidak memiliki dokumen gudang; tujuannya lokasi Barang Rusak
-      doc:
-        m.picking?.name ??
-        (locs.find((l) => l.id === m.locationDestId)?.usage === 'damaged' ? 'Retur pelanggan' : null),
+      doc: m.picking?.name ?? null,
       from: m.location.completeName,
       toId: m.locationDestId,
       to: locs.find((l) => l.id === m.locationDestId)?.completeName,

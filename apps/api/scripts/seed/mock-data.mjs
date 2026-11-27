@@ -1,7 +1,8 @@
 // Data contoh MTPP Distribusi: katalog produk dari website MTPP (src/content/products.ts),
 // sedangkan harga, stok, kontak principal, dan transaksinya adalah data contoh. Nama dan NPWP principal
 // Trafindo dan Schneider diambil dari data contoh MTPP Finance (pembukuan-mtpp).
-// Jalankan: API=http://localhost:8080/api node apps/api/scripts/seed/mock-data.mjs
+// Jalankan (hanya stack uji): API=http://localhost:8081/api node apps/api/scripts/seed/mock-data.mjs
+// Untuk data 6 bulan: KATALOG_SAJA=1 lebih dulu, lalu mock-6-bulan.mjs
 // Skrip ini menulis data dan menolak berjalan dua kali pada database yang sama.
 const API = process.env.API || 'http://localhost:8081/api';
 const PASS = process.env.DEMO_PASSWORD || 'mtpp12345';
@@ -296,6 +297,11 @@ await importRows(
   })),
 );
 const warehouseOf = Object.fromEntries(PRINCIPALS.map(([n, , w]) => [n, w]));
+// stok minimum per produk menurut harga dan satuan (barang di atas Rp 300 juta cukup 1 unit); di akhir skrip stok diisi ulang sampai 4x minimum
+const minStockOf = (uom, price) =>
+  uom === 'Meter' ? 300 : price > 300e6 ? 1 : price > 100e6 ? 2 : price > 20e6 ? 3 : price > 2e6 ? 10 : 50;
+const stocked = PRODUCTS.filter((p) => p[8] !== 'dropship');
+// stok awal sesuai contoh, sehingga contoh "stok kurang, menunggu PO Principal" tetap terjadi
 await importRows(
   A,
   'initial_stock',
@@ -336,13 +342,12 @@ const gudang = (principal) => {
   if (!w) throw new Error(`gudang ${principal} tidak ada`);
   return w.id;
 };
-for (const [code, principal, minQty] of [
-  ['MTR-PM5000', SCHNEIDER, 15],
-  ['TRF-OIL-800', TRAFINDO, 2],
-  ['KBL-N2XSEFGBY', KMI, 300],
-  ['EV-DC-60-2', EV, 2],
-])
-  await call(O, 'POST', '/stock-rules', { productId: pid(code), warehouseId: gudang(principal), minQty });
+for (const [code, , uom, , principal, price] of stocked)
+  await call(O, 'POST', '/stock-rules', {
+    productId: pid(code),
+    warehouseId: gudang(principal),
+    minQty: minStockOf(uom, price),
+  });
 const customers = await call(S, 'GET', '/partners?kind=customer');
 const cust = (name) => {
   const c = customers.find((x) => x.name.includes(name));
@@ -369,6 +374,13 @@ async function deliver(soId) {
 async function invoice(soId) {
   const inv = await call(F, 'POST', `/invoices/from-sale/${soId}`, {});
   return call(F, 'POST', `/invoices/${inv.id}/post`);
+}
+
+// KATALOG_SAJA=1: hanya master (principal, produk, harga, pelanggan, stok awal, stok minimum), tanpa transaksi contoh.
+// Dipakai sebelum mock-6-bulan.mjs, yang membuat seluruh transaksinya sendiri secara berurutan menurut tanggal.
+if (process.env.KATALOG_SAJA === '1') {
+  console.log('Katalog saja: transaksi contoh dan pengisian stok dilewati.');
+  process.exit(0);
 }
 
 console.log('Transaksi');
@@ -402,8 +414,10 @@ const so4 = await confirm(
 console.log(`  ${so4.name}: siap dikirim`);
 
 const so5 = await confirm(await quote('Husada', 'PO-RSHM-3321', [['EV-DC-120-2', 1]]));
-for (const po of asList(await call(F, 'POST', `/purchase-orders/from-sale/${so5.id}`))) await payDp(F, po.id);
-await call(F, 'POST', `/purchase-orders/${po.id}/confirm`);
+for (const po of asList(await call(F, 'POST', `/purchase-orders/from-sale/${so5.id}`))) {
+  await payDp(F, po.id);
+  await call(F, 'POST', `/purchase-orders/${po.id}/confirm`);
+}
 console.log(`  ${so5.name}: PO Principal dikonfirmasi, menunggu penerimaan`);
 
 const so6 = await confirm(await quote('Anugerah', 'PO-APL-0921', [['MTR-IEM3100', 10]]));
@@ -444,5 +458,17 @@ await call(F, 'POST', '/payments', {
   memo: 'Pelunasan (contoh)',
 });
 console.log(`  ${so9.name}: invoice ${inv9.name} lunas`);
+
+// pengisian stok: setiap produk dengan stok minimum diisi sampai stok bebas 4x minimum (status aman)
+{
+  const rows = await call(O, 'GET', '/stock');
+  const top = rows
+    .filter((r) => r.minQty != null && r.free < 3 * Number(r.minQty))
+    .map((r) => ({ code: r.code, warehouse: r.warehouse, qty: Math.ceil(4 * Number(r.minQty) - r.free) }));
+  if (top.length) await importRows(A, 'initial_stock', top);
+  const after = await call(O, 'GET', '/stock');
+  const notSafe = after.filter((r) => r.minQty != null && r.status !== 'aman');
+  console.log(notSafe.length ? `  stok belum aman: ${notSafe.map((r) => r.code).join(', ')}` : '  semua stok aman');
+}
 
 console.log('Selesai.');

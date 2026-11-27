@@ -10,6 +10,16 @@ import { PricingService } from './pricing.service';
 
 const T_FIELDS = ['name', 'uomId', 'categoryId', 'mainSupplierId', 'listPrice', 'descriptionSale', 'mtppRoute', 'type'];
 
+// harga jual tidak minus, rute dan jenis hanya nilai yang dikenal sistem
+function checkProduct(b: any) {
+  if (b.listPrice !== undefined && b.listPrice !== null && b.listPrice !== '' && Number(b.listPrice) < 0)
+    fail('Harga jual tidak boleh minus');
+  if (b.mtppRoute !== undefined && b.mtppRoute !== null && !['stock', 'dropship'].includes(b.mtppRoute))
+    fail('Rute produk harus stock atau dropship');
+  if (b.type !== undefined && b.type !== null && !['product', 'service', 'consu'].includes(b.type))
+    fail('Jenis produk tidak dikenal');
+}
+
 // Master produk (C.d), kategori dan satuan (C.h)
 @Injectable()
 export class ProductsService {
@@ -86,6 +96,7 @@ export class ProductsService {
   async create(u: AuthUser, b: any) {
     if (!b.code || !b.name || !b.uomId) fail('Kode, nama, dan satuan wajib diisi');
     checkColumnTypes('ProductTemplates', b, T_FIELDS);
+    checkProduct(b);
     return this.db.$transaction(async (tx) => {
       const t = await tx.productTemplates.create({ data: { ...pick(b, T_FIELDS), createUid: u.id } as any });
       const p = await tx.products.create({ data: { productTmplId: t.id, defaultCode: b.code } });
@@ -96,6 +107,7 @@ export class ProductsService {
   async update(id: number, b: any) {
     const p = must(await this.db.products.findFirst({ where: { id: id } }), 'Produk');
     checkColumnTypes('ProductTemplates', b, [...T_FIELDS, 'active']);
+    checkProduct(b);
     await this.db.$transaction(async (tx) => {
       const tv = pick(b, [...T_FIELDS, 'active']);
       if (Object.keys(tv).length)

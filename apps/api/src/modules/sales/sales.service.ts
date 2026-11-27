@@ -7,7 +7,8 @@ import { SettingsService } from '../../shared/settings.service';
 import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
 import { salePayments } from '../../shared/status';
-import { collectionSettings, pastGrace } from '../../shared/collection';
+import { PROFORMA_MAX_GRACE, PROFORMA_MIN_GRACE, collectionSettings, pastGrace } from '../../shared/collection';
+import { lockRow } from '../../shared/lock';
 import {
   addDays,
   fail,
@@ -138,6 +139,9 @@ export class SalesService {
       const qty = Number(l.productUomQty),
         price = Number(auto ? auto.priceUnit : l.priceUnit),
         disc = Number(l.discount ?? auto?.discount ?? 0);
+      // harga minus atau diskon di luar 0–100% membuat subtotal minus (dulu tersimpan dan bisa dikonfirmasi)
+      if (!Number.isFinite(price) || price < 0) fail(`Harga ${pr.t.name} tidak boleh minus`);
+      if (!Number.isFinite(disc) || disc < 0 || disc > 100) fail(`Diskon ${pr.t.name} harus 0 sampai 100%`);
       const subtotal = round2(qty * price * (1 - disc / 100));
       let wh = l.mtppWarehouseId;
       if (!wh && pr.t.mainSupplierId) wh = (await this.pricing.warehouseOf(pr.t.mainSupplierId))?.id;
@@ -172,7 +176,10 @@ export class SalesService {
   async create(u: AuthUser, b: any) {
     if (!b.partnerId) fail('Pelanggan wajib dipilih');
     const partner = must(await this.db.partners.findFirst({ where: { id: +b.partnerId } }), 'Pelanggan');
+    if (!(Number(partner.customerRank) > 0)) fail('Penawaran hanya untuk pelanggan, bukan principal');
     const date = b.dateOrder || today();
+    if (b.commitmentDate && String(b.commitmentDate) < date)
+      fail('Rencana kirim tidak boleh sebelum tanggal penawaran');
     const terms = await this.settings.get('terms');
     const validity = b.validityDate || addDays(date, terms.validityDays || 30);
     checkValidity(date, validity);
@@ -242,15 +249,13 @@ export class SalesService {
           name: true,
           state: true,
           scheduledDate: true,
-          note: true,
           pickingType: { select: { code: true } },
         },
         orderBy: { id: 'asc' },
       })
-    ).map(({ pickingType, note, ...t }) => ({
+    ).map(({ pickingType, ...t }) => ({
       ...t,
       code: pickingType.code,
-      replacement: pickingType.code === 'outgoing' && String(note || '').startsWith('Pengganti retur '),
     }));
     const invoices = await this.db.journalEntries.findMany({
       select: { id: true, name: true, state: true, paymentState: true, amountTotal: true, moveType: true },
@@ -261,21 +266,8 @@ export class SalesService {
       where: { saleId: id },
     });
     const pay = await this.paid(id, o.amountTotal);
-    // qty diretur per baris (retur yang sudah diproses), menurut penyelesaiannya
-    const retLines = await this.db.salesReturnLines.findMany({
-      where: { saleLineId: { in: lines.map((r) => r.l.id) }, ret: { state: 'done' } },
-      select: { saleLineId: true, quantity: true, ret: { select: { resolution: true } } },
-    });
-    const retQty = (lid: number, res?: string) =>
-      round2(
-        retLines
-          .filter((x) => x.saleLineId === lid && (!res || x.ret.resolution === res))
-          .reduce((a2, x) => a2 + Number(x.quantity), 0),
-      );
     const ls = lines.map((r) => ({
       ...r.l,
-      qtyReturned: retQty(r.l.id),
-      qtyReplaced: retQty(r.l.id, 'ganti'),
       code: r.code,
       uom: r.uom,
       warehouse: r.warehouse,
@@ -286,16 +278,10 @@ export class SalesService {
     const marginTotal = round2(Number(o.amountUntaxed) - costTotal);
     const t = today();
     const hold = await this.creditHold(o);
-    const returns = await this.db.salesReturns.findMany({
-      where: { saleId: id },
-      select: { id: true, name: true, state: true, resolution: true, date: true, amountTotal: true },
-      orderBy: { id: 'asc' },
-    });
     const res = {
       ...o,
       stateLabel: SO_STATE[o.state],
       creditHold: hold,
-      returns,
       expired: !!o.validityDate && o.validityDate < t && ['draft', 'sent'].includes(o.state),
       lines: ls,
       costTotal,
@@ -401,7 +387,8 @@ export class SalesService {
     for (const so of sos) {
       const total = Number(so.amountTotal);
       let paid = 0,
-        dp = 0;
+        dp = 0,
+        prior = 0; // pembayaran hidup sebelum baris ini (uang muka maupun invoice)
       for (const p of pays.filter((x) => (x.mtppSaleOrderId ?? x.invoice?.saleId) === so.id)) {
         const live = p.state !== 'cancel';
         if (live) paid = round2(paid + Number(p.amount));
@@ -411,7 +398,7 @@ export class SalesService {
         const kind = !live
           ? 'batal'
           : full
-            ? dp === 0 && isAdvance
+            ? prior === 0 && isAdvance
               ? 'lunas_langsung'
               : 'pelunasan'
             : isAdvance
@@ -445,6 +432,7 @@ export class SalesService {
             !!so.mtppSettleDate && String(so.mtppSettleDate) < t && paid < total - 0.5 && so.state !== 'cancel',
           proof: proofs.find((a) => a.resId === p.id) ?? null,
         });
+        if (live) prior++;
       }
       for (const f of forfeits.filter((x) => x.saleId === so.id))
         rows.push({
@@ -474,35 +462,11 @@ export class SalesService {
   async paid(id: number, total: number) {
     // uang muka bersih ditambah pembayaran atas invoice SO ini
     const p = await salePayments(this.db, id);
-    // nota kredit retur/potongan mengurangi nilai yang harus dibayar; dana yang dikembalikan mengurangi yang diterima
-    const rets = await this.db.salesReturns.findMany({
-      where: { saleId: id, state: 'done', refundEntryId: { not: null } },
-      select: { refundEntryId: true, amountTotal: true },
-    });
-    const credit = round2(rets.reduce((a, r) => a + Number(r.amountTotal), 0));
-    const refunded = rets.length
-      ? round2(
-          (
-            await this.db.payments.findMany({
-              where: {
-                invoiceId: { in: rets.map((r) => r.refundEntryId!) },
-                state: { not: 'cancel' },
-                paymentType: 'outbound',
-              },
-              select: { amount: true },
-            })
-          ).reduce((a, x) => a + Number(x.amount), 0),
-        )
-      : 0;
     return {
       advance: p.advance,
       advanceAvailable: p.available,
       amount: p.amount,
       total: Number(total),
-      credit,
-      refunded,
-      netTotal: round2(Number(total) - credit),
-      netPaid: round2(p.amount - refunded),
       paidFull: p.amount >= Number(total) - 0.5 && Number(total) > 0,
       forfeited: await this.forfeited(id),
     };
@@ -638,6 +602,16 @@ export class SalesService {
   }
 
   async cancel(u: AuthUser, id: number) {
+    // dikunci selama pemeriksaan dan pembatalan: validasi surat jalan atau pembayaran bersamaan menunggu,
+    // lalu menolak karena SO sudah batal (tidak ada SO batal dengan surat jalan selesai)
+    await this.db.$transaction(async (lt) => {
+      await lockRow(lt, 'sales_orders', id);
+      await this.cancelLocked(u, id);
+    });
+    return this.get(u, id);
+  }
+
+  private async cancelLocked(u: AuthUser, id: number) {
     const o = must(await this.db.salesOrders.findFirst({ where: { id: id } }), 'Sales order');
     if (o.state === 'cancel') fail('Dokumen sudah batal');
     const done = await this.db.stockTransfers.findMany({ where: { AND: [{ saleId: id }, { state: 'done' }] } });
@@ -661,7 +635,6 @@ export class SalesService {
       data: { state: 'cancel' },
     });
     await this.setState(u, id, 'cancel', 'Dokumen dibatalkan');
-    return this.get(u, id);
   }
 
   // Uang muka hangus saat SO dibatalkan: Debit Uang Muka Pelanggan, Kredit Pendapatan Lain-lain
@@ -802,6 +775,8 @@ export class SalesService {
     const out: any[] = [];
     for (const o of orders) {
       if (o.partner.mtppIsNewCustomer && !(await this.paid(o.id, Number(o.amountTotal))).paidFull) continue;
+      // tagihan lewat masa tenggang tanpa izin kirim Pimpinan: surat jalan pasti ditolak, jadi tidak ditampilkan
+      if ((await this.creditHold(o)).blocking) continue;
       const items = await this.readyItems(o.id);
       if (items) out.push({ ...this.row(o), items });
     }
@@ -864,13 +839,22 @@ export class SalesService {
       note?: string;
       date?: string;
       settleDate?: string;
+      graceDays?: number;
     },
   ) {
     const o = must(await this.db.salesOrders.findFirst({ where: { id: id } }), 'Sales order');
     if (o.state !== 'sale') fail('Proforma hanya diterbitkan dari sales order yang sudah dikonfirmasi');
+    // masa tenggang proforma: bawaan dari Pengaturan (7 hari), paling sedikit 7 hari, boleh diatur lebih lama
+    const cfg = await collectionSettings(this.db);
+    const grace =
+      b.graceDays === undefined || b.graceDays === null || (b.graceDays as any) === ''
+        ? Number(cfg.proformaGraceDays)
+        : Number(b.graceDays);
+    if (!Number.isInteger(grace) || grace < PROFORMA_MIN_GRACE || grace > PROFORMA_MAX_GRACE)
+      fail(`Masa tenggang proforma harus ${PROFORMA_MIN_GRACE} sampai ${PROFORMA_MAX_GRACE} hari`);
     const total = Number(o.amountTotal);
     let percent = Number(b.percent || 0),
-      amount = Number(b.amount || 0);
+      amount = round2(Number(b.amount || 0));
     if (!['persen', 'nominal', 'lunas'].includes(b.mode))
       fail('Pilih uang muka (persen atau nominal) atau langsung lunas');
     if (b.mode === 'lunas') {
@@ -883,8 +867,10 @@ export class SalesService {
     // uang muka: tanggal pelunasan sisa wajib disepakati
     const partial = amount < total - 0.5;
     const pDate = b.date || today();
+    if (o.dateOrder && pDate < String(o.dateOrder)) fail('Tanggal proforma tidak boleh sebelum tanggal sales order');
     if (partial && !b.settleDate) fail('Isi tanggal pelunasan sisa pembayaran');
     if (partial && String(b.settleDate) <= pDate) fail('Tanggal pelunasan harus setelah tanggal proforma');
+    const dueDate = addDays(pDate, grace);
     return this.db.$transaction(async (tx) => {
       const nomor = o.mtppProformaNumber || (await this.numbering.next(tx, 'PI', b.date || today()));
       await tx.salesOrders.updateMany({
@@ -897,6 +883,7 @@ export class SalesService {
           mtppDpAmount: amount,
           mtppProformaNote: b.note ?? o.mtppProformaNote,
           mtppSettleDate: partial ? b.settleDate : null,
+          mtppProformaDueDate: dueDate,
         },
       });
       await this.chatter.log(
@@ -907,7 +894,7 @@ export class SalesService {
         [{ field: 'Nilai proforma', old: Number(o.mtppDpAmount || 0), new: amount }],
         tx,
       );
-      return { number: nomor, percent, amount };
+      return { number: nomor, percent, amount, dueDate, graceDays: grace };
     });
   }
 
@@ -964,6 +951,7 @@ export class SalesService {
         number: o.mtppProformaNumber,
         infoRight: [
           ['Tanggal', 'Date', tglIndo(o.mtppProformaDate)],
+          ...(o.mtppProformaDueDate ? [['Bayar paling lambat', 'Pay by', tglIndo(o.mtppProformaDueDate)]] : []),
           ['Sales order', 'Sales order', o.name],
           ['PO pelanggan', 'Customer PO', o.clientOrderRef || '-'],
           [

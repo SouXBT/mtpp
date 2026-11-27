@@ -102,3 +102,15 @@ test('ringkasan per invoice memakai status terburuk dan jatuh tempo terlama', ()
   assert.equal(s.get(1)!.state, 'lewat_tenggang');
   assert.equal(s.get(1)!.due, '2026-10-05');
 });
+
+test('pembayaran lama dibatalkan setelah ada pembayaran baru: pembayaran baru tetap ke termin 1', () => {
+  // invoice 3.330.000; 1.000.000 dibayar sebelum jadwal; jadwal 2 x 1.165.000; bayar 500.000; yang 1.000.000 dibatalkan
+  const t = [
+    { sequence: 1, dateDue: '2026-01-10', amount: 1165000 },
+    { sequence: 2, dateDue: '2026-02-10', amount: 1165000 },
+  ];
+  const a = allocate(3330000, 2830000, t, 500000);
+  assert.equal(a.rows[0].paid, 500000);
+  assert.equal(a.rows[0].open, 665000);
+  assert.equal(a.outside, 1000000);
+});

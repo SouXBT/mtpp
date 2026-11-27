@@ -302,6 +302,7 @@ export class ImporterService {
           date,
           ref: 'Saldo awal dari spreadsheet lama',
           post: true,
+          opening: true,
           uid: u.id,
           lines,
         });

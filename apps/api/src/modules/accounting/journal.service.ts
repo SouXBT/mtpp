@@ -3,6 +3,7 @@ import { DB, Db } from '../../db/db.module';
 import { NumberingService } from '../../shared/numbering.service';
 import { SettingsService } from '../../shared/settings.service';
 import { fail, must, round2, today } from '../../shared/util';
+import { lockRow } from '../../shared/lock';
 
 export interface JLine {
   key?: string;
@@ -36,6 +37,8 @@ export interface JIn {
   uid?: number;
   amounts?: { untaxed: number; tax: number; total: number };
   invoiceOrigin?: string;
+  // saldo awal dari spreadsheet: saldo piutang/utang total tanpa rincian partner (rinciannya lewat impor invoice terbuka)
+  opening?: boolean;
 }
 
 // Jurnal otomatis dengan debit = kredit (fitur F.h) dan jurnal pembalik (F.i)
@@ -48,6 +51,8 @@ export class JournalService {
   ) {}
 
   async accId(code: string, tx: any = this.db) {
+    // tanpa kode, Prisma mengabaikan filter dan mengembalikan akun pertama: tolak lebih dulu
+    if (!code) fail('Setiap baris jurnal wajib memiliki akun');
     const a = await tx.accounts.findFirst({ where: { code: code } });
     return must(a, `Akun ${code}`).id;
   }
@@ -59,14 +64,51 @@ export class JournalService {
     return must(await tx.journals.findFirst({ where: { code: code } }), `Jurnal ${code}`);
   }
 
+  // Tanggal kunci periode (setara lock date Odoo): jurnal bertanggal sampai tanggal ini tidak dapat dibuat,
+  // diposting, atau dibalik, sehingga laporan periode yang sudah ditutup tidak berubah.
+  async lockDate(tx: any = this.db): Promise<string | null> {
+    const r = await tx.settings.findFirst({ where: { key: 'lock_date' } });
+    return (r?.value as any)?.date || null;
+  }
+  async assertOpen(date: string, tx: any = this.db) {
+    const lock = await this.lockDate(tx);
+    if (lock && String(date) <= lock)
+      fail(`Periode akuntansi sampai ${lock} sudah dikunci; gunakan tanggal setelahnya`);
+  }
+
+  // Pemeriksaan baris seperti account.move.line Odoo: debit dan kredit tidak boleh terisi bersamaan,
+  // akun harus aktif, dan baris piutang atau utang wajib memiliki partner.
+  private async checkLines(
+    tx: any,
+    lines: { accountId: number; debit: number; credit: number; partnerId: number | null }[],
+    opening = false,
+  ) {
+    const ids = [...new Set(lines.map((l) => l.accountId))];
+    const accs = await tx.accounts.findMany({ where: { id: { in: ids } } });
+    const m = await this.settings.get('accounts');
+    const partnerAccs = await tx.accounts.findMany({ where: { code: { in: [m.receivable, m.payable] } } });
+    for (const l of lines) {
+      const a = accs.find((x: any) => x.id === l.accountId);
+      if (!a) fail('Akun tidak ditemukan');
+      if (a.active === false) fail(`Akun ${a.code} ${a.name} sudah diarsipkan dan tidak dapat dipakai`);
+      if (l.debit > 0 && l.credit > 0) fail(`Baris akun ${a.code} tidak boleh berisi debit dan kredit sekaligus`);
+      if (!opening && !l.partnerId && partnerAccs.some((x: any) => x.id === a.id))
+        fail(`Baris ${a.code} ${a.name} wajib memiliki pelanggan atau principal`);
+    }
+  }
+
   async create(tx: any, j: JIn) {
     const date = j.date || today();
+    await this.assertOpen(date, tx);
+    if (j.invoiceDate && j.due && j.due < j.invoiceDate) fail('Jatuh tempo tidak boleh sebelum tanggal dokumen');
     const jr = await this.journal(j.journal, tx);
     const lines = [];
     for (const l of j.lines) {
       const accountId = l.accountId || (l.key ? await this.map(l.key, tx) : await this.accId(l.account!, tx));
-      const debit = round2(l.debit || 0),
-        credit = round2(l.credit || 0);
+      const debit = round2(Number(l.debit || 0)),
+        credit = round2(Number(l.credit || 0));
+      if (!Number.isFinite(debit) || !Number.isFinite(credit)) fail('Debit dan kredit harus berupa angka');
+      if (Math.abs(debit) > 1e14 || Math.abs(credit) > 1e14) fail('Nilai debit atau kredit di luar batas');
       if (debit < 0 || credit < 0) fail('Debit dan kredit tidak boleh minus');
       lines.push({
         accountId,
@@ -88,6 +130,9 @@ export class JournalService {
     const dr = round2(lines.reduce((a, l) => a + l.debit, 0)),
       cr = round2(lines.reduce((a, l) => a + l.credit, 0));
     if (j.post && Math.abs(dr - cr) > 0.009) fail(`Jurnal tidak seimbang (debit ${dr}, kredit ${cr})`);
+    if (j.post && !lines.length) fail('Jurnal belum memiliki baris');
+    if (j.post && (j.moveType || 'entry') === 'entry' && dr <= 0) fail('Jurnal bernilai nol tidak dapat diposting');
+    await this.checkLines(tx, lines, !!j.opening);
     const name = await this.numbering.next(tx, jr.code, date);
     const am = j.amounts || { untaxed: dr, tax: 0, total: dr };
     const e = await tx.journalEntries.create({
@@ -119,19 +164,37 @@ export class JournalService {
     return e;
   }
 
+  // dipanggil sebelum posting dokumen draf
   async assertBalanced(tx: any, id: number) {
+    const e = await tx.journalEntries.findFirst({ where: { id } });
+    if (e) await this.assertOpen(e.date, tx);
     const lines = await tx.journalEntryLines.findMany({ where: { moveId: id } });
     const dr = round2(lines.reduce((a: number, l: any) => a + Number(l.debit), 0)),
       cr = round2(lines.reduce((a: number, l: any) => a + Number(l.credit), 0));
     if (!lines.length) fail('Jurnal belum memiliki baris');
     if (Math.abs(dr - cr) > 0.009) fail(`Jurnal tidak seimbang (debit ${dr}, kredit ${cr})`);
+    if (e?.moveType === 'entry' && dr <= 0) fail('Jurnal bernilai nol tidak dapat diposting');
+    await this.checkLines(
+      tx,
+      lines.map((l: any) => ({
+        accountId: l.accountId,
+        debit: Number(l.debit),
+        credit: Number(l.credit),
+        partnerId: l.partnerId,
+      })),
+    );
     return lines;
   }
 
   async reverse(tx: any, id: number, uid: number, moveType?: string, journal?: string) {
+    // dikunci: pembalikan bersamaan atas jurnal yang sama hanya diproses sekali
+    await lockRow(tx, 'journal_entries', id);
     const e = must(await tx.journalEntries.findFirst({ where: { id: id }, include: { journal: true } }), 'Jurnal');
     if (e.state !== 'posted') fail('Hanya jurnal yang sudah diposting yang dapat dibalik');
     if (e.reversedEntryId) fail('Jurnal ini adalah jurnal pembalik');
+    // satu jurnal hanya boleh dibalik sekali
+    if (e.paymentState === 'reversed' || (await tx.journalEntries.findFirst({ where: { reversedEntryId: id } })))
+      fail(`Jurnal ${e.name} sudah dibalik`);
     const lines = await tx.journalEntryLines.findMany({ where: { moveId: id } });
     const r = await this.create(tx, {
       journal: journal || e.journal.code,

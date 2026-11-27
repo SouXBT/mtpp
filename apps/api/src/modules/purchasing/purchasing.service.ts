@@ -7,6 +7,7 @@ import { SettingsService } from '../../shared/settings.service';
 import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
 import { purchaseAdvances, refreshPurchase } from '../../shared/status';
+import { lockKey, lockRow } from '../../shared/lock';
 import {
   addDays,
   fail,
@@ -22,6 +23,7 @@ import {
 } from '../../shared/util';
 import { PricingService } from '../master/pricing.service';
 import { TransfersService } from '../stock/transfers.service';
+import { StockService } from '../stock/stock.service';
 import { SalesService } from '../sales/sales.service';
 import { EmailService } from '../email/email.service';
 
@@ -48,6 +50,7 @@ export class PurchasingService {
     private transfers: TransfersService,
     private sales: SalesService,
     private email: EmailService,
+    private stock: StockService,
   ) {}
 
   async list(q: any, u?: AuthUser) {
@@ -63,24 +66,40 @@ export class PurchasingService {
         OR: [
           { name: { contains: `${q.q}`, mode: 'insensitive' } },
           { partner: { name: { contains: `${q.q}`, mode: 'insensitive' } } },
+          // nomor SO dan pelanggan yang membutuhkan barangnya
+          { sale: { name: { contains: `${q.q}`, mode: 'insensitive' } } },
+          { sale: { partner: { name: { contains: `${q.q}`, mode: 'insensitive' } } } },
         ],
       });
     const rows: any[] = (
       await this.db.purchaseOrders.findMany({
         where: w.length ? { AND: w } : undefined,
-        include: { partner: { select: { name: true } }, sale: { select: { name: true } } },
+        include: {
+          partner: { select: { name: true } },
+          sale: { select: { name: true, partner: { select: { name: true } } } },
+        },
         orderBy: { id: 'desc' },
-        take: 500,
       })
-    ).map(({ partner, sale, ...o }) => ({ o, partner: partner.name, sale: sale?.name ?? null }));
-    return rows.map((r) => ({ ...r.o, partner: r.partner, sale: r.sale, stateLabel: PO_STATE[r.o.state] }));
+    ).map(({ partner, sale, ...o }) => ({
+      o,
+      partner: partner.name,
+      sale: sale?.name ?? null,
+      customer: sale?.partner?.name ?? null,
+    }));
+    return rows.map((r) => ({
+      ...r.o,
+      partner: r.partner,
+      sale: r.sale,
+      customer: r.customer,
+      stateLabel: PO_STATE[r.o.state],
+    }));
   }
 
   async get(id: number) {
     const o = must(
       await this.db.purchaseOrders.findFirst({
         where: { id: id },
-        include: { partner: true, warehouse: true, sale: true },
+        include: { partner: true, warehouse: true, sale: { include: { partner: { select: { name: true } } } } },
       }),
       'Pesanan',
     );
@@ -121,20 +140,22 @@ export class PurchasingService {
 
   // Buat Pesanan Principal dari SO: satu PO per principal untuk kekurangan stok (rencana bagian 4)
   async fromSale(u: AuthUser, saleId: number) {
-    const so = must(await this.db.salesOrders.findFirst({ where: { id: saleId } }), 'Sales order');
-    if (so.state !== 'sale') fail('PO Principal dibuat setelah sales order dikonfirmasi');
-    const short = (await this.sales.shortage(saleId)).filter((x) => x.shortage > 0);
-    if (!short.length) fail('Stok mencukupi; tidak ada barang yang perlu dipesan');
-    const groups = new Map<string, any[]>();
-    for (const x of short) {
-      const pr = await this.pricing.product(x.productId);
-      if (!pr.t.mainSupplierId) fail(`Produk ${x.name} belum memiliki principal pemasok`);
-      const key = `${pr.t.mainSupplierId}-${x.dropship ? 1 : 0}`;
-      groups.set(key, [...(groups.get(key) || []), { ...x, supplierId: pr.t.mainSupplierId }]);
-    }
-    const poTerms = await this.settings.get('po_terms');
     const created: any[] = [];
     await this.db.$transaction(async (tx) => {
+      // dikunci dulu: permintaan bersamaan menunggu, lalu menghitung kekurangan dari keadaan terbaru (tanpa PO ganda)
+      await lockRow(tx, 'sales_orders', saleId);
+      const so = must(await tx.salesOrders.findFirst({ where: { id: saleId } }), 'Sales order');
+      if (so.state !== 'sale') fail('PO Principal dibuat setelah sales order dikonfirmasi');
+      const short = (await this.sales.shortage(saleId)).filter((x) => x.shortage > 0);
+      if (!short.length) fail('Stok mencukupi; tidak ada barang yang perlu dipesan');
+      const groups = new Map<string, any[]>();
+      for (const x of short) {
+        const pr = await this.pricing.product(x.productId);
+        if (!pr.t.mainSupplierId) fail(`Produk ${x.name} belum memiliki principal pemasok`);
+        const key = `${pr.t.mainSupplierId}-${x.dropship ? 1 : 0}`;
+        groups.set(key, [...(groups.get(key) || []), { ...x, supplierId: pr.t.mainSupplierId }]);
+      }
+      const poTerms = await this.settings.get('po_terms');
       for (const items of groups.values()) {
         const sup = items[0].supplierId,
           drop = !!items[0].dropship;
@@ -174,6 +195,95 @@ export class PurchasingService {
         await tx.purchaseOrderLines.createMany({ data: lines.map((l) => ({ ...l, orderId: po.id })) });
         await this.chatter.log(MODEL, po.id, u.id, `Permintaan dibuat dari ${so.name}`, [], tx);
         await this.chatter.log('sales_orders', saleId, u.id, `PO Principal ${name} dibuat`, [], tx);
+        created.push(po);
+      }
+    });
+    return created;
+  }
+
+  // Isi ulang stok minimum (seperti reordering rule Odoo): produk yang proyeksi stok bebasnya (stok bebas ditambah
+  // barang PO yang belum datang) di bawah batas minimum dipesan sampai 2x minimum, satu PO per principal.
+  async replenishPlan() {
+    const rows = (await this.stock.overview({})).filter((r: any) => r.minQty != null && Number(r.minQty) > 0);
+    const open = await this.db.purchaseOrderLines.findMany({
+      where: { order: { state: { in: ['draft', 'sent', 'purchase'] }, isDropship: false } },
+      select: { productId: true, productQty: true, qtyReceived: true, order: { select: { warehouseId: true } } },
+    });
+    const plan: any[] = [];
+    for (const r of rows) {
+      const incoming = round2(
+        open
+          .filter((l: any) => l.productId === r.productId && l.order.warehouseId === r.warehouseId)
+          .reduce((a: number, l: any) => a + Math.max(Number(l.productQty) - Number(l.qtyReceived), 0), 0),
+      );
+      const projected = round2(Number(r.free) + incoming);
+      const min = Number(r.minQty);
+      if (projected >= min) continue;
+      plan.push({
+        productId: r.productId,
+        code: r.code,
+        product: r.product,
+        warehouseId: r.warehouseId,
+        warehouse: r.warehouse,
+        free: r.free,
+        incoming,
+        minQty: min,
+        qty: Math.ceil(2 * min - projected),
+      });
+    }
+    return plan;
+  }
+
+  async replenish(u: AuthUser) {
+    const created: any[] = [];
+    await this.db.$transaction(async (tx) => {
+      // satu proses isi ulang pada satu waktu, supaya klik ganda tidak memesan dua kali
+      await lockKey(tx, 'replenish');
+      const plan = await this.replenishPlan();
+      if (!plan.length) fail('Semua stok di atas batas minimum; tidak ada yang perlu dipesan');
+      const groups = new Map<number, any[]>();
+      for (const x of plan) {
+        const pr = await this.pricing.product(x.productId);
+        const sup = pr.t.mainSupplierId;
+        if (!sup) fail(`Produk ${x.product} belum memiliki principal pemasok`);
+        const wh = await this.pricing.warehouseOf(sup);
+        if (wh && wh.id !== x.warehouseId) continue; // stok minimum di gudang lain: dipesan dari principal itu saja
+        groups.set(sup, [...(groups.get(sup) || []), { ...x, name: `[${x.code}] ${x.product}` }]);
+      }
+      const poTerms = await this.settings.get('po_terms');
+      for (const [sup, items] of groups) {
+        const wh = await this.pricing.warehouseOf(sup);
+        const lines = [];
+        for (const x of items) {
+          const c = await this.pricing.cost(x.productId, x.qty, today(), sup);
+          if (c.missing) fail(`Harga principal untuk ${x.product} belum ada atau sudah tidak berlaku`);
+          lines.push({
+            productId: x.productId,
+            name: x.name,
+            productQty: x.qty,
+            priceUnit: c.cost,
+            priceSubtotal: round2(c.cost * x.qty),
+            datePlanned: addDays(today(), 14),
+          });
+        }
+        const tot = await this.totals(lines);
+        const name = await this.numbering.next(tx, 'PO', today());
+        const po = await tx.purchaseOrders.create({
+          data: {
+            name,
+            partnerId: sup,
+            warehouseId: wh?.id,
+            isDropship: false,
+            dateOrder: today(),
+            datePlanned: addDays(today(), 14),
+            note: poTerms.note,
+            ...tot,
+            createUid: u.id,
+            writeUid: u.id,
+          },
+        });
+        await tx.purchaseOrderLines.createMany({ data: lines.map((l) => ({ ...l, orderId: po.id })) });
+        await this.chatter.log(MODEL, po.id, u.id, 'Permintaan dibuat dari isi ulang stok minimum', [], tx);
         created.push(po);
       }
     });
@@ -259,6 +369,10 @@ export class PurchasingService {
     } else checkPerm(u, 'pengadaan', 'write');
     const lines = await this.db.purchaseOrderLines.findMany({ where: { orderId: id } });
     await this.db.$transaction(async (tx) => {
+      // dikunci dan diperiksa ulang: konfirmasi bersamaan tidak membuat dua penerimaan barang
+      await lockRow(tx, 'purchase_orders', id);
+      const cur = must(await tx.purchaseOrders.findFirst({ where: { id: id } }), 'Pesanan');
+      if (!['draft', 'sent'].includes(cur.state)) fail('Pesanan sudah dikonfirmasi atau batal');
       await tx.purchaseOrders.updateMany({
         where: { id: id },
         data: { state: 'purchase', writeUid: u.id, ...(short ? { mtppDpWaiveNote: note } : {}) },
@@ -295,18 +409,33 @@ export class PurchasingService {
   }
 
   async cancel(u: AuthUser, id: number) {
-    const o = must(await this.db.purchaseOrders.findFirst({ where: { id: id } }), 'Pesanan');
-    const lines = await this.db.purchaseOrderLines.findMany({ where: { orderId: id } });
-    if (lines.some((l) => Number(l.qtyReceived) > 0))
-      fail('Barang sudah diterima sebagian sehingga pesanan tidak dapat dibatalkan');
-    await this.db.stockTransfers.updateMany({
-      where: { AND: [{ purchaseId: id }, { state: { not: 'done' } }] },
-      data: { state: 'cancel' },
+    await this.db.$transaction(async (tx) => {
+      await lockRow(tx, 'purchase_orders', id);
+      const o = must(await tx.purchaseOrders.findFirst({ where: { id: id } }), 'Pesanan');
+      if (o.state === 'cancel') fail('Pesanan sudah dibatalkan');
+      if (o.state === 'done') fail('Pesanan sudah selesai dan tidak dapat dibatalkan');
+      const lines = await tx.purchaseOrderLines.findMany({ where: { orderId: id } });
+      if (lines.some((l: any) => Number(l.qtyReceived) > 0))
+        fail('Barang sudah diterima sebagian sehingga pesanan tidak dapat dibatalkan');
+      // uang muka yang sudah dibayar harus dibatalkan dulu, supaya tidak tertinggal di Uang Muka Pembelian
+      const adv = await purchaseAdvances(tx, id);
+      if (adv.available > 0.009)
+        fail(`Masih ada uang muka ${rupiah(adv.available)} untuk PO ini; batalkan pembayaran uang muka itu dulu`);
+      await tx.stockTransfers.updateMany({
+        where: { AND: [{ purchaseId: id }, { state: { not: 'done' } }] },
+        data: { state: 'cancel' },
+      });
+      await tx.purchaseOrders.updateMany({ where: { id: id }, data: { state: 'cancel' } });
+      await this.chatter.log(
+        MODEL,
+        id,
+        u.id,
+        'Pesanan dibatalkan',
+        [{ field: 'Status', old: PO_STATE[o.state], new: 'Batal' }],
+        tx,
+      );
+      await refreshPurchase(tx, id);
     });
-    await this.db.purchaseOrders.updateMany({ where: { id: id }, data: { state: 'cancel' } });
-    await this.chatter.log(MODEL, id, u.id, 'Pesanan dibatalkan', [
-      { field: 'Status', old: PO_STATE[o.state], new: 'Batal' },
-    ]);
     return this.get(id);
   }
 
@@ -319,15 +448,23 @@ export class PurchasingService {
     if (!lines.some((l) => Number(l.qtyReceived) < Number(l.productQty)))
       fail('Tidak ada sisa barang yang perlu ditutup');
     await this.db.$transaction(async (tx) => {
-      await tx.stockTransfers.updateMany({
-        where: { AND: [{ purchaseId: id }, { state: { notIn: ['done', 'cancel'] } }] },
-        data: { state: 'cancel' },
-      });
+      await lockRow(tx, 'purchase_orders', id);
       const next = lines.map((l) => ({
         ...l,
         productQty: Number(l.qtyReceived),
         priceSubtotal: round2(Number(l.qtyReceived) * Number(l.priceUnit)),
       }));
+      // uang muka yang sudah dibayar tidak boleh melebihi nilai PO baru: tidak ada jalur pengembalian dari principal
+      const newTotal = (await this.totals(next)).amountTotal;
+      const adv = await purchaseAdvances(tx, id);
+      if (adv.paid > newTotal + 0.009)
+        fail(
+          `Uang muka ${rupiah(adv.paid)} melebihi nilai PO setelah sisa ditutup (${rupiah(newTotal)}); batalkan pembayaran uang muka dan catat ulang sebesar nilai baru, lalu tutup sisa`,
+        );
+      await tx.stockTransfers.updateMany({
+        where: { AND: [{ purchaseId: id }, { state: { notIn: ['done', 'cancel'] } }] },
+        data: { state: 'cancel' },
+      });
       for (const l of next)
         await tx.purchaseOrderLines.updateMany({
           where: { id: l.id },

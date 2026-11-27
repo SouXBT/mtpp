@@ -11,7 +11,6 @@ import { GroupSelect, groupCols, groupRows } from '../../shared/ui';
 import Chatter from '../../shared/Chatter';
 import Crud from '../../shared/Crud';
 import { useCreateDelivery } from './createDelivery';
-import { ReturnModal } from './Returns';
 
 export function StockOverview() {
   const [qs, set] = useQueryState({});
@@ -105,12 +104,6 @@ export function StockOverview() {
               align: 'center',
               render: (v) => <b className={v < 0 ? 'loss' : ''}>{qf(v)}</b>,
             },
-            {
-              title: 'Barang rusak',
-              dataIndex: 'damaged',
-              align: 'center',
-              render: (v) => (Number(v) ? <span className="loss">{qf(v)}</span> : '-'),
-            },
             { title: 'Stok minimum', dataIndex: 'minQty', align: 'center', render: (v) => (v == null ? '-' : qf(v)) },
             { title: 'Satuan', dataIndex: 'uom' },
             { title: 'Status', dataIndex: 'status', render: (v) => <Pill v={v} /> },
@@ -118,9 +111,8 @@ export function StockOverview() {
         />
       </div>
       <div className="note">
-        Stok bebas = stok fisik dikurangi stok terikat sales order yang belum dikirim. Barang rusak dari retur pelanggan
-        disimpan terpisah dan tidak dihitung sebagai stok fisik. Persediaan memakai metode periodik sehingga mutasi stok
-        tidak membuat jurnal.
+        Stok bebas = stok fisik dikurangi stok terikat sales order yang belum dikirim. Persediaan memakai metode
+        periodik sehingga mutasi stok tidak membuat jurnal.
       </div>
     </>
   );
@@ -225,8 +217,7 @@ export function TransferList({ kind }: { kind: 'incoming' | 'outgoing' }) {
                 dataIndex: 'name',
                 render: (v: any, r: any) => (
                   <>
-                    <b>{v}</b> {r.dropship && <Tag color="purple">dropship</Tag>}{' '}
-                    {r.replacement && <Tag color="orange">pengganti retur</Tag>} {r.backorderId && <Tag>susulan</Tag>}
+                    <b>{v}</b> {r.dropship && <Tag color="purple">dropship</Tag>} {r.backorderId && <Tag>susulan</Tag>}
                   </>
                 ),
               },
@@ -319,9 +310,6 @@ export function TransferDetail() {
   const [t, setT] = useState<any>(null);
   const [dirty, setDirty] = useState(false);
   const [rk, setRk] = useState(0);
-  const [retOpen, setRetOpen] = useState(false);
-  const nav = useNavigate();
-  const rets = useFetch<any[]>('/returns', { pickingId: id }, [rk]);
   useEffect(() => {
     if (doc.data) {
       setT(JSON.parse(JSON.stringify(doc.data)));
@@ -369,8 +357,6 @@ export function TransferDetail() {
         act('validate', 'Dokumen divalidasi', { moves: t.moves.map((m: any) => ({ id: m.id, quantity: m.quantity })) }),
     });
   const title = incoming ? 'Penerimaan Barang' : 'Surat Jalan';
-  const canReturn =
-    t.kind === 'outgoing' && t.state === 'done' && !!t.saleId && (can('gudang', 'create') || can('penjualan', 'write'));
   return (
     <>
       <PageHead
@@ -379,11 +365,6 @@ export function TransferDetail() {
         sub={
           <>
             {t.dropship && <Tag color="purple">dropship dari principal</Tag>}
-            {t.replacement && (
-              <Tag color="orange">
-                Pengganti retur <Link to={`/stok/retur/${t.replacement.id}`}>{t.replacement.name}</Link>
-              </Tag>
-            )}
             {t.backorderId && <Tag>Susulan dari {t.backorderName}</Tag>}
             {t.late && <Tag color="red">terlambat</Tag>}
           </>
@@ -408,7 +389,6 @@ export function TransferDetail() {
         <Button icon={<PrinterOutlined />} onClick={() => openFile(`/transfers/${id}/pdf`)}>
           {incoming ? 'Cetak bukti penerimaan' : 'Cetak surat jalan (3 lembar)'}
         </Button>
-        {canReturn && <Button onClick={() => setRetOpen(true)}>Laporkan Barang Bermasalah</Button>}
         {open && can('gudang', 'delete') && (
           <Button
             danger
@@ -559,26 +539,7 @@ export function TransferDetail() {
           />
         </div>
       </div>
-      {!!rets.data?.length && (
-        <div className="note">
-          Retur dari surat jalan ini:{' '}
-          {rets.data.map((r: any) => (
-            <Link key={r.id} to={`/stok/retur/${r.id}`} style={{ marginRight: 10 }}>
-              {r.name} ({r.stateLabel}, {r.resolutionLabel})
-            </Link>
-          ))}
-        </div>
-      )}
       <Chatter model="stock_transfers" id={+id!} name={t.name} reloadKey={rk} />
-      {retOpen && (
-        <ReturnModal
-          pickingId={+id!}
-          onClose={(r) => {
-            setRetOpen(false);
-            if (r) nav(`/stok/retur/${r.id}`);
-          }}
-        />
-      )}
     </>
   );
 }
@@ -588,7 +549,7 @@ export function StockRules() {
     <>
       <PageHead
         title="Stok Minimum"
-        sub="Produk dengan stok bebas di bawah batas minimum ditandai stok rendah dan muncul sebagai pemberitahuan di beranda."
+        sub="Produk dengan stok bebas di bawah batas minimum ditandai stok rendah dan muncul sebagai pemberitahuan di lonceng dan beranda."
       />
       <Crud
         path="/stock-rules"

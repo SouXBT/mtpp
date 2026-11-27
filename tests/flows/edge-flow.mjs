@@ -613,6 +613,17 @@ await test('B3 batal SO dengan PO atau uang muka (uang muka hangus)', async () =
     new RegExp(`Batalkan PO Principal ${po.name} dulu`),
     'SO dengan PO berjalan',
   );
+  // uang muka ke principal tidak boleh tertinggal: PO baru dapat dibatalkan setelah pembayaran uang mukanya dibatalkan
+  await rejected(
+    call(F, 'POST', `/purchase-orders/${po.id}/cancel`),
+    400,
+    /batalkan pembayaran uang muka itu dulu/,
+    'batal PO yang uang mukanya masih ada',
+  );
+  for (const pay of (await call(F, 'GET', '/payments?partnerType=supplier')).filter(
+    (x) => x.mtppPurchaseOrderId === po.id && x.state !== 'cancel',
+  ))
+    await call(F, 'POST', `/payments/${pay.id}/cancel`, {});
   await call(F, 'POST', `/purchase-orders/${po.id}/cancel`);
   await rejected(
     call(F, 'POST', `/sales-orders/${q.id}/refund-advance`, { amount: 1000, method: 'BNK' }),

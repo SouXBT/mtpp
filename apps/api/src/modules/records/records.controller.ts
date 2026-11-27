@@ -78,8 +78,8 @@ export class RecordsController {
   }
 
   @Delete('activities/:id')
-  removeActivity(@Param('id', ParseIntPipe) id: number) {
-    return this.service.removeActivity(id);
+  removeActivity(@CurrentUser() u: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.service.removeActivity(u, id);
   }
 
   @Get('saved-filters')

@@ -82,14 +82,6 @@ export const LABEL: Record<string, Record<string, string>> = {
   je: { draft: 'Draf', posted: 'Diposting', cancel: 'Batal' },
   pay: { not_paid: 'belum dibayar', partial: 'sebagian', paid: 'lunas', reversed: 'dibalik' },
   inv: { no: 'belum ditagih', to_invoice: 'siap ditagih', partial: 'sebagian', invoiced: 'sudah ditagih' },
-  ret: { draft: 'Draf', done: 'Selesai', cancel: 'Batal' },
-  retRes: { ganti: 'Kirim pengganti', nota_kredit: 'Retur dan nota kredit', potongan: 'Potongan harga' },
-  retReason: {
-    rusak: 'Barang rusak',
-    salah_barang: 'Salah barang',
-    tidak_sesuai: 'Tidak sesuai spesifikasi',
-    lainnya: 'Lainnya',
-  },
 };
 export function Pill({ v, kind, children }: { v: string; kind?: string; children?: ReactNode }) {
   const text = children ?? (kind ? LABEL[kind]?.[v] : v) ?? v;
@@ -105,12 +97,15 @@ export function EmailTag({ s }: { s?: any }) {
 }
 
 export function StatusBar({ steps, value }: { steps: { key: string; label: string }[]; value: string }) {
+  // dibungkus agar bisa digeser di layar sempit, bukan melebarkan halaman
   return (
-    <Segmented
-      className="statusbar"
-      value={value}
-      options={steps.map((s) => ({ value: s.key, label: s.label, disabled: s.key !== value }))}
-    />
+    <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
+      <Segmented
+        className="statusbar"
+        value={value}
+        options={steps.map((s) => ({ value: s.key, label: s.label, disabled: s.key !== value }))}
+      />
+    </div>
   );
 }
 

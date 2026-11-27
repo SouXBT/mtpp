@@ -36,6 +36,7 @@ export class ProformaDto {
   @IsText() note?: string;
   @IsDateLike() date?: string;
   @IsDateLike() settleDate?: string;
+  @IsNumeric() graceDays?: number;
 }
 
 export class ReleaseDto {

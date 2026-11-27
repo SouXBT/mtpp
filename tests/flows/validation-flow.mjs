@@ -151,5 +151,151 @@ cek(harga.status === 200 && typeof harga.body.priceUnit === 'number', `harga den
 const tanpaData = await call(S, 'GET', `/products/${produk.id}/price?partnerId=999999`);
 cek(tanpaData.status === 200, `pelanggan tidak terdaftar tetap harga daftar -> ${tanpaData.status}`);
 
+// ---------- pengaman akuntansi (mengikuti validasi account.move Odoo) ----------
+const akun = (await call(F, 'GET', '/accounts')).body;
+const acc = (code) => akun.find((a) => a.code === code).id;
+const entri = (lines, extra = {}) => call(F, 'POST', '/journal-entries', { lines, post: true, ...extra });
+await ditolak(
+  F,
+  'POST',
+  '/journal-entries',
+  { post: true, lines: [{ accountId: acc('1-1200'), debit: 1000, credit: 1000 }] },
+  /debit dan kredit sekaligus/,
+  'baris berisi debit dan kredit sekaligus',
+);
+await ditolak(
+  F,
+  'POST',
+  '/journal-entries',
+  {
+    post: true,
+    lines: [
+      { accountId: acc('1-1200'), debit: 0 },
+      { accountId: acc('3-1000'), credit: 0 },
+    ],
+  },
+  /bernilai nol/,
+  'jurnal bernilai nol',
+);
+await ditolak(
+  F,
+  'POST',
+  '/journal-entries',
+  {
+    post: true,
+    lines: [
+      { accountId: acc('1-1300'), debit: 5000 },
+      { accountId: acc('4-2000'), credit: 5000 },
+    ],
+  },
+  /hanya diisi lewat invoice, tagihan, atau pembayaran/,
+  'jurnal manual ke akun piutang (akun kontrol)',
+);
+await ditolak(
+  F,
+  'POST',
+  '/journal-entries',
+  {
+    post: true,
+    lines: [
+      { accountId: acc('1-1200'), debit: 5000 },
+      { accountId: acc('3-1000'), credit: 4000 },
+    ],
+  },
+  /tidak seimbang/,
+  'jurnal tidak seimbang',
+);
+const ok1 = await entri([
+  { accountId: acc('1-1200'), debit: 7000, name: 'Uji setoran' },
+  { accountId: acc('3-1000'), credit: 7000, name: 'Uji setoran' },
+]);
+cek(ok1.status === 201 && ok1.body.state === 'posted', `jurnal seimbang diposting -> ${ok1.status}`);
+const rv1 = await call(F, 'POST', `/journal-entries/${ok1.body.id}/reverse`);
+cek(rv1.status === 201, `jurnal dibalik -> ${rv1.status} ${rv1.body.message || ''}`);
+await ditolak(
+  F,
+  'POST',
+  `/journal-entries/${ok1.body.id}/reverse`,
+  undefined,
+  /sudah dibalik/,
+  'jurnal dibalik dua kali',
+);
+await ditolak(
+  F,
+  'POST',
+  `/journal-entries/${rv1.body.id}/reverse`,
+  undefined,
+  /jurnal pembalik/,
+  'jurnal pembalik dibalik lagi',
+);
+// akun yang diarsipkan
+const kode = `9-${String(Date.now()).slice(-4)}`;
+const arsip = await call(F, 'POST', '/accounts', { code: kode, name: 'Akun uji arsip', accountType: 'expense' });
+cek(arsip.status === 201, `akun uji dibuat -> ${arsip.status} ${arsip.body.message || ''}`);
+await call(F, 'PATCH', `/accounts/${arsip.body.id}`, { active: false });
+await ditolak(
+  F,
+  'POST',
+  '/journal-entries',
+  {
+    post: true,
+    lines: [
+      { accountId: arsip.body.id, debit: 1000 },
+      { accountId: acc('1-1200'), credit: 1000 },
+    ],
+  },
+  /diarsipkan/,
+  'akun yang diarsipkan',
+);
+await ditolak(
+  F,
+  'POST',
+  '/journal-entries',
+  { post: true, lines: [{ debit: 1000 }, { accountId: acc('1-1200'), credit: 1000 }] },
+  /wajib memiliki akun/,
+  'baris jurnal tanpa akun',
+);
+// kunci periode
+await ditolak(F, 'PUT', '/settings/lock_date', { date: '2999-01-01' }, /masa depan/, 'tanggal kunci di masa depan');
+const kunci = await call(F, 'PUT', '/settings/lock_date', { date: '2020-01-31' });
+cek(kunci.status === 200 && kunci.body.date === '2020-01-31', `periode dikunci sampai 2020-01-31 -> ${kunci.status}`);
+await ditolak(
+  F,
+  'POST',
+  '/journal-entries',
+  {
+    post: true,
+    date: '2020-01-15',
+    lines: [
+      { accountId: acc('1-1200'), debit: 1000 },
+      { accountId: acc('3-1000'), credit: 1000 },
+    ],
+  },
+  /sudah dikunci/,
+  'jurnal di periode terkunci',
+);
+const sesudah = await entri(
+  [
+    { accountId: acc('1-1200'), debit: 1000 },
+    { accountId: acc('3-1000'), credit: 1000 },
+  ],
+  { date: '2020-02-03', post: false },
+);
+cek(sesudah.status === 201, `jurnal draf setelah tanggal kunci tetap boleh -> ${sesudah.status}`);
+await ditolak(
+  F,
+  'PUT',
+  '/settings/lock_date',
+  { date: '2020-02-29' },
+  /masih ada dokumen draf/i,
+  'kunci periode yang masih punya draf',
+);
+await call(F, 'DELETE', `/journal-entries/${sesudah.body.id}`);
+const buka = await call(F, 'PUT', '/settings/lock_date', { date: null });
+cek(buka.status === 200 && buka.body.date === null, `kunci periode dibuka -> ${buka.status}`);
+// pencocokan mutasi bank yang tidak ada
+const mut = await call(F, 'POST', '/bank-statements/999999/match', { paymentId: 1 });
+cek(mut.status === 404 || mut.status === 400, `mutasi bank yang tidak ada ditolak -> ${mut.status}`);
+
 console.log(gagal ? `${gagal} gagal` : 'Validasi lulus');
 process.exit(gagal ? 1 : 0);

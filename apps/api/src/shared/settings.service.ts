@@ -40,6 +40,8 @@ export const DEFAULT_SETTINGS: Record<string, any> = {
       'Barang diterima dalam keadaan baik dan lengkap\nPemeriksaan kondisi fisik barang dilakukan pada saat penerimaan\nSurat jalan ini harap ditandatangani dan dikembalikan 1 (satu) lembar',
     po: 'Harga belum termasuk PPN; PPN dihitung terpisah pada dokumen ini\nHarga sudah termasuk biaya pengiriman ke alamat tujuan\nFaktur pajak dan surat jalan wajib dilampirkan pada saat pengiriman\nBarang yang tidak sesuai spesifikasi diselesaikan melalui kesepakatan tertulis dengan penjual',
   },
+  // tanggal kunci periode akuntansi (kosong = tidak dikunci)
+  lock_date: { date: null as string | null },
   accounts: {
     receivable: '1-1300',
     payable: '2-1100',
@@ -54,10 +56,9 @@ export const DEFAULT_SETTINGS: Record<string, any> = {
     bank: '1-1200',
     roundingIncome: '4-2000',
     roundingExpense: '6-9000',
-    salesReturn: '4-1100',
     otherIncome: '4-2000',
   },
-  // masa tenggang bawaan (bisa diganti per pelanggan), blokir surat jalan, batas cicilan, batas klaim retur
+  // masa tenggang bawaan (bisa diganti per pelanggan), blokir surat jalan, batas cicilan
   collection: COLLECTION_DEFAULTS,
 };
 

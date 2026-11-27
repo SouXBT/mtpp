@@ -27,8 +27,12 @@ export class DocumentsService {
   ) {}
 
   private check(b: any) {
-    if (!DOC_TYPES[b.type]) fail('Jenis dokumen tidak dikenal');
-    if (!ISO.test(b.date || '')) fail('Tanggal dokumen tidak valid');
+    if (!Object.prototype.hasOwnProperty.call(DOC_TYPES, b.type)) fail('Jenis dokumen tidak dikenal');
+    // tanggal yang tidak ada (30 Februari) ditolak, bukan digeser ke bulan berikutnya
+    const d = new Date(`${b.date}T00:00:00Z`);
+    if (!ISO.test(b.date || '') || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== b.date)
+      fail('Tanggal dokumen tidak valid');
+    if (b.number !== undefined && b.number !== null && typeof b.number !== 'string') fail('Nomor dokumen harus teks');
     if (!b.data || typeof b.data !== 'object' || Array.isArray(b.data)) fail('Isi dokumen tidak valid');
   }
 

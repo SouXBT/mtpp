@@ -8,6 +8,7 @@ import { PdfService } from '../../shared/pdf.service';
 import { graduateCustomer, refreshPurchase, refreshSale, salePayments } from '../../shared/status';
 import { fail, must, idr, num, round2, tglIndo, today } from '../../shared/util';
 import { collectionSettings, pastGrace } from '../../shared/collection';
+import { lockRow } from '../../shared/lock';
 import { StockService } from './stock.service';
 import { Prisma } from '@prisma/client';
 
@@ -79,7 +80,6 @@ export class TransfersService {
       warehouse: r.wh,
       stateLabel: TR_STATE[r.t.state],
       dropship: locs.find((l) => l.id === r.t.locationId)?.usage === 'supplier' && r.code === 'outgoing',
-      replacement: r.code === 'outgoing' && String(r.t.note || '').startsWith('Pengganti retur '),
       late: !!r.t.scheduledDate && r.t.scheduledDate < t && !['done', 'cancel'].includes(r.t.state),
     }));
   }
@@ -122,11 +122,8 @@ export class TransfersService {
         available: whId && t.location.usage === 'internal' ? await this.stock.physical(r.m.productId, whId) : null,
       });
     const dropship = t.location.usage === 'supplier' && t.pickingType.code === 'outgoing';
-    const replacement = await this.replacementOf(t);
     let payBlock = null;
-    // pengganti barang retur tidak ditahan oleh aturan pembayaran
-    if (t.pickingType.code === 'outgoing' && t.sale && !replacement)
-      payBlock = await this.paymentBlock(t.saleId, dropship);
+    if (t.pickingType.code === 'outgoing' && t.sale) payBlock = await this.paymentBlock(t.saleId, dropship);
     const backorders = await this.db.stockTransfers.findMany({
       select: { id: true, name: true, state: true },
       where: { backorderId: id },
@@ -141,30 +138,10 @@ export class TransfersService {
       stateLabel: TR_STATE[t.state],
       moves: ms,
       paymentBlock: payBlock,
-      replacement,
       backorders,
       backorderName: parent?.name ?? null,
       late: !!t.scheduledDate && t.scheduledDate < today() && !['done', 'cancel'].includes(t.state),
     };
-  }
-
-  // Retur pelanggan yang dipenuhi surat jalan ini (langsung atau lewat surat jalan susulannya)
-  private async replacementOf(t: { id: number; backorderId: number | null }) {
-    let cur: any = t;
-    for (let i = 0; cur && i < 10; i++) {
-      const r = await this.db.salesReturns.findFirst({
-        where: { replacementPickingId: cur.id },
-        select: { id: true, name: true },
-      });
-      if (r) return r;
-      cur = cur.backorderId
-        ? await this.db.stockTransfers.findFirst({
-            where: { id: cur.backorderId },
-            select: { id: true, backorderId: true },
-          })
-        : null;
-    }
-    return null;
   }
 
   // Surat jalan ditolak untuk pelanggan baru yang belum lunas, dan untuk pelanggan dengan tagihan lewat masa tenggang
@@ -173,7 +150,8 @@ export class TransfersService {
     const o = await this.db.salesOrders.findFirst({ where: { id: saleId }, include: { partner: true } });
     if (!o) return null;
     if (o.partner.mtppIsNewCustomer) {
-      const paid = (await salePayments(this.db, saleId)).advance;
+      // semua uang yang diterima: uang muka dan pembayaran atas invoice SO ini (sama dengan detail SO)
+      const paid = (await salePayments(this.db, saleId)).amount;
       if (paid < Number(o.amountTotal) - 0.5)
         return `Pelanggan baru: sales order baru dibayar Rp ${idr(paid)} dari Rp ${idr(Number(o.amountTotal))}. Surat jalan hanya dapat diterbitkan setelah lunas.`;
     }
@@ -209,6 +187,14 @@ export class TransfersService {
 
   async createDeliveries(u: AuthUser, saleId: number) {
     const o = must(await this.db.salesOrders.findFirst({ where: { id: saleId } }), 'Sales order');
+    // satu pembuatan surat jalan per SO pada satu waktu: permintaan berikutnya menunggu lalu menghitung ulang sisa
+    return this.db.$transaction(async (lt) => {
+      await lockRow(lt, 'sales_orders', saleId);
+      return this.createDeliveriesLocked(u, saleId, o);
+    });
+  }
+
+  private async createDeliveriesLocked(u: AuthUser, saleId: number, o: any) {
     if (o.state !== 'sale') fail('Surat jalan hanya dibuat dari sales order yang sudah dikonfirmasi');
     const block = await this.paymentBlock(saleId);
     if (block) fail(block);
@@ -370,6 +356,7 @@ export class TransfersService {
         if (ch.length) await this.chatter.log(MODEL, id, u.id, 'Data diubah', ch, tx);
       }
       for (const m of b.moves || []) {
+        if (!Number.isFinite(Number(m.quantity))) fail('Kuantitas harus berupa angka');
         if (Number(m.quantity) < 0) fail('Kuantitas tidak boleh minus');
         await tx.stockMoves.updateMany({
           where: { AND: [{ id: m.id }, { pickingId: id }] },
@@ -409,15 +396,37 @@ export class TransfersService {
   }
 
   async validate(u: AuthUser, id: number, b: any = {}) {
-    if (b.moves?.length) await this.update(u, id, { moves: b.moves });
-    const t: any = await this.get(id);
-    if (['done', 'cancel'].includes(t.state)) fail('Dokumen sudah selesai atau batal');
-    if (t.kind === 'outgoing' && t.paymentBlock) fail(t.paymentBlock);
-    if (!t.moves.some((m: any) => Number(m.quantity) > 0)) fail('Isi kuantitas yang diterima atau dikirim');
-    for (const m of t.moves)
-      if (Number(m.quantity) > Number(m.productUomQty))
-        fail(`Kuantitas ${m.product} melebihi pesanan (${num(m.productUomQty)})`);
+    const head = must(await this.db.stockTransfers.findFirst({ where: { id: id } }), 'Dokumen');
+    // kuantitas isian diperiksa dulu dan baru disimpan bersama validasi, sehingga validasi yang gagal
+    // tidak meninggalkan kuantitas yang sudah berubah
+    const edits = new Map<number, number>();
+    for (const m of b.moves || []) {
+      const q = Number(m.quantity);
+      if (!Number.isFinite(q)) fail('Kuantitas harus berupa angka');
+      if (q < 0) fail('Kuantitas tidak boleh minus');
+      edits.set(Number(m.id), q);
+    }
     await this.db.$transaction(async (tx) => {
+      // dikunci berurutan (SO lalu dokumen): validasi bersamaan, atau validasi bersamaan dengan pembatalan SO,
+      // menunggu dan membaca keadaan terbaru sehingga stok tidak terpotong dua kali
+      if (head.saleId) await lockRow(tx, 'sales_orders', head.saleId);
+      await lockRow(tx, 'stock_transfers', id);
+      const t: any = await this.get(id);
+      if (['done', 'cancel'].includes(t.state)) fail('Dokumen sudah selesai atau batal');
+      if (t.saleId) {
+        const so = await tx.salesOrders.findFirst({ where: { id: t.saleId } });
+        if (so?.state === 'cancel') fail('Sales order sudah dibatalkan');
+      }
+      for (const [mid] of edits)
+        if (!t.moves.some((m: any) => m.id === mid)) fail('Baris barang tidak ditemukan pada dokumen ini');
+      t.moves = t.moves.map((m: any) => (edits.has(m.id) ? { ...m, quantity: edits.get(m.id) } : m));
+      if (t.kind === 'outgoing' && t.paymentBlock) fail(t.paymentBlock);
+      if (!t.moves.some((m: any) => Number(m.quantity) > 0)) fail('Isi kuantitas yang diterima atau dikirim');
+      for (const m of t.moves)
+        if (Number(m.quantity) > Number(m.productUomQty))
+          fail(`Kuantitas ${m.product} melebihi pesanan (${num(m.productUomQty)})`);
+      for (const [mid, q] of edits)
+        await tx.stockMoves.updateMany({ where: { AND: [{ id: mid }, { pickingId: id }] }, data: { quantity: q } });
       await this.assertFreeStock(t, tx);
       const rest: any[] = [];
       for (const m of t.moves) {
@@ -508,10 +517,19 @@ export class TransfersService {
   }
 
   async cancel(u: AuthUser, id: number) {
-    const t = must(await this.db.stockTransfers.findFirst({ where: { id: id } }), 'Dokumen');
-    if (t.state === 'done') fail('Dokumen yang sudah divalidasi tidak dapat dibatalkan');
-    await this.db.stockTransfers.updateMany({ where: { id: id }, data: { state: 'cancel' } });
-    await this.chatter.log(MODEL, id, u.id, 'Dokumen dibatalkan');
+    await this.db.$transaction(async (tx) => {
+      await lockRow(tx, 'stock_transfers', id);
+      const t = must(await tx.stockTransfers.findFirst({ where: { id: id } }), 'Dokumen');
+      if (t.state === 'done') fail('Dokumen yang sudah divalidasi tidak dapat dibatalkan');
+      if (t.state === 'cancel') fail('Dokumen sudah dibatalkan');
+      // penerimaan atau dropship dari PO: sisa yang tidak dikirim principal ditutup lewat PO (Tutup sisa PO),
+      // supaya qty dipesan dan kekurangan stok tetap benar
+      if (t.purchaseId) fail('Dokumen ini berasal dari PO Principal; gunakan Tutup sisa PO atau batalkan PO-nya');
+      await tx.stockTransfers.updateMany({ where: { id: id }, data: { state: 'cancel' } });
+      await tx.stockMoves.updateMany({ where: { pickingId: id }, data: { state: 'cancel' } });
+      await this.chatter.log(MODEL, id, u.id, 'Dokumen dibatalkan', [], tx);
+      if (t.saleId) await refreshSale(tx, t.saleId);
+    });
     return this.get(id);
   }
 
@@ -532,7 +550,7 @@ export class TransfersService {
     ]);
     const isOut = t.kind === 'outgoing';
     const spec: any = {
-      title: isOut ? (t.replacement ? 'SURAT JALAN PENGGANTI RETUR' : 'SURAT JALAN') : 'BUKTI PENERIMAAN BARANG',
+      title: isOut ? 'SURAT JALAN' : 'BUKTI PENERIMAAN BARANG',
       titleEn: isOut ? 'Delivery Order' : 'Goods Receipt',
       number: t.name,
       notesKey: isOut ? 'surat_jalan' : undefined,
@@ -551,7 +569,6 @@ export class TransfersService {
         ['Dokumen asal', 'Source', t.origin || '-'],
         ['Gudang asal', 'From warehouse', isOut ? (t.dropship ? 'Dropship dari principal' : wh?.name || '-') : '-'],
         ...(t.backorderName ? [['Susulan dari', 'Backorder of', t.backorderName]] : []),
-        ...(t.replacement ? [['Pengganti retur', 'Return replacement', t.replacement.name]] : []),
       ],
       columns: [
         { h: 'No', en: 'No', w: 18 },

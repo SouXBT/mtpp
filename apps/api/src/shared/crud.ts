@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -26,6 +27,25 @@ export interface CrudOpts {
   writable: string[];
   required?: string[];
   filters?: string[];
+  // batas angka per kolom [min, max] dan pilihan teks yang diperbolehkan
+  ranges?: Record<string, [number, number]>;
+  oneOf?: Record<string, string[]>;
+  // pemeriksaan tambahan, misalnya tanggal mulai tidak setelah tanggal akhir
+  check?: (b: any) => string | null;
+}
+
+function checkRules(o: CrudOpts, b: any) {
+  for (const [k, [lo, hi]] of Object.entries(o.ranges || {})) {
+    if (b[k] === undefined || b[k] === null || b[k] === '') continue;
+    const x = Number(b[k]);
+    if (!Number.isFinite(x) || x < lo || x > hi)
+      throw new BadRequestException(`Kolom ${k} harus antara ${lo} dan ${hi}`);
+  }
+  for (const [k, vals] of Object.entries(o.oneOf || {}))
+    if (b[k] !== undefined && !vals.includes(b[k]))
+      throw new BadRequestException(`Kolom ${k} harus salah satu dari: ${vals.join(', ')}`);
+  const err = o.check?.(b);
+  if (err) throw new BadRequestException(err);
 }
 
 // nama model Prisma (PascalCase) dari nama akses client (camelCase)
@@ -81,12 +101,14 @@ export function makeCrud(o: CrudOpts) {
       for (const k of o.required || [])
         if (b[k] === undefined || b[k] === null || b[k] === '') throw new ConflictException(`Kolom ${k} wajib diisi`);
       checkColumnTypes(o.table, b, o.writable);
+      checkRules(o, b);
       return this.model.create({ data: pick(b, o.writable) });
     }
     @Patch(':id')
     @Perm(o.menu, 'write')
     async update(@Param('id', ParseIntPipe) id: number, @Body() b: any) {
       checkColumnTypes(o.table, b, [...o.writable, 'active']);
+      checkRules(o, b);
       const [r] = await this.model.updateManyAndReturn({ where: { id }, data: pick(b, [...o.writable, 'active']) });
       return must(r);
     }

@@ -62,7 +62,7 @@ test('submenu aktif', () => {
   assert.equal(activeItem('/penjualan/7', '', jual, 'tab=order')!.match, 'tab=order');
   assert.equal(activeItem('/penjualan/7', '', jual), null);
   assert.equal(activeItem('/penjualan/pembayaran', '', jual)!.to, '/penjualan/pembayaran');
-  assert.equal(activeItem('/pengadaan/retur/3', '', peng)!.to, '/pengadaan/retur');
+  assert.equal(activeItem('/pengadaan/tagihan/3', '', peng)!.to, '/pengadaan/tagihan');
   const dok = get('dokumen');
   assert.equal(activeItem('/dokumen/9', '', dok)!.match, 'type=all');
   assert.equal(activeItem('/dokumen', '?type=surat', dok)!.match, 'type=surat');

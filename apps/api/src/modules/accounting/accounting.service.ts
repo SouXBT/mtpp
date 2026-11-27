@@ -5,6 +5,8 @@ import { AuthUser } from '../../shared/auth';
 import { ChatterService } from '../../shared/chatter.service';
 import { daysBetween, fail, must, round2, today } from '../../shared/util';
 import { JournalService } from './journal.service';
+import { SettingsService } from '../../shared/settings.service';
+import { lockRow } from '../../shared/lock';
 import { Prisma } from '@prisma/client';
 
 const sql = Prisma.sql;
@@ -47,7 +49,9 @@ export function parseAmount(v: string) {
   if (v == null) return 0;
   let t = String(v).replace(/[^\d,.\-]/g, '');
   if (!t) return 0;
+  // format Indonesia: 1.500.000 atau 1.500.000,50 (titik ribuan, koma desimal)
   if (/,\d{1,2}$/.test(t)) t = t.replace(/\./g, '').replace(',', '.');
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
   else t = t.replace(/,/g, '');
   return round2(parseFloat(t));
 }
@@ -71,6 +75,7 @@ export class AccountingService {
     @Inject(DB) private db: Db,
     private journal: JournalService,
     private chatter: ChatterService,
+    private settings: SettingsService,
   ) {}
 
   journals() {
@@ -148,6 +153,15 @@ export class AccountingService {
     },
   ) {
     if (!b.lines?.length) fail('Jurnal belum memiliki baris');
+    await this.assertNoControl(b.lines.map((l) => l.accountId));
+    // hanya kolom jurnal biasa; kaitan ke baris SO/PO, produk, dan jatuh tempo hanya dibuat oleh dokumennya
+    const lines = b.lines.map((l) => ({
+      accountId: l.accountId,
+      debit: l.debit,
+      credit: l.credit,
+      name: l.name,
+      partnerId: l.partnerId,
+    }));
     const e = await this.db.$transaction((tx) =>
       this.journal.create(tx, {
         journal: b.journal === 'KAS' ? 'KAS' : 'MISC',
@@ -155,7 +169,7 @@ export class AccountingService {
         ref: b.ref,
         post: !!b.post,
         uid: u.id,
-        lines: b.lines,
+        lines,
       }),
     );
     return this.entry(e.id);
@@ -176,6 +190,7 @@ export class AccountingService {
   async del(id: number) {
     const e = must(await this.db.journalEntries.findFirst({ where: { id: id } }), 'Jurnal');
     if (e.state !== 'draft') fail('Jurnal yang sudah diposting hanya dapat dibatalkan melalui jurnal pembalik');
+    await this.journal.assertOpen(e.date);
     await this.db.journalEntries.deleteMany({ where: { id: id } });
     return { ok: true };
   }
@@ -197,6 +212,8 @@ export class AccountingService {
     const amt = round2(Number(b.amount));
     if (!(amt > 0)) fail('Jumlah harus lebih dari 0');
     if (!b.accountId) fail('Akun lawan wajib dipilih');
+    if (!['in', 'out'].includes(b.type)) fail('Pilih kas masuk atau kas keluar');
+    await this.assertNoControl([b.accountId]);
     const e = await this.db.$transaction(async (tx) => {
       const kas = await this.journal.map('cash', tx);
       return this.journal.create(tx, {
@@ -219,6 +236,19 @@ export class AccountingService {
       });
     });
     return this.entry(e.id);
+  }
+
+  // Akun kontrol (piutang, utang, uang muka pelanggan, uang muka pembelian) hanya diisi lewat invoice, tagihan,
+  // dan pembayaran, karena sisa tagihan dan uang muka tersimpan di dokumennya; jurnal manual akan membuat
+  // saldo akun berbeda dari dokumen (seperti akun reconcile di Odoo yang dikelola lewat dokumen).
+  private async assertNoControl(ids: number[]) {
+    const m = await this.settings.get('accounts');
+    const ctrl = await this.db.accounts.findMany({
+      where: { code: { in: [m.receivable, m.payable, m.advance, m.purchaseAdvance].filter(Boolean) } },
+    });
+    const hit = ctrl.find((a) => ids.some((x) => Number(x) === a.id));
+    if (hit)
+      fail(`Akun ${hit.code} ${hit.name} hanya diisi lewat invoice, tagihan, atau pembayaran; gunakan menu dokumennya`);
   }
 
   async cashBalance() {
@@ -355,8 +385,14 @@ export class AccountingService {
         errors.push({ row: i + 2, reason: 'Tanggal atau nilai tidak terbaca' });
         continue;
       }
+      // baris yang sama persis (tanggal, nilai, keterangan) sudah pernah diimpor: dilewati, bukan digandakan
+      const ref = r[ri] || '-';
+      if (await this.db.bankStatementLines.findFirst({ where: { date, amount, paymentRef: ref } })) {
+        errors.push({ row: i + 2, reason: 'Baris mutasi ini sudah pernah diimpor' });
+        continue;
+      }
       const line = await this.db.bankStatementLines.create({
-        data: { journalId: bank.id, date, paymentRef: r[ri] || '-', amount, importBatch: batch },
+        data: { journalId: bank.id, date, paymentRef: ref, amount, importBatch: batch },
       });
       imported++;
       const c = await this.candidates(line.id);
@@ -391,15 +427,40 @@ export class AccountingService {
       .map((x) => ({ ...x.p, partner: x.partner }));
   }
 
+  // Pencocokan mutasi bank seperti rekonsiliasi Odoo: selisih harus nol, arah sama, dan satu pembayaran
+  // hanya untuk satu baris mutasi.
   async match(id: number, b: { paymentId: number }) {
-    await this.db.bankStatementLines.updateMany({
-      where: { id: id },
-      data: { paymentId: b.paymentId, isReconciled: true },
+    await this.db.$transaction(async (tx) => {
+      // dikunci: dua pencocokan bersamaan tidak memakai satu pembayaran untuk dua baris mutasi
+      await lockRow(tx, 'bank_statement_lines', id);
+      await lockRow(tx, 'payments', Number(b.paymentId));
+      const l = must(await tx.bankStatementLines.findFirst({ where: { id: id } }), 'Baris mutasi');
+      if (l.isReconciled) fail('Baris mutasi sudah dicocokkan; batalkan pencocokan dulu');
+      const p = must(
+        await tx.payments.findFirst({ where: { id: Number(b.paymentId) }, include: { journal: true } }),
+        'Pembayaran',
+      );
+      if (p.state === 'cancel') fail('Pembayaran sudah dibatalkan');
+      if (p.journal.code !== 'BNK') fail('Hanya pembayaran lewat bank yang dapat dicocokkan dengan mutasi bank');
+      if ((Number(l.amount) > 0 ? 'inbound' : 'outbound') !== p.paymentType)
+        fail('Arah mutasi bank dan pembayaran berbeda (uang masuk dengan uang keluar)');
+      if (Math.abs(Math.abs(Number(l.amount)) - Number(p.amount)) > 0.009)
+        fail(`Nilai mutasi ${Math.abs(Number(l.amount))} berbeda dengan nilai pembayaran ${Number(p.amount)}`);
+      const other = await tx.bankStatementLines.findFirst({
+        where: { paymentId: p.id, isReconciled: true, id: { not: id } },
+      });
+      if (other) fail('Pembayaran ini sudah dicocokkan dengan baris mutasi lain');
+      await tx.bankStatementLines.updateMany({
+        where: { id: id },
+        data: { paymentId: p.id, isReconciled: true },
+      });
     });
     return { ok: true };
   }
 
   async unmatch(id: number) {
+    const l = must(await this.db.bankStatementLines.findFirst({ where: { id: id } }), 'Baris mutasi');
+    if (!l.isReconciled) fail('Baris mutasi belum dicocokkan');
     await this.db.bankStatementLines.updateMany({ where: { id: id }, data: { paymentId: null, isReconciled: false } });
     return { ok: true };
   }

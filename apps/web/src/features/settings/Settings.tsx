@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -547,7 +548,10 @@ export function DocumentSettings() {
   const [bank, setBank] = useState<any>({});
   const [notes, setNotes] = useState<any>({});
   const [col, setCol] = useState<any>({});
+  const [lock, setLock] = useState<string>('');
+  const wAcc = can('akuntansi', 'write');
   useEffect(() => {
+    setLock(settings.lock_date?.date || '');
     setCol(settings.collection || {});
     setTax(settings.tax || {});
     setTerms(settings.terms || {});
@@ -566,7 +570,7 @@ export function DocumentSettings() {
         items={[
           {
             key: 'collection',
-            label: 'Penagihan & Retur',
+            label: 'Penagihan',
             children: (
               <div className="card">
                 <Row gutter={24}>
@@ -578,6 +582,17 @@ export function DocumentSettings() {
                       max={90}
                       value={col.graceDays}
                       onChange={(v) => setCol({ ...col, graceDays: v })}
+                    />
+                  </Col>
+                  <Col>
+                    <div className="muted">Masa tenggang proforma (hari, paling sedikit 7)</div>
+                    <InputNumber
+                      disabled={!w}
+                      min={7}
+                      max={90}
+                      precision={0}
+                      value={col.proformaGraceDays ?? 7}
+                      onChange={(v) => setCol({ ...col, proformaGraceDays: v })}
                     />
                   </Col>
                   <Col>
@@ -606,16 +621,6 @@ export function DocumentSettings() {
                       max={36}
                       value={col.maxMonths}
                       onChange={(v) => setCol({ ...col, maxMonths: v })}
-                    />
-                  </Col>
-                  <Col>
-                    <div className="muted">Batas klaim barang bermasalah (hari)</div>
-                    <InputNumber
-                      disabled={!w}
-                      min={0}
-                      max={90}
-                      value={col.returnDays}
-                      onChange={(v) => setCol({ ...col, returnDays: v })}
                     />
                   </Col>
                 </Row>
@@ -666,6 +671,40 @@ export function DocumentSettings() {
                     Simpan
                   </Button>
                 )}
+              </div>
+            ),
+          },
+          {
+            key: 'lock',
+            label: 'Kunci periode',
+            children: (
+              <div className="card">
+                <div className="muted">Kunci jurnal sampai tanggal</div>
+                {!wAcc && <p className="muted">Hanya dapat diubah oleh peran dengan hak tulis Akuntansi (Finance).</p>}
+                <Space>
+                  <Input
+                    type="date"
+                    disabled={!wAcc}
+                    value={lock}
+                    max={dayjs().format('YYYY-MM-DD')}
+                    onChange={(e) => setLock(e.target.value)}
+                    style={{ width: 180 }}
+                  />
+                  {wAcc && (
+                    <Button type="primary" onClick={() => save('lock_date', { date: lock || null })}>
+                      Simpan
+                    </Button>
+                  )}
+                  {wAcc && settings.lock_date?.date && (
+                    <Button onClick={() => save('lock_date', { date: null })}>Buka kunci</Button>
+                  )}
+                </Space>
+                <p className="note">
+                  Invoice, tagihan, pembayaran, dan jurnal bertanggal sampai tanggal ini tidak dapat dibuat, diposting,
+                  dihapus, atau dibalik, sehingga laporan periode yang sudah ditutup tidak berubah. Koreksi dicatat di
+                  periode berjalan. Tanggal kunci tidak boleh di masa depan dan periodenya tidak boleh masih memiliki
+                  dokumen draf.
+                </p>
               </div>
             ),
           },

@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS, SettingsService } from '../../shared/settings.service
 import { FilesService } from '../../shared/files.service';
 import { NumberingService } from '../../shared/numbering.service';
 import { fail, today } from '../../shared/util';
+import { PROFORMA_MAX_GRACE, PROFORMA_MIN_GRACE } from '../../shared/collection';
 
 // Pengaturan PPN, syarat dokumen, data perusahaan (C.f, C.j), API key (REST API)
 @Controller('settings')
@@ -27,13 +28,51 @@ export class SettingsController {
 
   @Put(':key')
   async set(@CurrentUser() u: AuthUser, @Param('key') key: string, @Body() b: any) {
-    if (!DEFAULT_SETTINGS[key]) fail('Kunci pengaturan tidak dikenal');
-    checkPerm(u, key === 'company' ? 'perusahaan' : key === 'accounts' ? 'akuntansi' : 'pengaturan', 'write');
+    // hanya kunci milik pengaturan sendiri (bukan properti bawaan objek seperti "constructor")
+    if (!Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key)) fail('Kunci pengaturan tidak dikenal');
+    checkPerm(
+      u,
+      key === 'company' ? 'perusahaan' : ['accounts', 'lock_date'].includes(key) ? 'akuntansi' : 'pengaturan',
+      'write',
+    );
+    if (key === 'lock_date') {
+      // seperti lock date Odoo: bukan tanggal masa depan, dan tidak ada dokumen draf yang tertinggal di periode itu
+      const d = b.date ? String(b.date) : null;
+      if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) fail('Format tanggal kunci tidak valid');
+      if (d && d > today()) fail('Tanggal kunci tidak boleh di masa depan');
+      if (d) {
+        const draft = await this.db.journalEntries.findFirst({ where: { state: 'draft', date: { lte: d } } });
+        if (draft) fail(`Masih ada dokumen draf ${draft.name} bertanggal ${draft.date}; posting atau hapus dulu`);
+      }
+      return this.settings.set(key, { date: d });
+    }
     if (key === 'tax') {
       const r = Number(b.rate),
         n = Number(b.dppNum),
         d = Number(b.dppDen);
       if (!(r >= 0 && r <= 100) || !(n > 0) || !(d > 0)) fail('Tarif PPN atau DPP tidak valid');
+    }
+    if (key === 'collection') {
+      // setiap angka penagihan diperiksa batasnya dan disimpan sebagai angka, bukan teks
+      const ranges: [string, number, number, string][] = [
+        ['graceDays', 0, 90, 'Masa tenggang bawaan harus 0 sampai 90 hari'],
+        [
+          'proformaGraceDays',
+          PROFORMA_MIN_GRACE,
+          PROFORMA_MAX_GRACE,
+          `Masa tenggang proforma harus ${PROFORMA_MIN_GRACE} sampai ${PROFORMA_MAX_GRACE} hari`,
+        ],
+        ['maxInstallments', 2, 24, 'Cicilan paling banyak harus 2 sampai 24 termin'],
+        ['maxMonths', 1, 36, 'Batas cicilan harus 1 sampai 36 bulan'],
+      ];
+      for (const [k, lo, hi, msg] of ranges) {
+        if (b[k] === undefined) continue;
+        const x = Number(b[k]);
+        if (b[k] === '' || b[k] === null || !Number.isInteger(x) || x < lo || x > hi) fail(msg);
+        b[k] = x;
+      }
+      if (b.blockDelivery !== undefined && typeof b.blockDelivery !== 'boolean')
+        fail('Tahan surat jalan harus ya atau tidak');
     }
     if (key === 'po_terms' && b.dpPercent !== undefined) {
       const x = Number(b.dpPercent);

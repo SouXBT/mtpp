@@ -645,7 +645,7 @@ export function SalesDetail() {
           }
           description={
             o.mtppProformaNumber
-              ? `Proforma ${o.mtppProformaNumber} · ${tgl(o.mtppProformaDate)} · diminta ${rp(o.mtppDpAmount)} (${nf(o.mtppDpPercent, 0)}%)`
+              ? `Proforma ${o.mtppProformaNumber} · ${tgl(o.mtppProformaDate)} · diminta ${rp(o.mtppDpAmount)} (${nf(o.mtppDpPercent, 0)}%)${o.mtppProformaDueDate ? ` · bayar paling lambat ${tgl(o.mtppProformaDueDate)}` : ''}`
               : undefined
           }
           action={
@@ -970,24 +970,7 @@ export function SalesDetail() {
                               title: 'Terkirim',
                               dataIndex: 'qtyDelivered',
                               align: 'right' as const,
-                              render: (v: any, l: any) => (
-                                <>
-                                  {qf(v)}
-                                  {Number(l.qtyReplaced) > 0 &&
-                                    Number(v) < Number(l.productUomQty) &&
-                                    Number(v) + Number(l.qtyReplaced) >= Number(l.productUomQty) && (
-                                      <div className="muted" style={{ fontSize: 12 }}>
-                                        {qf(Number(l.productUomQty) - Number(v))} menunggu pengganti
-                                      </div>
-                                    )}
-                                </>
-                              ),
-                            },
-                            {
-                              title: 'Diretur',
-                              dataIndex: 'qtyReturned',
-                              align: 'right' as const,
-                              render: (v: any) => (Number(v) ? <Tag color="orange">{qf(v)} retur</Tag> : '-'),
+                              render: qf,
                             },
                             { title: 'Tertagih', dataIndex: 'qtyInvoiced', align: 'right' as const, render: qf },
                           ]
@@ -1137,7 +1120,6 @@ function Related({ o }: { o: any }) {
             {(o.transfers || []).map((t: any) => (
               <div key={t.id}>
                 <Link to={`/stok/dok/${t.id}`}>{t.name}</Link> <Pill v={t.state} kind="tr" />{' '}
-                {t.replacement && <Tag color="orange">pengganti retur</Tag>}
                 <span className="muted">{tgl(t.scheduledDate)}</span>
               </div>
             ))}
@@ -1153,29 +1135,8 @@ function Related({ o }: { o: any }) {
             ))}
             {!o.invoices?.length && '-'}
           </Descriptions.Item>
-          <Descriptions.Item label="Retur">
-            {(o.returns || []).map((t: any) => (
-              <div key={t.id}>
-                <Link to={`/stok/retur/${t.id}`}>{t.name}</Link> <Pill v={t.state} kind="ret" />{' '}
-                <span className="muted">{LABEL.retRes[t.resolution] || t.resolution}</span>
-              </div>
-            ))}
-            {!o.returns?.length && '-'}
-          </Descriptions.Item>
           <Descriptions.Item label="Pembayaran diterima">
-            {Number(o.payment?.credit) > 0 ? (
-              <>
-                {rp(o.payment.netPaid)} dari {rp(o.payment.netTotal)}
-                <div className="muted" style={{ fontSize: 12 }}>
-                  nilai SO {rp(o.amountTotal)} dikurangi nota kredit retur {rp(o.payment.credit)}
-                  {Number(o.payment.refunded) > 0 && `; dana dikembalikan ${rp(o.payment.refunded)}`}
-                </div>
-              </>
-            ) : (
-              <>
-                {rp(o.payment?.amount)} dari {rp(o.amountTotal)}
-              </>
-            )}{' '}
+            {rp(o.payment?.amount)} dari {rp(o.amountTotal)}{' '}
             <Link to={`/penjualan/pembayaran?q=${encodeURIComponent(o.name)}`}>riwayat</Link>
             {Number(o.payment?.forfeited) > 0 && <div className="loss">Uang muka hangus {rp(o.payment.forfeited)}</div>}
           </Descriptions.Item>
@@ -1187,11 +1148,22 @@ function Related({ o }: { o: any }) {
 
 // Algoritma 3.2: persen dan nominal saling dihitung, nomor PI tetap jika diterbitkan ulang
 function ProformaModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void }) {
+  const { settings } = useAuth();
   const total = Number(o.amountTotal);
+  // masa tenggang proforma: bawaan 7 hari dari Pengaturan, paling sedikit 7 hari, boleh diatur lebih lama
+  // proforma yang diterbitkan ulang memakai masa tenggang sebelumnya; proforma baru memakai bawaan Pengaturan
+  const prevGrace =
+    o.mtppProformaDueDate && o.mtppProformaDate
+      ? dayjs(o.mtppProformaDueDate).diff(dayjs(o.mtppProformaDate), 'day')
+      : null;
+  const [graceDays, setGraceDays] = useState<number>(
+    prevGrace && prevGrace >= 7 && prevGrace <= 90 ? prevGrace : Number(settings?.collection?.proformaGraceDays ?? 7),
+  );
   const [mode, setMode] = useState<'persen' | 'nominal' | 'lunas'>(o.mtppDpMode || 'persen');
   const [settleDate, setSettleDate] = useState<string>(o.mtppSettleDate || dayjs().add(14, 'day').format('YYYY-MM-DD'));
-  const [percent, setPercent] = useState<number>(Number(o.mtppDpPercent || 30));
-  const [amount, setAmount] = useState<number>(Number(o.mtppDpAmount || Math.round(total * 0.3)));
+  const issued = !!o.mtppProformaNumber;
+  const [percent, setPercent] = useState<number>(issued ? Number(o.mtppDpPercent ?? 30) : 30);
+  const [amount, setAmount] = useState<number>(issued ? Number(o.mtppDpAmount ?? 0) : Math.round(total * 0.3));
   const [note, setNote] = useState(o.mtppProformaNote || '');
   const [date, setDate] = useState(o.mtppProformaDate || today());
   const issue = async (send: boolean) => {
@@ -1202,6 +1174,7 @@ function ProformaModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void
         amount,
         note,
         date,
+        graceDays,
         settleDate: mode === 'lunas' ? undefined : settleDate,
       }),
       'Proforma diterbitkan (tanpa jurnal)',
@@ -1295,6 +1268,20 @@ function ProformaModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void
         allowClear={false}
         onChange={(d) => setDate(d.format('YYYY-MM-DD'))}
       />
+      <div style={{ marginTop: 12 }} className="muted">
+        Masa tenggang pembayaran (paling sedikit 7 hari)
+      </div>
+      <Space>
+        <InputNumber
+          min={7}
+          max={90}
+          precision={0}
+          addonAfter="hari"
+          value={graceDays}
+          onChange={(v) => setGraceDays(Math.min(90, Math.max(7, Number(v) || 7)))}
+        />
+        <span className="muted">bayar paling lambat {tgl(dayjs(date).add(graceDays, 'day').format('YYYY-MM-DD'))}</span>
+      </Space>
       {mode !== 'lunas' && (
         <>
           <div style={{ marginTop: 12 }} className="muted">

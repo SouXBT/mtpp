@@ -70,6 +70,7 @@ export class PartnersService {
 
   async create(u: AuthUser, b: any) {
     const kind = b.kind || 'customer';
+    if (!['customer', 'supplier'].includes(kind)) fail('Jenis partner harus pelanggan atau principal');
     checkPerm(u, kindMenu(kind), 'create');
     if (!b.name) fail('Nama wajib diisi');
     checkColumnTypes('Partners', b, [...P_FIELDS, ...PIMPINAN_FIELDS]);
@@ -147,6 +148,8 @@ export class PartnersService {
   // alamat kirim pelanggan
   async addAddress(id: number, b: any) {
     if (!b.street) fail('Alamat wajib diisi');
+    const parent = must(await this.db.partners.findFirst({ where: { id } }), 'Pelanggan');
+    if (!(Number(parent.customerRank) > 0)) fail('Alamat kirim hanya untuk pelanggan');
     const r = await this.db.partners.create({
       data: {
         parentId: id,

@@ -144,7 +144,7 @@ export function Dashboard() {
           ))}
         </div>
       )}
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))' }}>
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))' }}>
         {(d.lists || []).map((l: any) => (
           <div className="card" key={l.key} style={{ padding: '18px 20px' }}>
             <h3 className="card-title">{l.title}</h3>
@@ -212,7 +212,7 @@ export function Profile() {
   return (
     <>
       <PageHead title="Profil dan kata sandi" sub={`${me?.groupName} · ${me?.login}`} />
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))' }}>
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))' }}>
         <div className="card">
           <h3 className="card-title">Data profil</h3>
           <Form

@@ -5,8 +5,12 @@ import { fieldsOf } from '../db/convert';
 // Validasi hanya menolak isian yang memang akan gagal atau merusak data.
 // Kelonggaran lama tetap berlaku: '' berarti kosong, dan angka boleh dikirim sebagai string.
 const isEmpty = (v: unknown) => v === '' || v === null || v === undefined;
+// batas nilai: kolom uang Decimal(18,2) dan kuantitas; di atas ini database meluap (dulu galat 500)
+const MAX_NUM = 1e14;
 const isNumeric = (v: unknown) =>
-  isEmpty(v) || (typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v));
+  isEmpty(v) ||
+  (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= MAX_NUM) ||
+  (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) && Math.abs(Number(v)) <= MAX_NUM);
 const isIntLike = (v: unknown) => {
   if (isEmpty(v)) return true;
   if (typeof v !== 'number' && !(typeof v === 'string' && /^-?\d+$/.test(v))) return false;
@@ -19,10 +23,22 @@ const isRealDay = (s: string) => {
   const d = new Date(`${day}T00:00:00.000Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === day;
 };
+// Hanya YYYY-MM-DD, atau waktu ISO lengkap dengan zona (Z atau +07:00). Teks tambahan ("2026-11-27 abc") atau waktu
+// tanpa zona ditolak, karena dulu digeser diam-diam ke tanggal lain dan bisa melewati tanggal kunci periode.
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})$/;
+const inYears = (s: string) => {
+  const y = Number(s.slice(0, 4));
+  return y >= 2000 && y <= 2100;
+};
 const isDateLike = (v: unknown) =>
   isEmpty(v) ||
   v instanceof Date ||
-  (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) && isRealDay(v) && !Number.isNaN(new Date(v).getTime()));
+  (typeof v === 'string' &&
+    (DAY_RE.test(v) || ISO_RE.test(v)) &&
+    inYears(v) &&
+    isRealDay(v) &&
+    !Number.isNaN(new Date(v).getTime()));
 const isFlag = (v: unknown) => isEmpty(v) || typeof v === 'boolean';
 
 const rule = (name: string, test: (v: unknown) => boolean, message: string) => (options?: ValidationOptions) => {

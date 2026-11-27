@@ -13,6 +13,13 @@ export class PurchasingController {
   @Get(':id') @Perm('pengadaan', 'read') async get(@CurrentUser() u: AuthUser, @Param('id', ParseIntPipe) id: number) {
     return stripCost(u, await this.po.get(id));
   }
+  // isi ulang stok minimum: rencana (daftar produk) dan pembuatan PO per principal
+  @Get('replenish/plan') @Perm('pengadaan', 'read') replenishPlan() {
+    return this.po.replenishPlan();
+  }
+  @Post('replenish') @Perm('pengadaan', 'create') replenish(@CurrentUser() u: AuthUser) {
+    return this.po.replenish(u);
+  }
   @Post('from-sale/:soId') @Perm('pengadaan', 'create') fromSale(
     @CurrentUser() u: AuthUser,
     @Param('soId', ParseIntPipe) id: number,

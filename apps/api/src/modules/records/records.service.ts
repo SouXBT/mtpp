@@ -12,8 +12,6 @@ export const MODEL_MENU: Record<string, string[]> = {
   sales_orders: ['penjualan'],
   purchase_orders: ['pengadaan'],
   stock_transfers: ['gudang'],
-  sales_returns: ['gudang', 'penjualan', 'penagihan'],
-  purchase_returns: ['gudang', 'pengadaan'],
   payments: ['penagihan', 'pengadaan', 'penjualan'],
   journal_entries: ['penagihan', 'pengadaan', 'akuntansi'],
   partners: ['pelanggan', 'principal'],
@@ -74,7 +72,9 @@ export class RecordsService {
 
   async removeAttachment(u: AuthUser, id: number) {
     const f = await this.files.get(id);
+    // lampiran di luar dokumen (tanda tangan pengguna, logo perusahaan) hanya dihapus lewat Pengaturan
     if (MODEL_MENU[f.meta.resModel]) can(u, f.meta.resModel, 'write');
+    else if (!u.perms.pengaturan?.write) throw new ForbiddenException('Anda tidak memiliki akses');
     await this.files.remove(id);
     await this.chatter.log(f.meta.resModel, f.meta.resId, u.id, `Lampiran dihapus: ${f.meta.name}`);
     return { ok: true };
@@ -124,8 +124,16 @@ export class RecordsService {
     return a;
   }
 
-  async updateActivity(u: AuthUser, id: number, b: any) {
+  // aktivitas hanya diubah atau dihapus oleh pembuat, orang yang ditugasi, atau yang berhak menulis dokumennya
+  private async ownActivity(u: AuthUser, id: number) {
     const a = must(await this.db.activities.findFirst({ where: { id: id } }), 'Aktivitas');
+    if (a.createUid !== u.id && a.userId !== u.id) can(u, a.resModel, 'write');
+    else can(u, a.resModel, 'read');
+    return a;
+  }
+
+  async updateActivity(u: AuthUser, id: number, b: any) {
+    const a = await this.ownActivity(u, id);
     const v: any = {};
     for (const k of ['summary', 'note', 'dateDeadline', 'activityType', 'done', 'userId'])
       if (b[k] !== undefined) v[k] = b[k];
@@ -134,7 +142,8 @@ export class RecordsService {
     return r;
   }
 
-  async removeActivity(id: number) {
+  async removeActivity(u: AuthUser, id: number) {
+    await this.ownActivity(u, id);
     await this.db.activities.deleteMany({ where: { id: id } });
     return { ok: true };
   }

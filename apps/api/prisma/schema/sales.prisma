@@ -35,6 +35,7 @@ model SalesOrders {
   mtppReleaseDate            DateTime?         @map("mtpp_release_date") @db.Timestamp(6)
   mtppReleaseNote            String?           @map("mtpp_release_note") @db.Text
   mtppSettleDate             DateTime?         @map("mtpp_settle_date") @db.Date
+  mtppProformaDueDate        DateTime?         @map("mtpp_proforma_due_date") @db.Date
   createUid                  Int?              @map("create_uid")
   createDate                 DateTime          @default(now()) @map("create_date") @db.Timestamp(6)
   writeUid                   Int?              @map("write_uid")
@@ -43,7 +44,6 @@ model SalesOrders {
   partnerShipping            Partners?         @relation("salesOrders_partnerShippingId", fields: [partnerShippingId], references: [id], map: "sales_orders_partner_shipping_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
   paymentTerm                PaymentTerms?     @relation("salesOrders_paymentTermId", fields: [paymentTermId], references: [id], map: "sales_orders_payment_term_id_payment_terms_id_fk", onDelete: NoAction, onUpdate: NoAction)
   lines                      SalesOrderLines[] @relation("salesOrderLines_orderId")
-  revSalesReturnsSaleId      SalesReturns[]    @relation("salesReturns_saleId")
   revPurchaseOrdersSaleId    PurchaseOrders[]  @relation("purchaseOrders_saleId")
   revStockTransfersSaleId    StockTransfers[]  @relation("stockTransfers_saleId")
   revJournalEntriesSaleId    JournalEntries[]  @relation("journalEntries_saleId")
@@ -82,7 +82,6 @@ model SalesOrderLines {
   order                               SalesOrders          @relation("salesOrderLines_orderId", fields: [orderId], references: [id], map: "sales_order_lines_order_id_sales_orders_id_fk", onDelete: Cascade, onUpdate: NoAction)
   product                             Products             @relation("salesOrderLines_productId", fields: [productId], references: [id], map: "sales_order_lines_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
   warehouse                           Warehouses?          @relation("salesOrderLines_mtppWarehouseId", fields: [mtppWarehouseId], references: [id], map: "sales_order_lines_mtpp_warehouse_id_warehouses_id_fk", onDelete: NoAction, onUpdate: NoAction)
-  revSalesReturnLinesSaleLineId       SalesReturnLines[]   @relation("salesReturnLines_saleLineId")
   revPurchaseOrderLinesMtppSaleLineId PurchaseOrderLines[] @relation("purchaseOrderLines_mtppSaleLineId")
   revStockMovesSaleLineId             StockMoves[]         @relation("stockMoves_saleLineId")
   revJournalEntryLinesSaleLineId      JournalEntryLines[]  @relation("journalEntryLines_saleLineId")
@@ -95,61 +94,5 @@ model SalesOrderLines {
 
 // Retur atau keluhan barang bermasalah dari pelanggan atas surat jalan yang sudah selesai.
 // Penyelesaian: ganti (kirim ulang), nota_kredit (barang kembali, piutang berkurang), atau potongan (barang tetap di pelanggan).
-model SalesReturns {
-  id                   Int                @id @default(autoincrement())
-  name                 String             @unique(map: "sales_returns_name_unique") @db.VarChar(40)
-  saleId               Int                @map("sale_id")
-  partnerId            Int                @map("partner_id")
-  pickingId            Int                @map("picking_id")
-  date                 DateTime           @db.Date
-  reason               String             @db.VarChar(20)
-  resolution           String             @db.VarChar(20)
-  state                String             @default("draft") @db.VarChar(20)
-  note                 String?            @db.Text
-  refundEntryId        Int?               @map("refund_entry_id")
-  replacementPickingId Int?               @map("replacement_picking_id")
-  amountUntaxed        Decimal            @default(0) @map("amount_untaxed") @db.Decimal(18, 2)
-  amountTax            Decimal            @default(0) @map("amount_tax") @db.Decimal(18, 2)
-  amountTotal          Decimal            @default(0) @map("amount_total") @db.Decimal(18, 2)
-  createUid            Int?               @map("create_uid")
-  createDate           DateTime           @default(now()) @map("create_date") @db.Timestamp(6)
-  writeUid             Int?               @map("write_uid")
-  writeDate            DateTime           @default(now()) @map("write_date") @db.Timestamp(6)
-  sale                 SalesOrders        @relation("salesReturns_saleId", fields: [saleId], references: [id], map: "sales_returns_sale_id_sales_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
-  partner              Partners           @relation("salesReturns_partnerId", fields: [partnerId], references: [id], map: "sales_returns_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
-  picking              StockTransfers     @relation("salesReturns_pickingId", fields: [pickingId], references: [id], map: "sales_returns_picking_id_stock_transfers_id_fk", onDelete: NoAction, onUpdate: NoAction)
-  refundEntry          JournalEntries?    @relation("salesReturns_refundEntryId", fields: [refundEntryId], references: [id], map: "sales_returns_refund_entry_id_journal_entries_id_fk", onDelete: NoAction, onUpdate: NoAction)
-  replacementPicking   StockTransfers?    @relation("salesReturns_replacementPickingId", fields: [replacementPickingId], references: [id], map: "sales_returns_replacement_picking_id_fk", onDelete: NoAction, onUpdate: NoAction)
-  lines                SalesReturnLines[] @relation("salesReturnLines_returnId")
-
-  @@index([saleId], map: "sales_returns_sale_id_idx")
-  @@index([partnerId], map: "sales_returns_partner_id_idx")
-  @@index([pickingId], map: "sales_returns_picking_id_idx")
-  @@index([refundEntryId], map: "sales_returns_refund_entry_id_idx")
-  @@index([replacementPickingId], map: "sales_returns_replacement_picking_id_idx")
-  @@map("sales_returns")
-}
 
 // Baris retur: barang dari satu baris surat jalan, kuantitas bermasalah, dan harga neto untuk nota kredit atau potongan.
-model SalesReturnLines {
-  id         Int             @id @default(autoincrement())
-  returnId   Int             @map("return_id")
-  moveId     Int             @map("move_id")
-  saleLineId Int             @map("sale_line_id")
-  productId  Int             @map("product_id")
-  quantity   Decimal         @db.Decimal(12, 2)
-  priceUnit  Decimal         @default(0) @map("price_unit") @db.Decimal(18, 2)
-  subtotal   Decimal         @default(0) @db.Decimal(18, 2)
-  createUid  Int?            @map("create_uid")
-  createDate DateTime        @default(now()) @map("create_date") @db.Timestamp(6)
-  ret        SalesReturns    @relation("salesReturnLines_returnId", fields: [returnId], references: [id], map: "sales_return_lines_return_id_sales_returns_id_fk", onDelete: Cascade, onUpdate: NoAction)
-  move       StockMoves      @relation("salesReturnLines_moveId", fields: [moveId], references: [id], map: "sales_return_lines_move_id_stock_moves_id_fk", onDelete: NoAction, onUpdate: NoAction)
-  saleLine   SalesOrderLines @relation("salesReturnLines_saleLineId", fields: [saleLineId], references: [id], map: "sales_return_lines_sale_line_id_sales_order_lines_id_fk", onDelete: NoAction, onUpdate: NoAction)
-  product    Products        @relation("salesReturnLines_productId", fields: [productId], references: [id], map: "sales_return_lines_product_id_products_id_fk", onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([returnId], map: "sales_return_lines_return_id_idx")
-  @@index([moveId], map: "sales_return_lines_move_id_idx")
-  @@index([saleLineId], map: "sales_return_lines_sale_line_id_idx")
-  @@index([productId], map: "sales_return_lines_product_id_idx")
-  @@map("sales_return_lines")
-}

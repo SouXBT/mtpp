@@ -3,7 +3,7 @@ import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Res } f
 import { Response } from 'express';
 import { AuthUser, CurrentUser, Perm } from '../../shared/auth';
 import { NumberingService } from '../../shared/numbering.service';
-import { today } from '../../shared/util';
+import { fail, today } from '../../shared/util';
 import { SalesService } from './sales.service';
 
 // Penawaran dan sales order (fitur D.a sampai D.j) serta proforma invoice (F.d)
@@ -18,6 +18,7 @@ export class SalesController {
     return this.sales.list(u, q);
   }
   @Get('next-number') @Perm('penjualan', 'read') next(@Query('date') d: string) {
+    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) fail('Tanggal harus berformat YYYY-MM-DD');
     return this.numbering.peek('PN', d || today()).then((n) => ({ number: n }));
   }
   @Get('worklist/need-po') @Perm('penjualan', 'read') needPo() {

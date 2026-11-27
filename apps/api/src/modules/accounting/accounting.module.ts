@@ -11,6 +11,7 @@ const accountsCrud = makeCrud({
   search: ['code', 'name'],
   order: 'code',
   writable: ['code', 'name', 'accountType'],
+  oneOf: { accountType: ['asset', 'liability', 'equity', 'income', 'expense'] },
   required: ['code', 'name', 'accountType'],
 });
 

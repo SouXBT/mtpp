@@ -53,16 +53,23 @@ Kata sandi semua akun contoh: `mtpp12345` (ganti setelah login lewat menu Profil
 
 ### Data contoh katalog MTPP
 
-Mengisi 49 produk dari katalog website MTPP, dengan harga, stok, kontak principal, dan transaksi contoh. Harga dan stoknya bukan data sungguhan. Produk dan principal contoh dasar diarsipkan. Skrip menolak berjalan dua kali pada database yang sama.
+Mengisi 49 produk dari katalog website MTPP beserta principal, harga principal, pelanggan, stok awal, dan stok minimum per gudang. Harga dan stoknya bukan data sungguhan. Produk dan principal contoh dasar diarsipkan. Tanpa `KATALOG_SAJA=1` skrip juga membuat beberapa transaksi contoh bertanggal hari ini. Skrip menolak berjalan dua kali pada database yang sama.
+
+**Transaksi 6 bulan ke belakang** (`mock-6-bulan.mjs`, setelah katalog tanpa transaksi contoh). Pembukuannya dibuat masuk akal untuk distributor sekelas MTPP:
+
+- saldo awal modal disetor Rp 25,15 miliar di bank dan kas, sehari sebelum periode (`MODAL_BANK`, `MODAL_KAS`);
+- sekitar 3–6 penawaran per minggu ditambah pesanan proyek rutin dari data MTPP Finance (Gardu PJD Unit 3 tiap dua bulan, Maintenance Elektrindo tiap bulan, Cubicle IBN Line B dengan DP 30%), omzet sekitar Rp 2–5 miliar per bulan;
+- stok selalu datang dari pembelian: PO karena kekurangan SO dan **isi ulang stok minimum** tiap Senin, lalu uang muka 30% ke principal, penerimaan, tagihan, dan pembayaran principal;
+- pelanggan lama dengan termin, masa tenggang, pembayaran tepat waktu, terlambat, dan sebagian, cicilan, pengingat, serta izin kirim Pimpinan; lima pelanggan baru dengan proforma, DP, dan pelunasan sebelum kirim;
+- pembayaran pelanggan lewat bank, tunai hanya untuk tagihan kecil; beban operasional bulanan (sewa, listrik, ATK dan transportasi dari kas kecil, ongkos kirim, gaji, administrasi bank);
+- setoran PPN masa tiap tanggal 15 bulan berikutnya (lebih bayar dikompensasikan ke masa berikutnya);
+- di akhir periode semua produk dengan stok minimum berstatus aman (lewat PO yang diterima, bukan impor stok), dan periode sampai akhir bulan lalu dikunci.
+
+Persediaan memakai metode periodik, jadi pembelian langsung menjadi beban: pada bulan-bulan awal pembelian lebih besar dari penjualan karena stok minimum diisi lebih dulu. Setiap dokumen bertanggal dan bernomor sesuai harinya, sehingga laporan per bulan, umur piutang, dan beranda terisi. API harus berjalan dengan `MOCK_DATE_HEADER=true` (stack uji sudah memakainya). Jalankan pada database baru di stack uji, jangan pada database utama:
 
 ```bash
-API=http://localhost:8080/api node apps/api/scripts/seed/mock-data.mjs
-```
-
-**Transaksi 3 bulan ke belakang** (setelah katalog di atas): 90 hari kerja penawaran, sales order, PO principal, penerimaan, surat jalan, invoice, pembayaran tepat waktu/terlambat/sebagian, cicilan, pelanggan baru dengan DP dan pelunasan, izin kirim Pimpinan, retur pelanggan, dan retur ke principal. Pelanggan PT Pembangkit Jawa Daya, PT Industri Baja Nusantara, dan CV Elektrindo Makmur, pesanan rutin per proyek (Gardu PJD Unit 3, Cubicle IBN Line B dengan DP 30%, Maintenance Elektrindo), NPWP principal, dan beban operasional bulanan diambil dari data contoh MTPP Finance. Setiap dokumen bertanggal dan bernomor sesuai harinya, sehingga laporan per bulan, umur piutang, dan beranda terisi. API harus berjalan dengan `MOCK_DATE_HEADER=true` (stack uji sudah memakainya; di stack utama hanya dinyalakan sementara).
-
-```bash
-API=http://localhost:8081/api node apps/api/scripts/seed/mock-3-bulan.mjs   # DAYS=90 bawaan, END=tanggal akhir
+API=http://localhost:8081/api KATALOG_SAJA=1 node apps/api/scripts/seed/mock-data.mjs
+API=http://localhost:8081/api node apps/api/scripts/seed/mock-6-bulan.mjs   # DAYS=180 bawaan, END=tanggal akhir
 ```
 
 ## Pengujian
@@ -76,7 +83,7 @@ docker compose -p mtpp-nav -f docker-compose.yml -f infra/compose/test.yml up -d
 # uji alur lewat API, berurutan pada database bersih
 API=http://localhost:8081/api node tests/flows/demo-flow.mjs
 API=http://localhost:8081/api node tests/flows/edge-flow.mjs
-API=http://localhost:8081/api node tests/flows/collection-flow.mjs   # cicilan, masa tenggang, retur
+API=http://localhost:8081/api node tests/flows/collection-flow.mjs   # cicilan, masa tenggang
 
 # uji aturan menu dan langkah berikutnya
 cd apps/web && node --test src/app/nav.test.ts src/features/sales/nextSteps.test.ts && cd ../..
@@ -144,7 +151,7 @@ apps/api        backend NestJS
   src/modules     auth, users, master, sales, purchasing, stock, billing, accounting,
                   email, records, settings, reports, dashboard, importer, public-api, documents
   prisma          schema dan migrasi SQL
-  scripts         seed/mock-data.mjs (data contoh), examples/api-client.mjs (contoh REST API)
+  scripts         seed/mock-data.mjs (katalog contoh), seed/mock-6-bulan.mjs (transaksi 6 bulan), examples/api-client.mjs (contoh REST API)
 apps/web        frontend React (warna website MTPP: merah #90241D, kuning, putih; logo matahari MTPP; Inter)
   src/app         titik masuk, Shell, login, menu, gaya
   src/features    satu folder per bagian: home, sales, purchasing, billing, stock, accounting, master, settings, reports, documents
@@ -206,9 +213,11 @@ Penawaran, invoice, surat jalan, PO, proforma, dan kuitansi tetap dibuat dari tr
 - SO tidak dapat dibatalkan selama PO Principal masih berjalan. Uang muka tidak dikembalikan: saat SO dibatalkan, uang muka yang belum terpakai **hangus** menjadi Pendapatan Lain-lain (4-2000), dan SO itu tidak dapat dikembalikan ke Draf.
 - **Tutup sisa PO**: bila principal tidak mengirim sisanya, kuantitas PO menjadi sebesar yang diterima dan sisanya dapat dipesan ulang.
 - **Cicilan** (hanya pelanggan lama): Finance mengajukan jadwal 2–12 termin untuk sisa tagihan invoice, termin terakhir paling lambat 12 bulan setelah tanggal invoice; jadwal berlaku setelah disetujui pengguna dengan hak ubah Penagihan. Pembayaran dialokasikan ke termin terlama; umur piutang dihitung per termin. Jurnal tidak berubah.
-- **Masa tenggang**: ditetapkan Pimpinan per pelanggan (0–90 hari; kosong = bawaan 7 hari di Pengaturan → Format Cetak → Penagihan & Retur). Setelah jatuh tempo + masa tenggang, konfirmasi SO memberi peringatan dan surat jalan baru ditahan, kecuali Pimpinan memberi **Izin Kirim** beralasan pada SO tersebut. Umur piutang tetap dihitung dari tanggal jatuh tempo; denda hanya teks pada invoice.
-- **Retur pelanggan** dari surat jalan yang sudah selesai (batas klaim bawaan 7 hari, klaim terlambat tetap dicatat): *kirim pengganti* (barang ke lokasi Barang Rusak, surat jalan pengganti dibuat otomatis dan bertanda **Pengganti retur**, invoice tetap; kolom *Diretur* di SO), *retur dan nota kredit* (barang ke Barang Rusak, nota kredit Retur Penjualan + PPN Keluaran / Piutang), atau *potongan harga* (barang tetap di pelanggan). Nota kredit hanya untuk barang yang sudah ditagih; sisa kredit atas invoice lunas dapat dikembalikan. Dropship tidak dapat diganti dari gudang.
-- **Retur ke Principal** (Pengadaan → Retur ke Principal, atau tombol di PO): barang dari lokasi Barang Rusak dikembalikan atas satu PO; principal mengirim *barang pengganti* (penerimaan barang baru, qty diterima PO tetap) atau memberi *nota kredit* (Utang Usaha / Pembelian + PPN Masukan, hanya untuk barang yang sudah ditagih). Stock opname berada di luar cakupan sistem.
+- **Masa tenggang**: ditetapkan Pimpinan per pelanggan (0–90 hari; kosong = bawaan 7 hari di Pengaturan → Format Cetak → Penagihan). Setelah jatuh tempo + masa tenggang, konfirmasi SO memberi peringatan dan surat jalan baru ditahan, kecuali Pimpinan memberi **Izin Kirim** beralasan pada SO tersebut. Umur piutang tetap dihitung dari tanggal jatuh tempo; denda hanya teks pada invoice.
+- **Masa tenggang proforma invoice**: bawaan 7 hari setelah tanggal proforma (Pengaturan → Format Cetak → Penagihan), paling sedikit 7 hari dan boleh diatur lebih lama, sampai 90 hari, baik bawaannya maupun per proforma. Batas bayarnya tercetak di PDF proforma sebagai *Bayar paling lambat*.
+- **Stok rendah**: produk dengan stok bebas di bawah batas minimum muncul di lonceng pemberitahuan (dengan pop-up sekali per sesi) untuk peran yang dapat melihat stok, selain di beranda.
+- **Isi ulang stok minimum** (Pengadaan → Perlu PO Principal → *Isi Ulang Stok Minimum*): seperti reordering rule Odoo, produk yang proyeksi stok bebasnya (stok bebas ditambah barang PO yang belum datang) di bawah batas minimum dipesan sampai 2× minimum, satu PO per principal tanpa sales order. Barang yang sudah dipesan tidak dipesan dua kali.
+- **Pengaman akuntansi** (mengikuti validasi `account.move` Odoo): jurnal harus seimbang dan tidak bernilai nol, satu baris tidak boleh berisi debit dan kredit sekaligus, akun yang diarsipkan tidak dapat dipakai, baris piutang/utang wajib berpartner, jatuh tempo tidak sebelum tanggal dokumen, jurnal hanya dapat dibalik sekali, nomor tagihan principal tidak boleh dicatat dua kali, pencocokan mutasi bank harus sama nilai dan arahnya, dan **tanggal kunci periode** (Pengaturan → Format Cetak → Kunci periode) mencegah jurnal dibuat, diposting, dihapus, atau dibalik di periode yang sudah ditutup.
 
 ## REST API untuk aplikasi lain
 

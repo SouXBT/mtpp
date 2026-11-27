@@ -1,4 +1,4 @@
-// Uji alur penagihan lanjutan: masa tenggang per pelanggan, blokir dan izin kirim, cicilan, dan retur pelanggan.
+// Uji alur penagihan lanjutan: masa tenggang per pelanggan, blokir dan izin kirim, dan cicilan.
 // Berdiri sendiri (membuat pelanggan, SO, PO, dan stoknya sendiri). Hanya untuk stack uji -p mtpp-nav:
 //   API=http://localhost:8081/api node tests/flows/collection-flow.mjs
 const API = process.env.API || 'http://localhost:8081/api';
@@ -149,7 +149,7 @@ async function deliver(soId) {
 
 const so1 = await order(10);
 await stockFor(so1);
-const [do1] = await deliver(so1);
+await deliver(so1);
 const inv1 = await call(F, 'POST', `/invoices/from-sale/${so1}`, { date: day(-60) });
 await call(F, 'POST', `/invoices/${inv1.id}/post`);
 let i1 = await call(F, 'GET', `/invoices/${inv1.id}`);
@@ -243,159 +243,6 @@ ok(
   'umur piutang dipecah per termin cicilan',
 );
 
-// ---------- retur: kirim pengganti ----------
-const ra = await call(O, 'GET', `/transfers/${do1.id}/returnable`);
-const mv = ra.lines[0];
-ok(mv.available === 10, `surat jalan ${do1.name}: 10 unit dapat diretur`);
-await expectFail(
-  call(O, 'POST', '/returns', {
-    pickingId: do1.id,
-    reason: 'rusak',
-    resolution: 'ganti',
-    lines: [{ moveId: mv.moveId, quantity: 11 }],
-  }),
-  400,
-  'retur melebihi kuantitas terkirim',
-  /melebihi/,
-);
-const g = await call(O, 'POST', '/returns', {
-  pickingId: do1.id,
-  reason: 'rusak',
-  resolution: 'ganti',
-  note: 'Casing retak saat dibongkar',
-  lines: [{ moveId: mv.moveId, quantity: 2 }],
-});
-ok(/^RET\/MTPP\/\d{4}\/\d{2}\/\d{4}$/.test(g.name) && g.state === 'draft', `retur ${g.name} dibuat (Draf)`);
-await expectFail(call(F, 'POST', `/returns/${g.id}/process`), 403, 'Finance memproses kirim pengganti (hak gudang)');
-await call(O, 'POST', `/returns/${g.id}/process`);
-const so1b = await call(S, 'GET', `/sales-orders/${so1}`);
-ok(so1b.state === 'sale' && Number(so1b.lines[0].qtyDelivered) === 8, 'SO kembali menunggu 2 unit pengganti');
-const stock = await call(O, 'GET', `/stock?q=${encodeURIComponent(prod.defaultCode || prod.code)}`);
-ok(
-  stock.some((r) => Number(r.damaged) === 2),
-  'stok Barang Rusak bertambah 2',
-);
-const inv1c = await call(F, 'GET', `/invoices/${inv1.id}`);
-ok(near(inv1c.amountTotal, i1.amountTotal), 'invoice tidak berubah pada kirim pengganti');
-const g2 = await call(O, 'GET', `/returns/${g.id}`);
-ok(!!g2.replacementPicking, `surat jalan pengganti ${g2.replacementPicking?.name} dibuat otomatis`);
-await expectFail(
-  call(O, 'POST', `/transfers/from-sale/${so1}`),
-  400,
-  'surat jalan ganda untuk barang pengganti',
-  /Tidak ada sisa/,
-);
-const so1r = await call(S, 'GET', `/sales-orders/${so1}`);
-ok(
-  Number(so1r.lines[0].qtyReturned) === 2 &&
-    so1r.transfers.some((t) => t.id === g2.replacementPicking.id && t.replacement),
-  'SO: kolom Diretur 2 dan surat jalan bertanda pengganti retur',
-);
-const outList = await call(O, 'GET', `/transfers?kind=outgoing&saleId=${so1}`);
-ok(
-  outList.find((t) => t.id === g2.replacementPicking.id)?.replacement === true,
-  'daftar surat jalan menandai pengganti retur',
-);
-await stockFor(so1);
-const rep = await call(O, 'GET', `/transfers/${g2.replacementPicking.id}`);
-ok(rep.replacement?.name === g.name && !rep.paymentBlock, 'detail surat jalan menyebut retur asal');
-await call(O, 'PATCH', `/transfers/${rep.id}`, {
-  moves: rep.moves.map((m) => ({ id: m.id, quantity: m.productUomQty })),
-});
-await call(O, 'POST', `/transfers/${rep.id}/validate`, {});
-const rpdf = await call(O, 'GET', `/transfers/${rep.id}/pdf`, undefined, true);
-ok(rpdf.ok, 'surat jalan pengganti retur PDF');
-const so1c = await call(S, 'GET', `/sales-orders/${so1}`);
-ok(
-  Number(so1c.lines[0].qtyDelivered) === 10 && so1c.invoiceStatus === 'invoiced',
-  'pengganti terkirim; tidak ada tagihan baru',
-);
-
-// ---------- retur: nota kredit ----------
-const nk = await call(S, 'POST', '/returns', {
-  pickingId: do1.id,
-  reason: 'tidak_sesuai',
-  resolution: 'nota_kredit',
-  lines: [{ moveId: mv.moveId, quantity: 1 }],
-});
-ok(near(nk.amountUntaxed, mv.netPrice), 'nota kredit memakai harga neto SO');
-await expectFail(
-  call(O, 'POST', `/returns/${nk.id}/process`),
-  403,
-  'Operasional memproses nota kredit (hak penagihan)',
-);
-const before = Number((await call(F, 'GET', `/invoices/${inv1.id}`)).amountResidual);
-const nk2 = await call(F, 'POST', `/returns/${nk.id}/process`);
-const after = Number((await call(F, 'GET', `/invoices/${inv1.id}`)).amountResidual);
-ok(
-  nk2.refundEntry && near(before - after, nk2.amountTotal),
-  `nota kredit ${nk2.refundEntry?.name} mengurangi sisa invoice ${nk2.amountTotal}`,
-);
-const cn = await call(F, 'GET', `/invoices/${nk2.refundEntry.id}`);
-const acc = cn.lines.map((l) => l.account).join(' | ');
-ok(/4-1100/.test(acc) && /2-1300/.test(acc) && /1-1300/.test(acc), 'jurnal: Retur Penjualan + PPN Keluaran / Piutang');
-const ra2 = await call(O, 'GET', `/transfers/${do1.id}/returnable`);
-ok(ra2.lines[0].available === 7, 'sisa yang dapat diretur dari surat jalan asal: 7');
-const ba = await call(O, 'GET', `/returns/${g.id}/pdf`, undefined, true);
-ok(ba.ok && (await ba.arrayBuffer()).byteLength > 2000, 'berita acara barang bermasalah PDF');
-
-// ---------- retur: potongan dan pengembalian dana ----------
-const mv2 = (await call(O, 'GET', `/transfers/${do2.id}/returnable`)).lines[0];
-await expectFail(
-  call(S, 'POST', '/returns', {
-    pickingId: do2.id,
-    reason: 'rusak',
-    resolution: 'potongan',
-    lines: [{ moveId: mv2.moveId, quantity: 1, priceUnit: 1000 }],
-  }),
-  400,
-  'potongan untuk barang yang belum ditagih',
-  /belum ditagih/,
-);
-await expectFail(
-  call(S, 'POST', '/returns', { pickingId: do2.id, reason: 'rusak', resolution: 'ganti', lines: [] }),
-  400,
-  'retur tanpa barang',
-);
-const inv2 = await call(F, 'POST', `/invoices/from-sale/${so2}`, {});
-await call(F, 'POST', `/invoices/${inv2.id}/post`);
-const i2 = await call(F, 'GET', `/invoices/${inv2.id}`);
-await call(F, 'POST', '/payments', { invoiceId: inv2.id, amount: Number(i2.amountResidual), method: 'BNK' });
-const pt = await call(S, 'POST', '/returns', {
-  pickingId: do2.id,
-  reason: 'rusak',
-  resolution: 'potongan',
-  note: 'Cat tergores, pelanggan tetap memakai barang',
-  lines: [{ moveId: mv2.moveId, quantity: 1, priceUnit: 50000 }],
-});
-const pt2 = await call(F, 'POST', `/returns/${pt.id}/process`);
-ok(pt2.creditLeft > 0 && near(pt2.creditLeft, pt2.amountTotal), `invoice sudah lunas: sisa kredit ${pt2.creditLeft}`);
-await expectFail(
-  call(F, 'POST', `/returns/${pt.id}/refund`, { amount: pt2.creditLeft + 1000 }),
-  400,
-  'pengembalian melebihi kredit',
-  /melebihi/,
-);
-const pt3 = await call(F, 'POST', `/returns/${pt.id}/refund`, { amount: pt2.creditLeft, method: 'BNK' });
-ok(pt3.creditLeft === 0 && pt3.refunds.length === 1, 'sisa kredit dikembalikan kepada pelanggan');
-const st2 = await call(O, 'GET', `/stock?q=${encodeURIComponent(prod.defaultCode || prod.code)}`);
-ok(
-  st2.some((r) => Number(r.damaged) === 3),
-  'potongan tidak menambah Barang Rusak (tetap 3)',
-);
-
-// ---------- batal retur draf ----------
-const dr = await call(O, 'POST', '/returns', {
-  pickingId: do1.id,
-  reason: 'lainnya',
-  resolution: 'ganti',
-  lines: [{ moveId: mv.moveId, quantity: 1 }],
-});
-await call(O, 'POST', `/returns/${dr.id}/cancel`);
-await expectFail(call(O, 'POST', `/returns/${dr.id}/process`), 400, 'memproses retur yang dibatalkan');
-const so1Detail = await call(S, 'GET', `/sales-orders/${so1}`);
-ok(so1Detail.returns.length === 3, 'SO menampilkan tiga retur');
-
 // ---------- tanggal penawaran ----------
 await expectFail(
   call(S, 'POST', '/sales-orders', { partnerId: cust.id, dateOrder: day(0), validityDate: day(0), lines: [] }),
@@ -444,7 +291,7 @@ await expectFail(
   call(F, 'POST', '/payments', { saleId: n1.id, amount: dp, kind: 'dp', settleDate: day(-1), date: day(0) }),
   400,
   'tanggal pelunasan sebelum tanggal bayar',
-  /tidak boleh sebelum/,
+  /harus setelah tanggal pembayaran/,
 );
 await call(F, 'POST', '/payments', { saleId: n1.id, amount: dp, kind: 'dp', settleDate: day(10) });
 let n1d = await call(S, 'GET', `/sales-orders/${n1.id}`);
@@ -481,104 +328,170 @@ ok(kw.ok, 'kuitansi uang muka dengan total, terbayar, dan sisa');
 const proofDl = await call(F, 'GET', `/attachments/${h1[0].proof.id}/download`, undefined, true);
 ok(proofDl.ok, 'bukti transfer dapat diunduh');
 
-// ---------- retur ke principal ----------
-// stok produk uji bisa berasal dari stok awal; buat PO yang benar-benar menerima produk ini ke gudang yang sama
-const stRow = (await call(O, 'GET', `/stock?q=${encodeURIComponent(prod.defaultCode || prod.code)}`)).find(
-  (r) => r.damaged > 0,
-);
-const so3 = await order(Math.max(Math.ceil(stRow.free), 0) + 5);
-await stockFor(so3);
-// PO mana pun yang memasok produk uji ke gudang tempat barang rusak disimpan
-let po1 = null,
-  prr = null,
-  pl = null;
-for (const po of (await call(F, 'GET', '/purchase-orders'))
-  .filter((x) => ['purchase', 'done'].includes(x.state))
-  .slice(0, 40)) {
-  const r = await call(F, 'GET', `/purchase-orders/${po.id}/returnable`);
-  const l = r.lines.find((x) => x.productId === prod.id && x.damaged > 0 && x.received >= 3);
-  if (l) {
-    po1 = po;
-    prr = r;
-    pl = l;
-    break;
-  }
+// ---------- masa tenggang proforma: bawaan 7 hari, paling sedikit 7 hari, boleh diatur lebih lama ----------
+{
+  const nx = await newOrder(1);
+  const d0 = await call(F, 'POST', `/sales-orders/${nx.id}/proforma`, { mode: 'lunas' });
+  ok(d0.graceDays === 7 && d0.dueDate === day(7), `proforma tanpa isian: bayar paling lambat ${d0.dueDate} (7 hari)`);
+  const d14 = await call(F, 'POST', `/sales-orders/${nx.id}/proforma`, { mode: 'lunas', graceDays: 14 });
+  ok(d14.dueDate === day(14), `proforma 14 hari: bayar paling lambat ${d14.dueDate}`);
+  await expectFail(
+    call(F, 'POST', `/sales-orders/${nx.id}/proforma`, { mode: 'lunas', graceDays: 3 }),
+    400,
+    'masa tenggang proforma 3 hari (kurang dari 7)',
+    /7 sampai 90/,
+  );
+  await expectFail(
+    call(F, 'POST', `/sales-orders/${nx.id}/proforma`, { mode: 'lunas', graceDays: 91 }),
+    400,
+    'masa tenggang proforma 91 hari',
+    /7 sampai 90/,
+  );
+  await expectFail(
+    call(A, 'PUT', '/settings/collection', { proformaGraceDays: 5 }),
+    400,
+    'bawaan masa tenggang proforma 5 hari',
+    /7 sampai 90/,
+  );
+  const xp = await call(F, 'GET', `/sales-orders/${nx.id}/pdf?kind=proforma`, undefined, true);
+  ok(xp.ok, 'PDF proforma dengan batas bayar');
 }
-ok(!!pl, `PO ${po1?.name} memasok produk uji`);
-ok(pl.damaged === 3, `stok Barang Rusak untuk ${po1.name}: ${pl.damaged}`);
-await expectFail(
-  call(O, 'POST', '/purchase-returns', {
-    purchaseId: po1.id,
-    resolution: 'ganti',
-    lines: [{ purchaseLineId: pl.purchaseLineId, quantity: 4 }],
-  }),
-  400,
-  'retur ke principal melebihi barang rusak',
-  /melebihi/,
-);
-const rg = await call(O, 'POST', '/purchase-returns', {
-  purchaseId: po1.id,
-  resolution: 'ganti',
-  note: 'Klaim casing retak',
-  lines: [{ purchaseLineId: pl.purchaseLineId, quantity: 2 }],
-});
-ok(/^RP\/MTPP\//.test(rg.name), `retur ke principal ${rg.name}`);
-await expectFail(
-  call(O, 'POST', '/purchase-returns', {
-    purchaseId: po1.id,
-    resolution: 'ganti',
-    lines: [{ purchaseLineId: pl.purchaseLineId, quantity: 2 }],
-  }),
-  400,
-  'stok rusak yang sudah dipakai retur draf lain',
-  /melebihi/,
-);
-const rg2 = await call(O, 'POST', `/purchase-returns/${rg.id}/process`);
-ok(rg2.state === 'done' && rg2.receipt, `penerimaan barang pengganti ${rg2.receipt?.name}`);
-const before3 = (await call(O, 'GET', `/stock?q=${encodeURIComponent(prod.defaultCode || prod.code)}`)).find(
-  (r) => r.damaged > 0 || r.physical > 0,
-);
-await call(O, 'POST', `/transfers/${rg2.receipt.id}/validate`, {});
-const after3 = (await call(O, 'GET', `/stock?q=${encodeURIComponent(prod.defaultCode || prod.code)}`)).find(
-  (r) => r.warehouseId === before3.warehouseId,
-);
-ok(
-  after3.damaged === 1 && after3.physical === before3.physical + 2,
-  'Barang Rusak berkurang 2, stok fisik bertambah 2 dari pengganti',
-);
-await expectFail(
-  call(F, 'POST', '/purchase-returns', {
-    purchaseId: po1.id,
-    resolution: 'nota_kredit',
-    lines: [{ purchaseLineId: pl.purchaseLineId, quantity: 1 }],
-  }),
-  400,
-  'nota kredit principal sebelum tagihan',
-  /belum ditagih/,
-);
-const bill = await call(F, 'POST', `/invoices/from-purchase/${po1.id}`, { ref: 'TAG-UJI' });
-await call(F, 'POST', `/invoices/${bill.id}/post`);
-const dueBefore = Number((await call(F, 'GET', `/purchase-orders/${po1.id}`)).mtppAmountDue);
-const rn = await call(F, 'POST', '/purchase-returns', {
-  purchaseId: po1.id,
-  resolution: 'nota_kredit',
-  lines: [{ purchaseLineId: pl.purchaseLineId, quantity: 1 }],
-});
-await expectFail(
-  call(O, 'POST', `/purchase-returns/${rn.id}/process`),
-  403,
-  'Operasional memproses nota kredit principal',
-);
-const rn2 = await call(F, 'POST', `/purchase-returns/${rn.id}/process`);
-const dueAfter = Number((await call(F, 'GET', `/purchase-orders/${po1.id}`)).mtppAmountDue);
-ok(
-  rn2.refundEntry && near(dueBefore - dueAfter, rn2.amountTotal),
-  `nota kredit ${rn2.refundEntry?.name} mengurangi utang ${rn2.amountTotal}`,
-);
-const rpp = await call(F, 'GET', `/purchase-returns/${rn.id}/pdf`, undefined, true);
-ok(rpp.ok, 'bukti retur ke principal PDF');
+
+// ---------- pembayaran dari SO setelah sebagian dibayar lewat invoice: sisa memperhitungkan invoice ----------
+{
+  const pc = await call(A, 'POST', '/partners', { kind: 'customer', name: `PT Uji Riwayat ${Date.now()}` });
+  await call(P, 'PATCH', `/partners/${pc.id}`, { mtppIsNewCustomer: false, paymentTermId: top30.id });
+  const q = await call(S, 'POST', '/sales-orders', {
+    partnerId: pc.id,
+    paymentTermId: top30.id,
+    lines: [{ productId: prod.id, productUomQty: 1, mtppIsDropship: false }],
+  });
+  await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {});
+  await stockFor(q.id);
+  await deliver(q.id);
+  const inv = await call(F, 'POST', `/invoices/from-sale/${q.id}`, {});
+  await call(F, 'POST', `/invoices/${inv.id}/post`);
+  const total = Number((await call(S, 'GET', `/sales-orders/${q.id}`)).amountTotal);
+  const part = Math.round(total * 0.4);
+  await call(F, 'POST', '/payments', { invoiceId: inv.id, amount: part, method: 'BNK' });
+  // pelanggan ditandai baru lagi, sehingga sisa dicatat dari tombol Catat Pembayaran di SO
+  await call(A, 'PATCH', `/partners/${pc.id}`, { mtppIsNewCustomer: true });
+  const rest = Math.round((total - part) * 100) / 100;
+  await expectFail(
+    call(F, 'POST', '/payments', { saleId: q.id, amount: total, kind: 'lunas' }),
+    400,
+    'pelunasan dari SO sebesar nilai penuh padahal sebagian sudah dibayar',
+    /sisa nilai sales order/,
+  );
+  await call(F, 'POST', '/payments', { saleId: q.id, amount: rest, kind: 'lunas' });
+  // nomor berubah dari PN menjadi SO saat dikonfirmasi
+  const soName = (await call(S, 'GET', `/sales-orders/${q.id}`)).name;
+  const hist = await call(S, 'GET', `/sales-orders/payment-history?q=${encodeURIComponent(soName)}`);
+  ok(
+    hist.length === 2 &&
+      hist.some((h) => h.kind === 'invoice') &&
+      hist.some((h) => h.kind === 'pelunasan' && h.remaining === 0),
+    `Riwayat Pembayaran: pembayaran invoice lalu pelunasan dari SO (${hist.map((h) => h.kindLabel).join(', ')})`,
+  );
+  const invAfter = await call(F, 'GET', `/invoices/${inv.id}`);
+  ok(invAfter.paymentState === 'paid', 'pelunasan dari SO langsung melunasi invoice');
+  const pl = await call(F, 'GET', `/payments?saleId=${q.id}`);
+  ok(
+    pl.length === 2 && pl.every((p) => p.sale === soName),
+    'daftar pembayaran per SO memuat pembayaran invoice dan SO',
+  );
+  await expectFail(
+    call(F, 'POST', '/payments', { saleId: q.id, amount: 1000, kind: 'dp', settleDate: day(5) }),
+    400,
+    'pembayaran untuk SO yang sudah lunas',
+    /sudah lunas/,
+  );
+}
+
+// ---------- permintaan bersamaan: tidak ada dokumen atau pembayaran ganda ----------
+{
+  const settle = async (ps) => (await Promise.allSettled(ps)).filter((r) => r.status === 'fulfilled').length;
+  const so = await order(2);
+  await stockFor(so);
+  // surat jalan: tiga permintaan bersamaan hanya membuat satu dokumen
+  const okDo = await settle([1, 2, 3].map(() => call(O, 'POST', `/transfers/from-sale/${so}`)));
+  const dos = (await call(O, 'GET', `/transfers?kind=outgoing&saleId=${so}`)).filter((t) => t.state !== 'cancel');
+  ok(okDo === 1 && dos.length === 1, `surat jalan bersamaan: ${okDo} berhasil, ${dos.length} dokumen`);
+  // validasi bersamaan: stok hanya berkurang sekali
+  const before = (await call(O, 'GET', `/stock?q=${encodeURIComponent(prod.defaultCode || prod.code)}`))[0];
+  const okVal = await settle([1, 2, 3].map(() => call(O, 'POST', `/transfers/${dos[0].id}/validate`, {})));
+  const after = (await call(O, 'GET', `/stock?q=${encodeURIComponent(prod.defaultCode || prod.code)}`))[0];
+  const line = (await call(S, 'GET', `/sales-orders/${so}`)).lines[0];
+  ok(
+    okVal === 1 && Number(line.qtyDelivered) === 2 && near(before.physical - after.physical, 2),
+    `validasi bersamaan: ${okVal} berhasil, terkirim ${line.qtyDelivered}, stok fisik turun ${before.physical - after.physical}`,
+  );
+  // invoice: dua permintaan bersamaan hanya membuat satu draf
+  const okInv = await settle([1, 2].map(() => call(F, 'POST', `/invoices/from-sale/${so}`, {})));
+  const invs = (await call(F, 'GET', '/invoices?type=invoice')).filter((x) => x.saleId === so);
+  ok(okInv === 1 && invs.length === 1, `invoice bersamaan: ${okInv} berhasil, ${invs.length} invoice`);
+  // posting bersamaan: qty tertagih tidak berlipat
+  const okPost = await settle([1, 2, 3].map(() => call(F, 'POST', `/invoices/${invs[0].id}/post`)));
+  const line2 = (await call(S, 'GET', `/sales-orders/${so}`)).lines[0];
+  ok(
+    okPost === 1 && Number(line2.qtyInvoiced) === 2,
+    `posting bersamaan: ${okPost} berhasil, tertagih ${line2.qtyInvoiced}`,
+  );
+  // pembayaran bersamaan sebesar sisa: hanya satu yang diterima
+  const inv = await call(F, 'GET', `/invoices/${invs[0].id}`);
+  const okPay = await settle(
+    [1, 2, 3].map(() =>
+      call(F, 'POST', '/payments', { invoiceId: inv.id, amount: Number(inv.amountResidual), method: 'BNK' }),
+    ),
+  );
+  const inv2 = await call(F, 'GET', `/invoices/${inv.id}`);
+  ok(
+    okPay === 1 && inv2.paymentState === 'paid',
+    `pembayaran bersamaan: ${okPay} berhasil, status ${inv2.paymentState}`,
+  );
+  // kredit nota dan invoice yang sudah lunas tidak dapat dibayar
+  await expectFail(
+    call(F, 'POST', '/payments', { invoiceId: inv.id, amount: 0.4, method: 'BNK' }),
+    400,
+    'membayar invoice yang sudah lunas',
+    /sudah lunas/,
+  );
+}
+
+// ---------- isi ulang stok minimum: PO sampai 2x minimum, barang dalam perjalanan ikut dihitung ----------
+{
+  const code = prod.defaultCode || prod.code;
+  const row = (await call(O, 'GET', `/stock?q=${encodeURIComponent(code)}`))[0];
+  const min = Math.max(Math.ceil(Number(row.free)), 0) + 5;
+  const rule = await call(O, 'POST', '/stock-rules', { productId: prod.id, warehouseId: row.warehouseId, minQty: min });
+  const plan = await call(F, 'GET', '/purchase-orders/replenish/plan');
+  const it = plan.find((x) => x.productId === prod.id && x.warehouseId === row.warehouseId);
+  ok(
+    !!it && it.qty === Math.ceil(2 * min - (Number(row.free) + it.incoming)),
+    `rencana isi ulang ${code}: pesan ${it?.qty} (bebas ${it?.free}, dalam perjalanan ${it?.incoming}, minimum ${min})`,
+  );
+  await expectFail(call(S, 'POST', '/purchase-orders/replenish'), 403, 'Sales membuat PO isi ulang');
+  const res = await Promise.allSettled([1, 2].map(() => call(F, 'POST', '/purchase-orders/replenish')));
+  const made = res.filter((r) => r.status === 'fulfilled').flatMap((r) => r.value);
+  const mine = [];
+  for (const po of made) {
+    const d = await call(F, 'GET', `/purchase-orders/${po.id}`);
+    if (d.lines.some((l) => l.productId === prod.id)) mine.push(d);
+  }
+  ok(
+    mine.length === 1 &&
+      !mine[0].saleId &&
+      Number(mine[0].lines.find((l) => l.productId === prod.id).productQty) === it.qty,
+    `isi ulang bersamaan: ${mine.length} PO untuk ${code}, tanpa sales order`,
+  );
+  const again = await call(F, 'GET', '/purchase-orders/replenish/plan');
+  ok(!again.some((x) => x.productId === prod.id), 'PO yang belum datang ikut dihitung: tidak dipesan dua kali');
+  for (const po of made) await call(F, 'POST', `/purchase-orders/${po.id}/cancel`);
+  await call(O, 'DELETE', `/stock-rules/${rule.id}`);
+}
+
 const tb = await call(F, 'GET', '/reports/neraca_saldo').catch(() => null);
 void tb;
 
-log(failures ? `\n${failures} pemeriksaan GAGAL` : '\nSemua pemeriksaan alur penagihan dan retur lolos');
+log(failures ? `\n${failures} pemeriksaan GAGAL` : '\nSemua pemeriksaan alur penagihan lolos');
 process.exit(failures ? 1 : 0);

@@ -1,7 +1,7 @@
 import { nowDate } from '../../shared/clock';
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { fail, must, round2 } from '../../shared/util';
+import { fail, round2 } from '../../shared/util';
 import { Prisma } from '@prisma/client';
 
 const sql = Prisma.sql;
@@ -21,15 +21,6 @@ export class StockService {
     });
     if (!l) fail('Lokasi gudang tidak ditemukan');
     return l;
-  }
-  // lokasi Barang Rusak per gudang untuk retur pelanggan; tidak dihitung sebagai stok fisik atau stok bebas
-  async damagedLocation(warehouseId: number, tx: any = this.db) {
-    const [l] = await tx.locations.findMany({ where: { AND: [{ warehouseId }, { usage: 'damaged' }] }, take: 1 });
-    if (l) return l;
-    const w = must(await tx.warehouses.findFirst({ where: { id: warehouseId } }), 'Gudang');
-    return tx.locations.create({
-      data: { warehouseId, name: 'Barang Rusak', completeName: `${w.code}/Barang Rusak`, usage: 'damaged' },
-    });
   }
   async virtualLocation(usage: 'supplier' | 'customer' | 'inventory', tx: any = this.db) {
     const [l] = await tx.locations.findMany({ where: { AND: [{ usage: usage }] }, take: 1 });
@@ -87,7 +78,7 @@ export class StockService {
       [fromLoc, -1],
       [toLoc, 1],
     ] as const) {
-      if (loc.usage !== 'internal' && loc.usage !== 'damaged') continue;
+      if (loc.usage !== 'internal') continue;
       await tx.$queryRaw(
         sql`select id from stock_balances where product_id = ${productId} and location_id = ${loc.id} for update`,
       );
@@ -128,18 +119,17 @@ export class StockService {
     for (const w of whs) {
       if (q.warehouseId && w.id !== +q.warehouseId) continue;
       const loc = w.locations.find((l) => l.usage === 'internal');
-      const bad = w.locations.find((l) => l.usage === 'damaged');
       for (const p of prods) {
         if (p.type === 'service') continue;
         const physical = Number(bal.find((b) => b.productId === p.id && b.locationId === loc?.id)?.quantity || 0);
-        const damaged = Number(bal.find((b) => b.productId === p.id && b.locationId === bad?.id)?.quantity || 0);
         const reserved = Number(res.find((r) => r.productId === p.id && r.w === w.id)?.q || 0);
         const rule = rules.find((r) => r.productId === p.id && r.warehouseId === w.id);
-        if (!physical && !damaged && !reserved && !rule && p.supplierId !== w.partnerId) continue;
+        if (!physical && !reserved && !rule && p.supplierId !== w.partnerId) continue;
         const free = round2(physical - reserved);
         const min = rule ? Number(rule.minQty) : null;
         const low = min !== null && free < min;
-        if (q.low && !low) continue;
+        // stok bebas minus (terikat SO melebihi stok fisik) juga perlu ditindaklanjuti
+        if (q.low && !low && free >= 0) continue;
         if (q.categoryId && p.categoryId !== +q.categoryId) continue;
         if (q.q && !`${p.code} ${p.name}`.toLowerCase().includes(String(q.q).toLowerCase())) continue;
         rows.push({
@@ -155,10 +145,9 @@ export class StockService {
           physical,
           reserved,
           free,
-          damaged,
           minQty: min,
           ruleId: rule?.id || null,
-          status: low ? 'stok rendah' : free < 0 ? 'kurang' : 'aman',
+          status: free < 0 ? 'kurang' : low ? 'stok rendah' : 'aman',
         });
       }
     }

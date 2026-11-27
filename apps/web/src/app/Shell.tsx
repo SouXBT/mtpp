@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Badge, ConfigProvider, Dropdown, Popover, List, Empty } from 'antd';
-import { BellOutlined, DownOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
+import { Badge, ConfigProvider, Dropdown, Popover, List, Empty, notification } from 'antd';
+import { BellOutlined, DownOutlined, LogoutOutlined, UserOutlined, WarningFilled } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from './auth';
+import { useAuth, useCan } from './auth';
 import { Module, activeItem, activeModule, moduleEntry, visibleModules } from './nav';
 import { initials, tgl } from '../shared/lib';
 import { useFetch } from '../shared/hooks';
@@ -28,6 +28,44 @@ export default function Shell() {
   const item = cur ? activeItem(loc.pathname, loc.search, cur, hint.path === loc.pathname ? hint.h : null) : null;
   const acts = useFetch<any[]>('/activities', undefined, [loc.pathname]);
   const due = (acts.data || []).filter((a) => a.overdue || a.dueToday);
+  // stok rendah: stok bebas di bawah batas minimum, hanya untuk yang boleh melihat stok
+  const can = useCan();
+  const low = useFetch<any[]>(can('stok') ? '/stock' : null, { low: 'true' }, [loc.pathname]);
+  const lowRows = low.data || [];
+  const total = due.length + lowRows.length;
+  // pemberitahuan sekali per sesi login, dan lagi bila jumlah produk stok rendah bertambah
+  useEffect(() => {
+    if (!lowRows.length || !me) return;
+    const key = `mtpp-low-stock-${me.id}`;
+    const seen = Number(sessionStorage.getItem(key) || 0);
+    if (lowRows.length <= seen) return;
+    sessionStorage.setItem(key, String(lowRows.length));
+    notification.warning({
+      key: 'low-stock',
+      message: `Stok rendah: ${lowRows.length} produk`,
+      description: (
+        <>
+          {lowRows
+            .slice(0, 3)
+            .map((r) => `${r.product} (${r.warehouse})`)
+            .join(', ')}
+          {lowRows.length > 3 && `, dan ${lowRows.length - 3} lainnya`}. Stok bebas di bawah batas minimum.
+        </>
+      ),
+      placement: 'bottomRight',
+      duration: 8,
+      btn: (
+        <a
+          onClick={() => {
+            notification.destroy('low-stock');
+            nav('/stok?low=true');
+          }}
+        >
+          Lihat stok
+        </a>
+      ),
+    });
+  }, [lowRows.length, me]);
   const modMenu = { items: mods.map((m) => ({ key: m.key, label: m.label, onClick: () => nav(moduleEntry(m)) })) };
 
   const subRef = useRef<HTMLElement>(null);
@@ -79,12 +117,39 @@ export default function Shell() {
           <Popover
             placement="bottomRight"
             trigger="click"
-            title="Aktivitas jatuh tempo"
+            title="Pemberitahuan"
             content={
               <div style={{ width: 320 }}>
+                {lowRows.length > 0 && (
+                  <List
+                    size="small"
+                    header={<b>Stok rendah</b>}
+                    dataSource={lowRows.slice(0, 5)}
+                    footer={
+                      <Link to="/stok?low=true">
+                        {lowRows.length > 5 ? `Lihat semua ${lowRows.length} produk` : 'Buka Stok per Gudang'}
+                      </Link>
+                    }
+                    renderItem={(r: any) => (
+                      <List.Item style={{ cursor: 'pointer' }} onClick={() => nav('/stok?low=true')}>
+                        <List.Item.Meta
+                          avatar={<WarningFilled style={{ color: '#90241D' }} />}
+                          title={r.product}
+                          description={
+                            <span className="loss">
+                              {r.warehouse} · bebas {r.free}
+                              {r.minQty != null ? `, minimum ${r.minQty}` : ' (terikat SO melebihi stok)'}
+                            </span>
+                          }
+                        />
+                      </List.Item>
+                    )}
+                  />
+                )}
                 {due.length ? (
                   <List
                     size="small"
+                    header={lowRows.length > 0 ? <b>Aktivitas jatuh tempo</b> : undefined}
                     dataSource={due}
                     renderItem={(a: any) => (
                       <List.Item style={{ cursor: 'pointer' }} onClick={() => nav(linkOf(a.resModel, a.resId))}>
@@ -100,13 +165,15 @@ export default function Shell() {
                     )}
                   />
                 ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Tidak ada aktivitas jatuh tempo" />
+                  !lowRows.length && (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Tidak ada pemberitahuan" />
+                  )
                 )}
               </div>
             }
           >
-            <button type="button" className="bell" aria-label="Aktivitas jatuh tempo">
-              <Badge count={due.length} size="small">
+            <button type="button" className="bell" aria-label="Pemberitahuan">
+              <Badge count={total} size="small">
                 <BellOutlined style={{ fontSize: 18 }} />
               </Badge>
             </button>

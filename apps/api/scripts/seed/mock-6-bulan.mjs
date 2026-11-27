@@ -1,23 +1,27 @@
-// Data contoh transaksi 3 bulan ke belakang (90 hari sampai hari ini), bertanggal sesuai harinya:
-// penawaran, sales order, PO principal, penerimaan, surat jalan, invoice, pembayaran (tepat waktu, terlambat,
-// sebagian, cicilan), pelanggan baru dengan DP dan pelunasan, izin kirim Pimpinan, retur pelanggan, retur ke principal.
+// Data contoh transaksi 6 bulan ke belakang (180 hari sampai hari ini), bertanggal sesuai harinya, dengan pembukuan
+// yang masuk akal untuk distributor sekelas MTPP:
+//   - saldo awal modal di bank dan kas (impor saldo awal, sehari sebelum periode);
+//   - sekitar 3-6 penawaran per minggu ditambah pesanan proyek rutin, omzet beberapa miliar per bulan;
+//   - stok selalu datang dari pembelian: PO karena kekurangan SO dan isi ulang stok minimum tiap Senin,
+//     lalu penerimaan, tagihan principal, dan pembayaran (uang muka 30% sebelum PO dikonfirmasi);
+//   - pelanggan lama dengan termin, masa tenggang, cicilan, pengingat, dan izin kirim Pimpinan;
+//     pelanggan baru dengan proforma, DP, dan pelunasan sebelum kirim;
+//   - beban operasional bulanan (gaji, sewa, listrik, transportasi, ATK, administrasi bank);
+//   - setoran PPN masa tiap tanggal 15 bulan berikutnya (PPN Keluaran dikurangi PPN Masukan);
+//   - di akhir: semua stok di atas batas minimum lewat PO yang diterima, dan periode sampai akhir bulan lalu dikunci.
 //
-// Sebagian contoh diambil dari data MTPP Finance (pembukuan-mtpp): pelanggan PT Pembangkit Jawa Daya,
-// PT Industri Baja Nusantara, dan CV Elektrindo Makmur beserta NPWP dan termin pembayarannya; pesanan rutin
-// per proyek (trafo Gardu PJD Unit 3 tiap bulan, cubicle IBN Line B dengan DP 30%, suku cadang Maintenance
-// Elektrindo tiap bulan); dan beban operasional bulanan (gaji, sewa, transportasi, ATK, listrik, administrasi bank).
-//
-// Syarat: katalog dari mock-data.mjs sudah dimuat, dan API berjalan dengan MOCK_DATE_HEADER=true
-// (stack uji sudah memakainya). Setiap request membawa header x-mock-date sehingga nomor dokumen dan tanggalnya
-// mengikuti hari simulasi. Skrip menulis data dan menolak berjalan dua kali.
-//   API=http://localhost:8081/api node apps/api/scripts/seed/mock-3-bulan.mjs
+// Syarat: stack uji (-p mtpp-nav, MOCK_DATE_HEADER=true) dengan database baru, lalu katalog tanpa transaksi contoh:
+//   API=http://localhost:8081/api KATALOG_SAJA=1 node apps/api/scripts/seed/mock-data.mjs
+//   API=http://localhost:8081/api node apps/api/scripts/seed/mock-6-bulan.mjs
+// Setiap request membawa header x-mock-date sehingga nomor dan tanggal dokumen mengikuti hari simulasi.
+// Skrip menulis data dan menolak berjalan dua kali. Jangan dijalankan pada database utama (:8080).
 const API = process.env.API || 'http://localhost:8081/api';
 const PASS = process.env.DEMO_PASSWORD || 'mtpp12345';
-const DAYS = Number(process.env.DAYS || 90);
-const MARK = 'M3-'; // awalan PO pelanggan, penanda data skrip ini
+const DAYS = Number(process.env.DAYS || 180);
+const MARK = 'M6-'; // awalan PO pelanggan, penanda data skrip ini
 
 // ---------------------------------------------------------------- dasar
-let seed = 20261120;
+let seed = 20261128;
 const rnd = () => {
   // mulberry32: hasil sama setiap kali dijalankan
   seed |= 0;
@@ -104,8 +108,34 @@ if (!/2020\/01/.test(await probe.text())) {
   process.exit(1);
 }
 if ((await call(S, 'GET', `/sales-orders?q=${MARK}`)).length) {
-  console.error('Data contoh 3 bulan sudah pernah dimuat pada database ini.');
+  console.error('Data contoh 6 bulan sudah pernah dimuat pada database ini.');
   process.exit(1);
+}
+
+// ---------------------------------------------------------------- saldo awal: modal disetor di bank dan kas
+// sehari sebelum periode; persediaan awal (stok dari katalog) tidak dinilai karena persediaan memakai metode periodik
+const MODAL_BANK = Number(process.env.MODAL_BANK || 25e9),
+  MODAL_KAS = Number(process.env.MODAL_KAS || 150e6);
+{
+  const opening = addDays(START, -1);
+  const csv = [
+    'account,debit,credit,date',
+    `1-1200,${MODAL_BANK},0,${opening}`,
+    `1-1100,${MODAL_KAS},0,${opening}`,
+    `3-1000,0,${MODAL_BANK + MODAL_KAS},${opening}`,
+  ].join('\n');
+  const form = new FormData();
+  form.append('file', new Blob([csv], { type: 'text/csv' }), 'opening_balance.csv');
+  const r = await fetch(`${API}/import/opening_balance`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${A}`, 'x-mock-date': opening },
+    body: form,
+  });
+  const j = await r.json();
+  if (!r.ok || j.errors?.length) {
+    console.error('Saldo awal gagal diimpor:', JSON.stringify(j.errors ?? j));
+    process.exit(1);
+  }
 }
 
 // ---------------------------------------------------------------- penjadwal hari demi hari
@@ -113,6 +143,13 @@ const queue = [];
 const at = (day, label, fn) => {
   if (day > END) return; // jatuh setelah hari ini: dibiarkan terbuka, seperti keadaan nyata
   queue.push({ day: day < START ? START : day, label, fn, n: queue.length });
+};
+// PPN per masa (bulan): keluaran dari invoice yang diposting, masukan dari tagihan principal yang diposting
+const VAT = {};
+const vat = (d, k, amt) => {
+  const m = d.slice(0, 7);
+  VAT[m] = VAT[m] || { out: 0, in: 0 };
+  VAT[m][k] = Math.round((VAT[m][k] + amt) * 100) / 100;
 };
 const stats = {};
 const count = (k) => (stats[k] = (stats[k] || 0) + 1);
@@ -140,6 +177,8 @@ const NEWCOMERS = [
   ['CV Sinar Baru Teknik', 'Pasuruan'],
   ['PT Gudang Dingin Nusantara', 'Surabaya'],
   ['CV Karya Mandiri Elektrik', 'Lamongan'],
+  ['PT Anugerah Pangan Lestari', 'Probolinggo'],
+  ['CV Bintang Timur Elektrik', 'Jombang'],
 ];
 const regular = [];
 for (const [name, city, days, grace, vat] of REGULAR) {
@@ -172,15 +211,24 @@ const fresh = [];
 // ---------------------------------------------------------------- produk: kebanyakan stok, sedikit dropship
 const stockItems = products.filter((p) => p.mtppRoute !== 'dropship' && p.type !== 'service');
 const dropItems = products.filter((p) => p.mtppRoute === 'dropship');
+// kuantitas wajar per baris: barang mahal satu unit, kabel per puluhan meter, komponen kecil beberapa buah
 const qtyFor = (p) => {
   const price = Number(p.listPrice);
-  return price > 100e6 ? 1 : price > 20e6 ? int(1, 2) : price > 2e6 ? int(2, 6) : int(5, 40);
+  if (p.uom === 'Meter' || /^KBL-/.test(p.code)) return 50 * int(1, 6);
+  return price > 100e6 ? 1 : price > 20e6 ? int(1, 2) : price > 2e6 ? int(1, 4) : int(5, 30);
+};
+// barang di atas Rp 300 juta jarang dipesan; kebanyakan pesanan berisi panel, meter, kabel, dan komponen
+const weighted = () => {
+  for (;;) {
+    const p = pick(stockItems);
+    if (Number(p.listPrice) <= 300e6 || chance(0.15)) return p;
+  }
 };
 const orderLines = () => {
   const n = int(1, 3);
   const lines = [];
   for (let i = 0; i < n; i++) {
-    const p = chance(0.12) && dropItems.length ? pick(dropItems) : pick(stockItems);
+    const p = chance(0.05) && dropItems.length ? pick(dropItems) : weighted();
     if (!lines.some((l) => l.productId === p.id)) lines.push({ productId: p.id, productUomQty: qtyFor(p) });
   }
   return lines;
@@ -285,12 +333,30 @@ async function purchaseFor(d, soId) {
     if (/Stok mencukupi|sudah/i.test(e.msg)) return;
     throw e;
   }
-  for (const po of Array.isArray(pos) ? pos : [pos]) {
+  for (const po of Array.isArray(pos) ? pos : [pos]) await processPO(d, po, soId, 'PO principal');
+}
+
+// isi ulang stok minimum tiap Senin (Finance): PO per principal sampai 2x batas minimum
+async function replenish(d, arriveDays = [3, 10]) {
+  let pos;
+  try {
+    pos = await call(F, 'POST', '/purchase-orders/replenish', undefined, d);
+  } catch (e) {
+    if (/tidak ada yang perlu dipesan/.test(e.msg)) return [];
+    throw e;
+  }
+  for (const po of pos) await processPO(d, po, null, 'PO isi ulang stok', arriveDays);
+  return pos;
+}
+
+// kirim, uang muka 30%, konfirmasi, penerimaan, tagihan, dan pembayaran satu PO
+async function processPO(d, po, soId, label, arriveDays = [3, 12]) {
+  {
     await call(F, 'POST', `/purchase-orders/${po.id}/send`, {}, d);
     await payDp(F, po.id, d);
     await call(F, 'POST', `/purchase-orders/${po.id}/confirm`, undefined, d);
-    count('PO principal');
-    const arrive = workday(addDays(d, int(3, 12)));
+    count(label);
+    const arrive = arriveDays[1] === 0 ? d : workday(addDays(d, int(arriveDays[0], arriveDays[1])));
     at(arrive, 'penerimaan', async (d2) => {
       const rec = (await call(O, 'GET', `/transfers?kind=incoming&purchaseId=${po.id}`, undefined, d2)).filter(
         (t) => !['done', 'cancel'].includes(t.state),
@@ -308,7 +374,7 @@ async function purchaseFor(d, soId) {
         try {
           await call(O, 'POST', `/transfers/${t.id}/validate`, {}, d2);
           count('dropship diterima pelanggan');
-          at(workday(addDays(d2, int(0, 2))), 'invoice', (d3) => invoice(d3, soId));
+          if (soId) at(workday(addDays(d2, int(0, 2))), 'invoice', (d3) => invoice(d3, soId));
         } catch (e) {
           warn.push(`${d2} dropship ${t.name}: ${e.msg}`);
         }
@@ -320,10 +386,11 @@ async function purchaseFor(d, soId) {
             F,
             'POST',
             `/invoices/from-purchase/${po.id}`,
-            { ref: `INV-${po.name.slice(-4)}`, date: d3 },
+            { ref: `INV-${po.name.split('/').slice(-3).join('')}`, date: d3 },
             d3,
           );
-          await call(F, 'POST', `/invoices/${b.id}/post`, undefined, d3);
+          const pb = await call(F, 'POST', `/invoices/${b.id}/post`, undefined, d3);
+          vat(d3, 'in', Number(pb.amountTax));
           count('tagihan principal');
           at(workday(addDays(d3, int(20, 45))), 'bayar principal', async (d4) => {
             const p = await call(F, 'GET', `/purchase-orders/${po.id}`, undefined, d4);
@@ -379,10 +446,8 @@ async function deliver(d, soId, tries) {
     if (!moves.some((m) => m.quantity > 0)) continue;
     try {
       await call(O, 'POST', `/transfers/${t.id}/validate`, { moves }, d);
-      count(x.replacement ? 'surat jalan pengganti retur' : 'surat jalan');
+      count('surat jalan');
       any = true;
-      if (!x.replacement && chance(0.06))
-        at(workday(addDays(d, int(2, 5))), 'retur', (d2) => customerReturn(d2, t.id, soId));
     } catch (e) {
       if (tries >= 8) warn.push(`${d} validasi ${t.name}: ${e.msg}`);
     }
@@ -398,6 +463,7 @@ async function invoice(d, soId) {
   if (so.invoiceStatus !== 'to_invoice') return;
   const inv = await call(F, 'POST', `/invoices/from-sale/${soId}`, { date: d }, d);
   const e = await call(F, 'POST', `/invoices/${inv.id}/post`, undefined, d);
+  vat(d, 'out', Number(e.amountTax));
   count('invoice');
   if (chance(0.7)) await call(F, 'POST', `/invoices/${inv.id}/send`, {}, d).catch(() => {});
   const residual = Number(e.amountResidual);
@@ -436,7 +502,9 @@ async function payRest(d, invId) {
   const x = await call(F, 'GET', `/invoices/${invId}`, undefined, d);
   const left = Number(x.amountResidual);
   if (left <= 0.5) return;
-  await call(F, 'POST', '/payments', { invoiceId: invId, amount: left, method: chance(0.9) ? 'BNK' : 'KAS' }, d);
+  // pembayaran pelanggan lewat transfer bank; tunai hanya untuk tagihan kecil
+  const method = left < 15e6 && chance(0.5) ? 'KAS' : 'BNK';
+  await call(F, 'POST', '/payments', { invoiceId: invId, amount: left, method }, d);
   count('pembayaran invoice');
 }
 
@@ -466,34 +534,6 @@ function installments(d, e) {
         });
     });
   });
-}
-
-// retur pelanggan: kirim pengganti, nota kredit, atau potongan
-async function customerReturn(d, pickingId, soId) {
-  const ra = await call(O, 'GET', `/transfers/${pickingId}/returnable`, undefined, d);
-  const l = ra.lines.find((x) => x.available > 0);
-  if (!l) return;
-  const qty = Math.max(1, Math.floor(l.available * 0.2));
-  const res = l.qtyInvoiced >= qty ? pick(['ganti', 'ganti', 'nota_kredit', 'potongan']) : 'ganti';
-  if (res === 'ganti' && ra.dropship) return;
-  const r = await call(
-    O,
-    'POST',
-    '/returns',
-    {
-      pickingId,
-      reason: pick(['rusak', 'rusak', 'tidak_sesuai', 'salah_barang']),
-      resolution: res,
-      note: 'Dilaporkan pelanggan saat pemeriksaan barang',
-      lines: [
-        { moveId: l.moveId, quantity: qty, priceUnit: res === 'potongan' ? Math.round(l.netPrice * 0.1) : undefined },
-      ],
-    },
-    d,
-  );
-  await call(res === 'ganti' ? O : F, 'POST', `/returns/${r.id}/process`, undefined, d);
-  count(`retur pelanggan (${res})`);
-  if (res === 'ganti') at(workday(addDays(d, int(1, 4))), 'kirim pengganti', (d2) => deliver(d2, soId, 0));
 }
 
 // ---------------------------------------------------------------- pesanan proyek dari MTPP Finance
@@ -579,7 +619,8 @@ const ELK_LINES = [
 for (let m = START.slice(0, 7), i = 0; m <= END.slice(0, 7); i++) {
   const pjd = workday(`${m}-12`),
     elk = workday(`${m}-18`);
-  if (pjd >= START) projectOrder(pjd, 'PJD', 'Gardu PJD Unit 3', PJD_LINES[i % PJD_LINES.length]);
+  // trafo PJD tiap dua bulan, suku cadang Elektrindo tiap bulan
+  if (pjd >= START && i % 2 === 0) projectOrder(pjd, 'PJD', 'Gardu PJD Unit 3', PJD_LINES[(i / 2) % PJD_LINES.length]);
   if (elk >= START) projectOrder(elk, 'ELK', 'Maintenance Elektrindo', ELK_LINES);
   m = addDays(`${m}-01`, 32).slice(0, 7);
 }
@@ -598,7 +639,7 @@ projectOrder(
 );
 
 // ---------------------------------------------------------------- beban operasional bulanan dari MTPP Finance
-// akun yang belum ada di bagan akun MTPP Distribusi ditambahkan; tanggal 28 tiap bulan dibayar lewat bank
+// akun yang belum ada di bagan akun ditambahkan; dibayar lewat bank pada tanggalnya
 const accounts = await call(F, 'GET', '/accounts');
 const account = async (code, name) => {
   const a = accounts.find((x) => x.code === code);
@@ -607,48 +648,97 @@ const account = async (code, name) => {
   accounts.push(n);
   return n.id;
 };
+const accId = (code) => {
+  const a = accounts.find((x) => x.code === code);
+  if (!a) throw new Error(`akun ${code} tidak ada`);
+  return a.id;
+};
+const GAJI = await account('6-1000', 'Beban Gaji');
+const SEWA = await account('6-3000', 'Beban Sewa');
+const BANKFEE = await account('6-4000', 'Beban Administrasi Bank');
+const TRANS = await account('6-5000', 'Beban Transportasi & Perjalanan');
+const ATK = await account('6-6000', 'Beban Kantor & ATK');
+const UTIL = await account('6-7000', 'Beban Listrik, Air & Komunikasi');
+const KIRIM = await account('6-2000', 'Beban Pengiriman');
+// [tanggal, akun, nilai (rupiah, sudah bulat), keterangan]
 const OPEX = [
-  [await account('6-1000', 'Beban Gaji'), 85e6, 'Gaji karyawan'],
-  [await account('6-3000', 'Beban Sewa'), 15e6, 'Sewa kantor dan gudang transit'],
-  [await account('6-5000', 'Beban Transportasi & Perjalanan'), 8e6, 'Transportasi dan perjalanan dinas'],
-  [await account('6-6000', 'Beban Kantor & ATK'), 3e6, 'Keperluan kantor dan ATK'],
-  [await account('6-7000', 'Beban Listrik, Air & Komunikasi'), 4e6, 'Listrik, air, telepon, internet'],
-  [await account('6-4000', 'Beban Administrasi Bank'), 0.5e6, 'Biaya administrasi bank'],
+  [5, SEWA, () => 15e6, 'Sewa kantor dan gudang transit'],
+  [10, UTIL, () => int(38, 52) * 1e5, 'Listrik, air, telepon, internet'],
+  [15, ATK, () => int(18, 35) * 1e5, 'Keperluan kantor dan ATK'],
+  [20, TRANS, () => int(55, 95) * 1e5, 'Transportasi dan perjalanan dinas'],
+  [22, KIRIM, () => int(60, 140) * 1e5, 'Ongkos kirim barang ke pelanggan'],
+  [25, GAJI, () => 86e6, 'Gaji karyawan'],
+  [28, BANKFEE, () => int(35, 60) * 1e4, 'Biaya administrasi bank'],
 ];
-const bankAcc = accounts.find((x) => x.code === '1-1200')?.id;
-for (let m = START.slice(0, 7); m <= END.slice(0, 7); m = addDays(`${m}-01`, 32).slice(0, 7)) {
-  const day = workday(`${m}-28`);
-  if (day < START) continue;
-  at(day, 'beban operasional', async (d) => {
-    const total = OPEX.reduce((t, [, amt]) => t + amt, 0);
-    await call(
-      F,
-      'POST',
-      '/journal-entries',
-      {
-        date: d,
-        ref: `Beban operasional ${m}`,
-        post: true,
-        lines: [
-          ...OPEX.map(([accountId, debit, name]) => ({ accountId, debit, name })),
-          { accountId: bankAcc, credit: total, name: `Beban operasional ${m}` },
-        ],
-      },
-      d,
-    );
-    count('jurnal beban operasional');
+const bankAcc = accId('1-1200');
+const kasAcc = accId('1-1100');
+// ATK dan transportasi dibayar dari kas kecil, sisanya lewat bank
+const PETTY = new Set([ATK, TRANS]);
+const months = [];
+for (let m = START.slice(0, 7); m <= END.slice(0, 7); m = addDays(`${m}-01`, 32).slice(0, 7)) months.push(m);
+for (const m of months)
+  for (const [dd, acc, amt, name] of OPEX) {
+    const day = workday(`${m}-${String(dd).padStart(2, '0')}`);
+    if (day < START || day > END) continue;
+    at(day, 'beban operasional', async (d) => {
+      const v = amt();
+      await call(
+        F,
+        'POST',
+        '/journal-entries',
+        {
+          date: d,
+          ref: `${name} ${m}`,
+          post: true,
+          lines: [
+            { accountId: acc, debit: v, name },
+            { accountId: PETTY.has(acc) ? kasAcc : bankAcc, credit: v, name },
+          ],
+        },
+        d,
+      );
+      count('jurnal beban operasional');
+    });
+  }
+
+// setor PPN masa: tanggal 15 bulan berikutnya, PPN Keluaran dikurangi PPN Masukan; lebih bayar dikompensasikan
+let vatCarry = 0;
+for (const m of months) {
+  const day = workday(`${addDays(`${m}-01`, 32).slice(0, 7)}-15`);
+  if (day > END) continue;
+  at(day, 'setor PPN', async (d) => {
+    const v = VAT[m] || { out: 0, in: 0 };
+    const credit = Math.round((v.in + vatCarry) * 100) / 100;
+    const due = Math.round((v.out - credit) * 100) / 100;
+    if (v.out <= 0) {
+      vatCarry = credit;
+      return;
+    }
+    const used = due > 0 ? credit : v.out; // masukan yang dikreditkan pada masa ini
+    vatCarry = due > 0 ? 0 : Math.round((credit - v.out) * 100) / 100;
+    const lines = [{ accountId: accId('2-1300'), debit: v.out, name: `PPN Keluaran masa ${m}` }];
+    if (used > 0) lines.push({ accountId: accId('1-1400'), credit: used, name: `PPN Masukan masa ${m}` });
+    if (due > 0) lines.push({ accountId: bankAcc, credit: due, name: `Setor PPN masa ${m}` });
+    await call(F, 'POST', '/journal-entries', { date: d, ref: `Setor PPN masa ${m}`, post: true, lines }, d);
+    count(due > 0 ? 'setor PPN' : 'PPN lebih bayar dikompensasikan');
   });
 }
 
-// ---------------------------------------------------------------- jadwal 90 hari
+// isi ulang stok minimum tiap Senin
+for (let d = START; d <= END; d = addDays(d, 1))
+  if (new Date(d + 'T00:00:00Z').getUTCDay() === 1) at(d, 'isi ulang stok', (d2) => replenish(d2));
+
+// ---------------------------------------------------------------- jadwal penawaran 180 hari
 for (let d = START; d <= END; d = addDays(d, 1)) {
   if (weekend(d)) continue;
-  const n = int(1, 4);
+  // sekitar 3-6 penawaran per minggu, sedikit naik menjelang akhir tahun
+  const busy = d.slice(5, 7) >= '10' ? 0.1 : 0;
+  const n = chance(0.5 + busy) ? (chance(0.18) ? 2 : 1) : 0;
   for (let i = 0; i < n; i++) newQuote(d, pick(regular), false);
 }
-// pelanggan baru datang di bulan pertama, kedua, dan ketiga
+// pelanggan baru datang tersebar selama enam bulan
 NEWCOMERS.forEach(([name, city], i) => {
-  const d = workday(addDays(START, 10 + i * 28));
+  const d = workday(addDays(START, 15 + i * Math.floor(DAYS / (NEWCOMERS.length + 1))));
   at(d, 'pelanggan baru', async (d2) => {
     const c = await call(
       A,
@@ -663,39 +753,6 @@ NEWCOMERS.forEach(([name, city], i) => {
     newQuote(addDays(d2, 12), c, true);
   });
 });
-// retur ke principal untuk barang rusak, dua minggu sebelum hari ini
-at(workday(addDays(END, -14)), 'retur ke principal', async (d) => {
-  for (const po of (await call(F, 'GET', '/purchase-orders', undefined, d)).filter((x) =>
-    ['purchase', 'done'].includes(x.state),
-  )) {
-    const ra = await call(F, 'GET', `/purchase-orders/${po.id}/returnable`, undefined, d).catch(() => null);
-    const l = ra?.lines.find((x) => x.available > 0);
-    if (!l) continue;
-    const res = l.invoiced - l.credited >= l.available ? pick(['ganti', 'nota_kredit']) : 'ganti';
-    const r = await call(
-      F,
-      'POST',
-      '/purchase-returns',
-      {
-        purchaseId: po.id,
-        resolution: res,
-        note: 'Klaim barang rusak dari pelanggan',
-        lines: [{ purchaseLineId: l.purchaseLineId, quantity: l.available }],
-      },
-      d,
-    );
-    await call(res === 'ganti' ? O : F, 'POST', `/purchase-returns/${r.id}/process`, undefined, d);
-    count(`retur ke principal (${res})`);
-    if (res === 'ganti') {
-      const x = await call(F, 'GET', `/purchase-returns/${r.id}`, undefined, d);
-      at(workday(addDays(d, int(4, 9))), 'terima pengganti principal', async (d2) => {
-        await call(O, 'POST', `/transfers/${x.receipt.id}/validate`, {}, d2);
-        count('penerimaan pengganti principal');
-      });
-    }
-  }
-});
-
 // ---------------------------------------------------------------- jalankan
 console.log(`Data contoh ${START} sampai ${END}`);
 let last = '';
@@ -710,6 +767,51 @@ while (queue.length) {
     warn.push(`${ev.day} ${ev.label}: ${e.message}`);
   }
 }
+// ---------------------------------------------------------------- akhir periode
+// isi ulang terakhir pada hari ini, barang diterima hari ini juga, sehingga semua stok di atas batas minimum
+await (async () => {
+  try {
+    // barang PO yang masih dalam perjalanan datang hari ini
+    for (const t of (await call(O, 'GET', '/transfers?kind=incoming', undefined, END)).filter(
+      (x) => !['done', 'cancel'].includes(x.state) && !x.dropship,
+    )) {
+      try {
+        await call(O, 'POST', `/transfers/${t.id}/validate`, {}, END);
+        count('penerimaan barang');
+      } catch (e) {
+        warn.push(`${END} penerimaan ${t.name}: ${e.msg}`);
+      }
+    }
+    const pos = await replenish(END, [0, 0]);
+    // penerimaan dan tagihan yang baru dijadwalkan dijalankan sekarang (hari ini)
+    while (queue.length) {
+      queue.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : a.n - b.n));
+      const ev = queue.shift();
+      if (ev.day > END) continue;
+      try {
+        await ev.fn(ev.day);
+      } catch (e) {
+        warn.push(`${ev.day} ${ev.label}: ${e.message}`);
+      }
+    }
+    if (pos.length) stats['PO isi ulang akhir periode'] = pos.length;
+  } catch (e) {
+    warn.push(`isi ulang akhir: ${e.message}`);
+  }
+  const after = await call(O, 'GET', '/stock', undefined, END);
+  const notSafe = after.filter((r) => r.minQty != null && r.status !== 'aman');
+  if (notSafe.length) warn.push(`stok belum aman: ${notSafe.map((r) => `${r.code} (${r.status})`).join(', ')}`);
+  else stats['stok aman (produk dengan stok minimum)'] = after.filter((r) => r.minQty != null).length;
+  // kunci periode sampai akhir bulan lalu: bulan berjalan tetap terbuka untuk koreksi
+  const lock = addDays(`${END.slice(0, 7)}-01`, -1);
+  try {
+    await call(F, 'PUT', '/settings/lock_date', { date: lock }, END);
+    stats[`periode dikunci sampai`] = lock;
+  } catch (e) {
+    warn.push(`kunci periode: ${e.message}`);
+  }
+})();
+
 console.log('\nRingkasan:');
 for (const [k, v] of Object.entries(stats).sort()) console.log(`  ${k}: ${v}`);
 if (warn.length) {

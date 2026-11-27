@@ -11,8 +11,6 @@ const SOURCE: Record<string, { table: string; col: string }> = {
   PI: { table: 'sales_orders', col: 'mtpp_proforma_number' },
   PO: { table: 'purchase_orders', col: 'name' },
   DO: { table: 'stock_transfers', col: 'name' },
-  RET: { table: 'sales_returns', col: 'name' },
-  RP: { table: 'purchase_returns', col: 'name' },
   SP: { table: 'documents', col: 'number' },
   BA: { table: 'documents', col: 'number' },
   BC: { table: 'documents', col: 'number' },

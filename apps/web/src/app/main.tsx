@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { ReactElement } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { App as AntApp, ConfigProvider, Result, Spin } from 'antd';
 import idID from 'antd/locale/id_ID';
 import '@fontsource/inter/400.css';
@@ -51,9 +51,7 @@ import {
   UsersList,
 } from '../features/settings/Settings';
 import { ReportView, ReportsHome } from '../features/reports/Reports';
-import { ReturnDetail, ReturnList } from '../features/stock/Returns';
 import { PaymentHistory } from '../features/sales/PaymentHistory';
-import { PurchaseReturnDetail, PurchaseReturnList } from '../features/purchasing/PurchaseReturns';
 import { DocumentEditor, DocumentList } from '../features/documents/Documents';
 
 const theme = {
@@ -100,6 +98,11 @@ function Guard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 const NotFound = () => <Result status="404" title="Halaman tidak ditemukan" />;
+// rute detail hanya untuk id angka atau 'baru' (formulir data baru); alamat lama atau salah ketik (mis. /pengadaan/retur) menjadi halaman 404
+function NumId({ el }: { el: ReactElement }) {
+  const { id } = useParams();
+  return /^(\d+|baru)$/.test(id || '') ? el : <NotFound />;
+}
 
 function AppRoutes() {
   return (
@@ -116,51 +119,47 @@ function AppRoutes() {
         <Route path="profil" element={<Profile />} />
         <Route path="penjualan" element={<SalesList />} />
         <Route path="penjualan/pelanggan" element={<PartnerList kind="customer" />} />
-        <Route path="penjualan/pelanggan/:id" element={<PartnerDetail kind="customer" />} />
+        <Route path="penjualan/pelanggan/:id" element={<NumId el={<PartnerDetail kind="customer" />} />} />
         <Route path="penjualan/pricelist" element={<SalesPricelists />} />
         <Route path="penjualan/pembayaran" element={<PaymentHistory />} />
-        <Route path="penjualan/:id" element={<SalesDetail />} />
+        <Route path="penjualan/:id" element={<NumId el={<SalesDetail />} />} />
         <Route path="pengadaan" element={<POList />} />
         <Route path="pengadaan/tagihan" element={<InvoiceList type="bill" />} />
-        <Route path="pengadaan/tagihan/:id" element={<InvoiceDetail type="bill" />} />
+        <Route path="pengadaan/tagihan/:id" element={<NumId el={<InvoiceDetail type="bill" />} />} />
         <Route path="pengadaan/pricelist" element={<SupplierPricelist />} />
         <Route path="pengadaan/principal" element={<PartnerList kind="supplier" />} />
-        <Route path="pengadaan/principal/:id" element={<PartnerDetail kind="supplier" />} />
+        <Route path="pengadaan/principal/:id" element={<NumId el={<PartnerDetail kind="supplier" />} />} />
         <Route path="pengadaan/perlu-pesanan" element={<NeedPurchaseList />} />
-        <Route path="pengadaan/retur" element={<PurchaseReturnList />} />
-        <Route path="pengadaan/retur/:id" element={<PurchaseReturnDetail />} />
-        <Route path="pengadaan/:id" element={<PODetail />} />
+        <Route path="pengadaan/:id" element={<NumId el={<PODetail />} />} />
         <Route path="stok" element={<StockOverview />} />
         <Route path="stok/penerimaan" element={<TransferList kind="incoming" />} />
         <Route path="stok/siap-dikirim" element={<ReadyToShipList />} />
         <Route path="stok/surat-jalan" element={<TransferList kind="outgoing" />} />
-        <Route path="stok/dok/:id" element={<TransferDetail />} />
+        <Route path="stok/dok/:id" element={<NumId el={<TransferDetail />} />} />
         <Route path="stok/minimum" element={<StockRules />} />
         <Route path="stok/mutasi" element={<StockMoves />} />
-        <Route path="stok/retur" element={<ReturnList />} />
-        <Route path="stok/retur/:id" element={<ReturnDetail />} />
         <Route path="penagihan" element={<InvoiceList type="invoice" />} />
         <Route path="penagihan/siap" element={<ReadyToInvoice />} />
         <Route path="penagihan/pembayaran" element={<PaymentsList />} />
-        <Route path="penagihan/:id" element={<InvoiceDetail type="invoice" />} />
+        <Route path="penagihan/:id" element={<NumId el={<InvoiceDetail type="invoice" />} />} />
         <Route path="akuntansi/kas" element={<CashPage />} />
         <Route path="akuntansi/jurnal" element={<JournalList />} />
-        <Route path="akuntansi/jurnal/:id" element={<JournalDetail />} />
+        <Route path="akuntansi/jurnal/:id" element={<NumId el={<JournalDetail />} />} />
         <Route path="akuntansi/akun" element={<AccountsPage />} />
         <Route path="akuntansi/buku-besar" element={<LedgerPage />} />
         <Route path="akuntansi/neraca-saldo" element={<TrialBalancePage />} />
         <Route path="akuntansi/rekonsiliasi" element={<BankReconPage />} />
         <Route path="master/pelanggan" element={<PartnerList kind="customer" />} />
-        <Route path="master/pelanggan/:id" element={<PartnerDetail kind="customer" />} />
+        <Route path="master/pelanggan/:id" element={<NumId el={<PartnerDetail kind="customer" />} />} />
         <Route path="master/principal" element={<PartnerList kind="supplier" />} />
-        <Route path="master/principal/:id" element={<PartnerDetail kind="supplier" />} />
+        <Route path="master/principal/:id" element={<NumId el={<PartnerDetail kind="supplier" />} />} />
         <Route path="master/produk" element={<ProductList />} />
-        <Route path="master/produk/:id" element={<ProductDetail />} />
+        <Route path="master/produk/:id" element={<NumId el={<ProductDetail />} />} />
         <Route path="master/kategori" element={<CategoriesUnits />} />
         <Route path="master/top" element={<PaymentTerms />} />
         <Route path="master/pricelist" element={<SalesPricelists />} />
         <Route path="pengaturan/pengguna" element={<UsersList />} />
-        <Route path="pengaturan/pengguna/:id" element={<UserDetail />} />
+        <Route path="pengaturan/pengguna/:id" element={<NumId el={<UserDetail />} />} />
         <Route path="pengaturan/grup" element={<GroupsPage />} />
         <Route path="pengaturan/email" element={<EmailOutbox />} />
         <Route path="pengaturan/perusahaan" element={<CompanyPage />} />
@@ -169,7 +168,7 @@ function AppRoutes() {
         <Route path="pengaturan/api" element={<ApiKeysPage />} />
         <Route path="dokumen" element={<DocumentList />} />
         <Route path="dokumen/baru" element={<DocumentEditor />} />
-        <Route path="dokumen/:id" element={<DocumentEditor />} />
+        <Route path="dokumen/:id" element={<NumId el={<DocumentEditor />} />} />
         <Route path="laporan" element={<ReportsHome />} />
         <Route path="laporan/:key" element={<ReportView />} />
         <Route path="*" element={<NotFound />} />
