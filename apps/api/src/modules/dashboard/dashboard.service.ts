@@ -87,7 +87,9 @@ export class DashboardService {
     };
     const cash = async () =>
       this.one(
-        sql`select coalesce(sum(l.debit - l.credit),0)::float as v from journal_entry_lines l join journal_entries e on e.id = l.move_id join journals j on j.id = e.journal_id where e.state = 'posted' and j.type in ('cash','bank') and l.account_id = j.default_account_id`,
+        // saldo akun kas dan bank dari semua jurnal (termasuk saldo awal, beban, dan setoran PPN di jurnal umum),
+        // sama dengan buku besar
+        sql`select coalesce(sum(l.debit - l.credit),0)::float as v from journal_entry_lines l join journal_entries e on e.id = l.move_id where e.state = 'posted' and l.account_id in (select default_account_id from journals where type in ('cash','bank') and default_account_id is not null)`,
       );
 
     switch (u.group) {

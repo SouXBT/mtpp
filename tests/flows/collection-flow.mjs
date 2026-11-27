@@ -458,6 +458,42 @@ ok(proofDl.ok, 'bukti transfer dapat diunduh');
   );
 }
 
+// ---------- cicilan: pengajuan dan persetujuan bersamaan tidak membuat termin dobel ----------
+{
+  const so = await order(1);
+  await stockFor(so);
+  await deliver(so);
+  const draft = await call(F, 'POST', `/invoices/from-sale/${so}`, {});
+  const inv = await call(F, 'POST', `/invoices/${draft.id}/post`);
+  const res = Number(inv.amountResidual);
+  const half = Math.floor((res / 2) * 100) / 100;
+  const termins = [
+    { dateDue: day(30), amount: half },
+    { dateDue: day(60), amount: Math.round((res - half) * 100) / 100 },
+  ];
+  const okSet = (
+    await Promise.allSettled(
+      [1, 2].map(() => call(F, 'POST', `/invoices/${inv.id}/installments`, { termins, note: 'Uji bersamaan' })),
+    )
+  ).filter((r) => r.status === 'fulfilled').length;
+  let i2 = await call(F, 'GET', `/invoices/${inv.id}`);
+  ok(
+    okSet >= 1 && i2.installments.rows.length === 2,
+    `pengajuan cicilan bersamaan: ${i2.installments.rows.length} termin`,
+  );
+  // pembayaran masuk sebelum disetujui: persetujuan ditolak karena sisa tagihan berubah
+  await call(F, 'POST', '/payments', { invoiceId: inv.id, amount: 1000, method: 'BNK' });
+  await expectFail(
+    call(F, 'POST', `/invoices/${inv.id}/installments/approve`, {}),
+    400,
+    'menyetujui jadwal setelah sisa tagihan berubah',
+    /Sisa tagihan berubah/,
+  );
+  await call(F, 'DELETE', `/invoices/${inv.id}/installments`);
+  i2 = await call(F, 'GET', `/invoices/${inv.id}`);
+  ok(!i2.installments.rows.length, 'jadwal cicilan dibatalkan');
+}
+
 // ---------- isi ulang stok minimum: PO sampai 2x minimum, barang dalam perjalanan ikut dihitung ----------
 {
   const code = prod.defaultCode || prod.code;

@@ -159,6 +159,12 @@ export class BillingService {
     });
     if (err) fail(err);
     await this.db.$transaction(async (tx) => {
+      // dikunci bersama pembayaran invoice: klik ganda tidak membuat termin dobel, dan sisa tagihan dibaca ulang
+      await lockRow(tx, 'journal_entries', id);
+      const cur = must(await tx.journalEntries.findFirst({ where: { id } }), 'Invoice');
+      if (cur.paymentState === 'reversed') fail('Invoice sudah dibalik');
+      if (Math.abs(Number(cur.amountResidual) - Number(e.amountResidual)) > 0.009)
+        fail('Sisa tagihan berubah karena ada pembayaran baru; buka ulang invoice lalu ajukan jadwal lagi');
       const had = await tx.invoiceInstallments.count({ where: { invoiceId: id } });
       await tx.invoiceInstallments.deleteMany({ where: { invoiceId: id } });
       await tx.invoiceInstallments.createMany({
@@ -186,14 +192,17 @@ export class BillingService {
   }
 
   async approveInstallments(u: AuthUser, id: number) {
-    const rows = await this.db.invoiceInstallments.findMany({ where: { invoiceId: id } });
-    if (!rows.length) fail('Invoice belum memiliki jadwal cicilan');
-    if (rows[0].state === 'approved') fail('Jadwal cicilan sudah disetujui');
-    const e = must(await this.db.journalEntries.findFirst({ where: { id } }), 'Invoice');
-    const planned = round2(rows.reduce((a, x) => a + Number(x.amount), 0));
-    if (Math.abs(planned - Number(e.amountResidual)) > 0.5)
-      fail('Sisa tagihan berubah sejak jadwal diajukan; ajukan ulang jadwal cicilan');
     await this.db.$transaction(async (tx) => {
+      // dikunci bersama pembayaran invoice: persetujuan memakai sisa tagihan terbaru
+      await lockRow(tx, 'journal_entries', id);
+      const rows = await tx.invoiceInstallments.findMany({ where: { invoiceId: id } });
+      if (!rows.length) fail('Invoice belum memiliki jadwal cicilan');
+      if (rows[0].state === 'approved') fail('Jadwal cicilan sudah disetujui');
+      const e = must(await tx.journalEntries.findFirst({ where: { id } }), 'Invoice');
+      if (e.paymentState === 'reversed') fail('Invoice sudah dibalik');
+      const planned = round2(rows.reduce((a: number, x: any) => a + Number(x.amount), 0));
+      if (Math.abs(planned - Number(e.amountResidual)) > 0.009)
+        fail('Sisa tagihan berubah sejak jadwal diajukan; ajukan ulang jadwal cicilan');
       await tx.invoiceInstallments.updateMany({
         where: { invoiceId: id },
         data: { state: 'approved', approveUid: u.id, approveDate: nowDate(), writeUid: u.id },
@@ -204,9 +213,10 @@ export class BillingService {
   }
 
   async cancelInstallments(u: AuthUser, id: number) {
-    const n = await this.db.invoiceInstallments.count({ where: { invoiceId: id } });
-    if (!n) fail('Invoice belum memiliki jadwal cicilan');
     await this.db.$transaction(async (tx) => {
+      await lockRow(tx, 'journal_entries', id);
+      const n = await tx.invoiceInstallments.count({ where: { invoiceId: id } });
+      if (!n) fail('Invoice belum memiliki jadwal cicilan');
       await tx.invoiceInstallments.deleteMany({ where: { invoiceId: id } });
       await this.chatter.log(
         MODEL,

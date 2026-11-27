@@ -22,7 +22,16 @@ export class ChatterService {
     tx: any = this.db,
   ) {
     const m = await tx.messages.create({
-      data: { model, resId, authorId, body, messageType: 'log', createDate: nowDate(), writeDate: nowDate() },
+      data: {
+        model,
+        resId,
+        authorId,
+        body,
+        messageType: 'log',
+        date: nowDate(),
+        createDate: nowDate(),
+        writeDate: nowDate(),
+      },
     });
     if (changes.length) {
       await tx.changeLogs.createMany({
@@ -43,7 +52,20 @@ export class ChatterService {
   }
 
   note(model: string, resId: number, authorId: number, body: string) {
-    return this.db.messages.createManyAndReturn({ data: [{ model, resId, authorId, body, messageType: 'note' }] });
+    return this.db.messages.createManyAndReturn({
+      data: [
+        {
+          model,
+          resId,
+          authorId,
+          body,
+          messageType: 'note',
+          date: nowDate(),
+          createDate: nowDate(),
+          writeDate: nowDate(),
+        },
+      ],
+    });
   }
 
   diff(before: any, after: any, fields: { key: string; label: string }[]): Change[] {
