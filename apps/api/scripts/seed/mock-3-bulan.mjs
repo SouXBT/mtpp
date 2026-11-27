@@ -2,6 +2,11 @@
 // penawaran, sales order, PO principal, penerimaan, surat jalan, invoice, pembayaran (tepat waktu, terlambat,
 // sebagian, cicilan), pelanggan baru dengan DP dan pelunasan, izin kirim Pimpinan, retur pelanggan, retur ke principal.
 //
+// Sebagian contoh diambil dari data MTPP Finance (pembukuan-mtpp): pelanggan PT Pembangkit Jawa Daya,
+// PT Industri Baja Nusantara, dan CV Elektrindo Makmur beserta NPWP dan termin pembayarannya; pesanan rutin
+// per proyek (trafo Gardu PJD Unit 3 tiap bulan, cubicle IBN Line B dengan DP 30%, suku cadang Maintenance
+// Elektrindo tiap bulan); dan beban operasional bulanan (gaji, sewa, transportasi, ATK, listrik, administrasi bank).
+//
 // Syarat: katalog dari mock-data.mjs sudah dimuat, dan API berjalan dengan MOCK_DATE_HEADER=true
 // (stack uji sudah memakainya). Setiap request membawa header x-mock-date sehingga nomor dokumen dan tanggalnya
 // mengikuti hari simulasi. Skrip menulis data dan menolak berjalan dua kali.
@@ -103,7 +108,14 @@ const warn = [];
 // ---------------------------------------------------------------- master: pelanggan lama tambahan dan pelanggan baru
 const terms = await call(P, 'GET', '/payment-terms');
 const top = (days) => terms.find((t) => Number(t.days) === days) || terms.find((t) => Number(t.days) > 0);
+// [nama, kota, termin (hari), masa tenggang (hari), NPWP]
+const FINANCE = {
+  PJD: ['PT Pembangkit Jawa Daya', 'Gresik', 30, 7, '01.234.567.8-901.000'],
+  IBN: ['PT Industri Baja Nusantara', 'Sidoarjo', 45, 10, '02.345.678.9-012.000'],
+  ELK: ['CV Elektrindo Makmur', 'Surabaya', 14, 5, ''],
+};
 const REGULAR = [
+  ...Object.values(FINANCE),
   ['PT Wijaya Karya Instalasi', 'Surabaya', 30, 7],
   ['PT Sumber Energi Gresik', 'Gresik', 30, 5],
   ['CV Cahaya Listrik Sidoarjo', 'Sidoarjo', 14, 7],
@@ -117,12 +129,18 @@ const NEWCOMERS = [
   ['CV Karya Mandiri Elektrik', 'Lamongan'],
 ];
 const regular = [];
-for (const [name, city, days, grace] of REGULAR) {
+for (const [name, city, days, grace, vat] of REGULAR) {
   const c = await call(
     A,
     'POST',
     '/partners',
-    { kind: 'customer', name, city, email: `keuangan@${name.toLowerCase().replace(/[^a-z]+/g, '')}.co.id` },
+    {
+      kind: 'customer',
+      name,
+      city,
+      vat: vat || undefined,
+      email: `keuangan@${name.toLowerCase().replace(/[^a-z]+/g, '')}.co.id`,
+    },
     START,
   );
   await call(
@@ -462,6 +480,150 @@ async function customerReturn(d, pickingId, soId) {
   await call(res === 'ganti' ? O : F, 'POST', `/returns/${r.id}/process`, undefined, d);
   count(`retur pelanggan (${res})`);
   if (res === 'ganti') at(workday(addDays(d, int(1, 4))), 'kirim pengganti', (d2) => deliver(d2, soId, 0));
+}
+
+// ---------------------------------------------------------------- pesanan proyek dari MTPP Finance
+const byCode = (code) => {
+  const p = products.find((x) => x.code === code);
+  if (!p) throw new Error(`produk ${code} tidak ada`);
+  return p;
+};
+const customer = (key) => regular.find((c) => c.name === FINANCE[key][0]);
+// pesanan pasti jadi: penawaran dikirim, dikonfirmasi 1-3 hari kemudian; dp = persen uang muka sebelum kirim
+function projectOrder(day, key, project, lines, dp) {
+  at(day, `pesanan ${project}`, async (d) => {
+    const cust = customer(key);
+    const ref = `${MARK}PO-${String(++refNo).padStart(4, '0')}`;
+    const q = await call(
+      S,
+      'POST',
+      '/sales-orders',
+      {
+        partnerId: cust.id,
+        clientOrderRef: `${ref} ${project}`,
+        lines: lines.map(([code, qty]) => ({ productId: byCode(code).id, productUomQty: qty })),
+      },
+      d,
+    );
+    count('penawaran');
+    count('pesanan proyek');
+    await call(S, 'POST', `/sales-orders/${q.id}/send`, {}, d);
+    at(workday(addDays(d, int(1, 3))), 'konfirmasi proyek', async (d2) => {
+      if (!dp) return confirmOrder(d2, q.id, cust, false);
+      // seperti jurnal MTPP Finance "DP 30% PO cubicle IBN (uang muka pelanggan)"
+      await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {}, d2);
+      count('sales order');
+      const so = await call(F, 'GET', `/sales-orders/${q.id}`, undefined, d2);
+      if ((so.shortage || []).some((x) => x.shortage > 0))
+        at(workday(addDays(d2, int(0, 2))), 'PO principal', (d3) => purchaseFor(d3, q.id));
+      const settle = addDays(d2, 30);
+      await call(F, 'POST', `/sales-orders/${q.id}/proforma`, { mode: 'persen', percent: dp, settleDate: settle }, d2);
+      at(workday(addDays(d2, int(2, 5))), 'DP proyek', async (d3) => {
+        await call(
+          F,
+          'POST',
+          '/payments',
+          {
+            saleId: q.id,
+            amount: Math.round(Number(so.amountTotal) * dp) / 100,
+            kind: 'dp',
+            settleDate: settle,
+            method: 'BNK',
+            memo: `DP ${dp}% ${project}`,
+          },
+          d3,
+        );
+        count('pembayaran DP');
+        at(workday(addDays(d3, int(1, 3))), 'kirim', (d4) => deliver(d4, q.id, 0));
+      });
+    });
+  });
+}
+// trafo untuk Gardu PJD Unit 3 sekitar tanggal 12 tiap bulan (MTPP Finance: penjualan trafo PJD bulanan)
+const PJD_LINES = [
+  [
+    ['TRF-OIL-400', 2],
+    ['TRF-BUCHHOLZ', 2],
+    ['TRF-BREATHER', 2],
+  ],
+  [
+    ['TRF-OIL-630', 1],
+    ['TRF-OIL-400', 1],
+  ],
+  [
+    ['TRF-OIL-800', 1],
+    ['TRF-BUCHHOLZ', 1],
+  ],
+];
+// suku cadang Maintenance Elektrindo sekitar tanggal 18 tiap bulan (MTPP Finance: jasa pemeliharaan bulanan)
+const ELK_LINES = [
+  ['MCB-IC60', 20],
+  ['KTR-TESYS-D', 6],
+  ['SPD-IPRD', 2],
+  ['MTR-IEM3100', 4],
+];
+for (let m = START.slice(0, 7), i = 0; m <= END.slice(0, 7); i++) {
+  const pjd = workday(`${m}-12`),
+    elk = workday(`${m}-18`);
+  if (pjd >= START) projectOrder(pjd, 'PJD', 'Gardu PJD Unit 3', PJD_LINES[i % PJD_LINES.length]);
+  if (elk >= START) projectOrder(elk, 'ELK', 'Maintenance Elektrindo', ELK_LINES);
+  m = addDays(`${m}-01`, 32).slice(0, 7);
+}
+// cubicle untuk IBN Line B, satu pesanan besar dengan DP 30% (MTPP Finance: DP 300 juta)
+projectOrder(
+  workday(addDays(START, 20)),
+  'IBN',
+  'Cubicle IBN Line B',
+  [
+    ['CUB-SM6-IM', 2],
+    ['CUB-SM6-QM', 2],
+    ['CUB-SM6-DM1A', 1],
+    ['CUB-RM6', 1],
+  ],
+  30,
+);
+
+// ---------------------------------------------------------------- beban operasional bulanan dari MTPP Finance
+// akun yang belum ada di bagan akun MTPP Distribusi ditambahkan; tanggal 28 tiap bulan dibayar lewat bank
+const accounts = await call(F, 'GET', '/accounts');
+const account = async (code, name) => {
+  const a = accounts.find((x) => x.code === code);
+  if (a) return a.id;
+  const n = await call(F, 'POST', '/accounts', { code, name, accountType: 'expense' });
+  accounts.push(n);
+  return n.id;
+};
+const OPEX = [
+  [await account('6-1000', 'Beban Gaji'), 85e6, 'Gaji karyawan'],
+  [await account('6-3000', 'Beban Sewa'), 15e6, 'Sewa kantor dan gudang transit'],
+  [await account('6-5000', 'Beban Transportasi & Perjalanan'), 8e6, 'Transportasi dan perjalanan dinas'],
+  [await account('6-6000', 'Beban Kantor & ATK'), 3e6, 'Keperluan kantor dan ATK'],
+  [await account('6-7000', 'Beban Listrik, Air & Komunikasi'), 4e6, 'Listrik, air, telepon, internet'],
+  [await account('6-4000', 'Beban Administrasi Bank'), 0.5e6, 'Biaya administrasi bank'],
+];
+const bankAcc = accounts.find((x) => x.code === '1-1200')?.id;
+for (let m = START.slice(0, 7); m <= END.slice(0, 7); m = addDays(`${m}-01`, 32).slice(0, 7)) {
+  const day = workday(`${m}-28`);
+  if (day < START) continue;
+  at(day, 'beban operasional', async (d) => {
+    const total = OPEX.reduce((t, [, amt]) => t + amt, 0);
+    await call(
+      F,
+      'POST',
+      '/journal-entries',
+      {
+        date: d,
+        ref: `Beban operasional ${m}`,
+        post: true,
+        lines: [
+          ...OPEX.map(([accountId, debit, name]) => ({ accountId, debit, name })),
+          { accountId: bankAcc, credit: total, name: `Beban operasional ${m}` },
+        ],
+      },
+      d,
+    );
+    count('jurnal beban operasional');
+  });
 }
 
 // ---------------------------------------------------------------- jadwal 90 hari

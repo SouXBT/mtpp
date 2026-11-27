@@ -55,7 +55,7 @@ Mengisi 49 produk dari katalog website MTPP, dengan harga, stok, kontak principa
 API=http://localhost:8080/api node apps/api/scripts/seed/mock-data.mjs
 ```
 
-**Transaksi 3 bulan ke belakang** (setelah katalog di atas): 90 hari kerja penawaran, sales order, PO principal, penerimaan, surat jalan, invoice, pembayaran tepat waktu/terlambat/sebagian, cicilan, pelanggan baru dengan DP dan pelunasan, izin kirim Pimpinan, retur pelanggan, dan retur ke principal. Setiap dokumen bertanggal dan bernomor sesuai harinya, sehingga laporan per bulan, umur piutang, dan beranda terisi. API harus berjalan dengan `MOCK_DATE_HEADER=true` (stack uji sudah memakainya; di stack utama hanya dinyalakan sementara).
+**Transaksi 3 bulan ke belakang** (setelah katalog di atas): 90 hari kerja penawaran, sales order, PO principal, penerimaan, surat jalan, invoice, pembayaran tepat waktu/terlambat/sebagian, cicilan, pelanggan baru dengan DP dan pelunasan, izin kirim Pimpinan, retur pelanggan, dan retur ke principal. Pelanggan PT Pembangkit Jawa Daya, PT Industri Baja Nusantara, dan CV Elektrindo Makmur, pesanan rutin per proyek (Gardu PJD Unit 3, Cubicle IBN Line B dengan DP 30%, Maintenance Elektrindo), NPWP principal, dan beban operasional bulanan diambil dari data contoh MTPP Finance. Setiap dokumen bertanggal dan bernomor sesuai harinya, sehingga laporan per bulan, umur piutang, dan beranda terisi. API harus berjalan dengan `MOCK_DATE_HEADER=true` (stack uji sudah memakainya; di stack utama hanya dinyalakan sementara).
 
 ```bash
 API=http://localhost:8081/api node apps/api/scripts/seed/mock-3-bulan.mjs   # DAYS=90 bawaan, END=tanggal akhir

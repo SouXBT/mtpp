@@ -1,5 +1,6 @@
 // Data contoh MTPP Distribusi: katalog produk dari website MTPP (src/content/products.ts),
-// sedangkan harga, stok, kontak principal, dan transaksinya adalah data contoh.
+// sedangkan harga, stok, kontak principal, dan transaksinya adalah data contoh. Nama dan NPWP principal
+// Trafindo dan Schneider diambil dari data contoh MTPP Finance (pembukuan-mtpp).
 // Jalankan: API=http://localhost:8080/api node apps/api/scripts/seed/mock-data.mjs
 // Skrip ini menulis data dan menolak berjalan dua kali pada database yang sama.
 const API = process.env.API || 'http://localhost:8081/api';
@@ -60,8 +61,8 @@ async function importRows(token, kind, rows) {
   console.log(`  ${kind}: ${j.imported} baris`);
 }
 
-const TRAFINDO = 'Trafindo',
-  SCHNEIDER = 'Schneider Electric',
+const TRAFINDO = 'PT Trafindo Prima Perkasa',
+  SCHNEIDER = 'Schneider Electric Indonesia',
   SUPREME = 'Supreme Cable',
   KMI = 'Kabelmetal Indonesia',
   VOKSEL = 'Voksel Electric',
@@ -74,9 +75,16 @@ const CAT = {
   ev: 'EV Charging Station',
 };
 
+// [nama, kota, gudang, catatan pembayaran, NPWP]
 const PRINCIPALS = [
-  [TRAFINDO, 'Jakarta', 'Gudang Trafindo', 'Pembayaran 30 hari setelah barang diterima'],
-  [SCHNEIDER, 'Jakarta', 'Gudang Schneider Electric', 'Pembayaran 30 hari setelah barang diterima'],
+  [TRAFINDO, 'Jakarta', 'Gudang Trafindo', 'Pembayaran 30 hari setelah barang diterima', '03.456.789.0-123.000'],
+  [
+    SCHNEIDER,
+    'Jakarta',
+    'Gudang Schneider Electric',
+    'Pembayaran 30 hari setelah barang diterima',
+    '04.567.890.1-234.000',
+  ],
   [SUPREME, 'Jakarta', 'Gudang Supreme Cable', 'Pembayaran 45 hari setelah barang diterima'],
   [KMI, 'Jakarta', 'Gudang Kabelmetal', 'Pembayaran 45 hari setelah barang diterima'],
   [VOKSEL, 'Bogor', 'Gudang Voksel', 'Pembayaran 45 hari setelah barang diterima'],
@@ -240,8 +248,9 @@ console.log('Master');
 await importRows(
   A,
   'principals',
-  PRINCIPALS.map(([name, city, warehouseName, supplierNote]) => ({
+  PRINCIPALS.map(([name, city, warehouseName, supplierNote, vat]) => ({
     name,
+    vat: vat || '',
     email: `order@${name.toLowerCase().replace(/[^a-z]/g, '')}.contoh.test`,
     city,
     warehouseName,
