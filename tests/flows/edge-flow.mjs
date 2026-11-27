@@ -53,6 +53,19 @@ async function call(token, method, path, body, raw = false) {
   }
   return j;
 }
+
+// PO principal wajib uang muka (Pengaturan → Syarat PO, bawaan 30%) sebelum dikonfirmasi
+async function payDp(token, poId) {
+  const po = await call(token, 'GET', `/purchase-orders/${poId}`, undefined);
+  if (po.dp?.due > 0.5)
+    await call(token, 'POST', '/payments', {
+      purchaseId: poId,
+      amount: po.dp.due,
+      kind: 'dp',
+      method: 'BNK',
+      memo: `Uang muka ${po.name}`,
+    });
+}
 const check = (c, m) => {
   if (c) log.push(`  ✓ ${m}`);
   else {
@@ -158,6 +171,7 @@ async function receivedPO(cQty = 3) {
   const q = await quote(regular, [line(p, cQty)]);
   await confirm(q);
   const [po] = await call(F, 'POST', `/purchase-orders/from-sale/${q.id}`);
+  await payDp(F, po.id);
   await call(F, 'POST', `/purchase-orders/${po.id}/confirm`);
   await receiveAll(po.id);
   return { p, q, po };
@@ -180,6 +194,7 @@ async function withStock(n) {
       mtppSaleLineId: l.mtppSaleLineId,
     })),
   });
+  await payDp(F, po.id);
   await call(F, 'POST', `/purchase-orders/${po.id}/confirm`);
   await receiveAll(po.id);
   const [ds] = await call(O, 'POST', `/transfers/from-sale/${q.id}`);
@@ -273,12 +288,13 @@ await test('A3 pembatalan pembayaran', async () => {
   const { po } = await receivedPO();
   const b = await call(F, 'POST', `/invoices/from-purchase/${po.id}`, { ref: 'A3' });
   const bp = await call(F, 'POST', `/invoices/${b.id}/post`);
-  const paid = await call(F, 'POST', '/payments', { purchaseId: po.id, amount: bp.amountTotal, method: 'BNK' });
+  // sisa tagihan sudah dipotong uang muka PO
+  const paid = await call(F, 'POST', '/payments', { purchaseId: po.id, amount: bp.amountResidual, method: 'BNK' });
   check((await call(F, 'GET', `/purchase-orders/${po.id}`)).mtppPaymentState === 'lunas', 'PO lunas sesudah dibayar');
   await call(F, 'POST', `/payments/${paid.id}/cancel`, {});
   const s = await call(F, 'GET', `/purchase-orders/${po.id}`);
   check(
-    s.mtppPaymentState === 'belum dibayar' && s.mtppAmountDue === bp.amountTotal,
+    ['belum dibayar', 'sebagian'].includes(s.mtppPaymentState) && s.mtppAmountDue === bp.amountResidual,
     `PO ${s.mtppPaymentState}, sisa ${s.mtppAmountDue}`,
   );
   // uang muka
@@ -337,7 +353,7 @@ await test('A5 nota kredit principal mengurangi tagihan', async () => {
   const bp = await call(F, 'POST', `/invoices/${b.id}/post`);
   await call(F, 'POST', `/invoices/refund-purchase/${po.id}`, { amount: 100000, ref: 'NK-A5' });
   let s = await call(F, 'GET', `/purchase-orders/${po.id}`);
-  check(s.mtppAmountDue === bp.amountTotal - 111000, `sisa utang ${s.mtppAmountDue}`);
+  check(s.mtppAmountDue === bp.amountResidual - 111000, `sisa utang ${s.mtppAmountDue}`);
   await call(F, 'POST', '/payments', { purchaseId: po.id, amount: s.mtppAmountDue, method: 'BNK' });
   s = await call(F, 'GET', `/purchase-orders/${po.id}`);
   const b2 = await call(F, 'GET', `/invoices/${b.id}`);
@@ -554,6 +570,7 @@ await test('B2 Tutup sisa PO', async () => {
   await confirm(q);
   const [po] = await call(F, 'POST', `/purchase-orders/from-sale/${q.id}`);
   await rejected(call(F, 'POST', `/purchase-orders/${po.id}/close-remaining`, {}), 400, null, 'PO belum dikonfirmasi');
+  await payDp(F, po.id);
   await call(F, 'POST', `/purchase-orders/${po.id}/confirm`);
   await rejected(
     call(F, 'POST', `/purchase-orders/${po.id}/close-remaining`, {}),
@@ -587,6 +604,7 @@ await test('B3 batal SO dengan PO atau uang muka (uang muka hangus)', async () =
   const q = await quote(c, [line(p, 5)]);
   const so = await confirm(q);
   const [po] = await call(F, 'POST', `/purchase-orders/from-sale/${q.id}`);
+  await payDp(F, po.id);
   await call(F, 'POST', `/purchase-orders/${po.id}/confirm`);
   await call(F, 'POST', '/payments', { saleId: q.id, amount: 200000, method: 'BNK' });
   await rejected(
@@ -665,6 +683,7 @@ await test('C1 daftar kerja Finance dan Operasional', async () => {
   check(!has(await call(O, 'GET', '/sales-orders/worklist/ready'), q), 'SO tanpa stok tidak masuk Siap Dikirim');
   const [po] = await call(F, 'POST', `/purchase-orders/from-sale/${q.id}`);
   check(!has(await call(F, 'GET', '/sales-orders/worklist/need-po'), q), 'keluar dari daftar sesudah PO dibuat');
+  await payDp(F, po.id);
   await call(F, 'POST', `/purchase-orders/${po.id}/confirm`);
   await receiveAll(po.id);
   check(has(await call(O, 'GET', '/sales-orders/worklist/ready'), q), 'masuk Siap Dikirim sesudah barang diterima');

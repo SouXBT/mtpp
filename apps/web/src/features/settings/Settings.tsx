@@ -722,6 +722,17 @@ export function DocumentSettings() {
                   value={po.note}
                   onChange={(e) => setPo({ ...po, note: e.target.value })}
                 />
+                <div className="muted" style={{ marginTop: 10 }}>
+                  Uang muka ke principal sebelum PO dikonfirmasi (%, 0 = tidak wajib; Pimpinan dapat mengecualikan per
+                  PO)
+                </div>
+                <InputNumber
+                  disabled={!w}
+                  min={0}
+                  max={100}
+                  value={po.dpPercent ?? 30}
+                  onChange={(x) => setPo({ ...po, dpPercent: Number(x ?? 0) })}
+                />
                 {w && (
                   <Button type="primary" style={{ margin: '10px 0 20px' }} onClick={() => save('po_terms', po)}>
                     Simpan

@@ -1,4 +1,4 @@
-import { UpdatePurchaseOrderDto, SendPurchaseOrderDto } from './purchasing.dto';
+import { UpdatePurchaseOrderDto, SendPurchaseOrderDto, ConfirmPurchaseOrderDto } from './purchasing.dto';
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthUser, CurrentUser, Perm, stripCost } from '../../shared/auth';
@@ -33,11 +33,13 @@ export class PurchasingController {
   ) {
     return this.po.send(u, id, b || {});
   }
-  @Post(':id/confirm') @Perm('pengadaan', 'write') confirm(
+  // Pimpinan (hak baca) boleh mengonfirmasi dengan pengecualian uang muka; selain itu perlu hak ubah, dicek di service
+  @Post(':id/confirm') @Perm('pengadaan', 'read') confirm(
     @CurrentUser() u: AuthUser,
     @Param('id', ParseIntPipe) id: number,
+    @Body() b: ConfirmPurchaseOrderDto,
   ) {
-    return this.po.confirm(u, id);
+    return this.po.confirm(u, id, b || {});
   }
   @Post(':id/close-remaining') @Perm('pengadaan', 'write') closeRemaining(
     @CurrentUser() u: AuthUser,

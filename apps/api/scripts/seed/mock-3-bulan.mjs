@@ -72,6 +72,19 @@ async function call(token, method, path, body, day) {
   }
   return j;
 }
+
+// PO principal wajib uang muka (Pengaturan → Syarat PO, bawaan 30%) sebelum dikonfirmasi
+async function payDp(token, poId, day) {
+  const po = await call(token, 'GET', `/purchase-orders/${poId}`, undefined, day);
+  if (po.dp?.due > 0.5)
+    await call(
+      token,
+      'POST',
+      '/payments',
+      { purchaseId: poId, amount: po.dp.due, kind: 'dp', method: 'BNK', memo: `Uang muka ${po.name}` },
+      day,
+    );
+}
 const login = async (u) => (await call('', 'POST', '/auth/login', { login: `${u}@mtpp.co.id`, password: PASS })).token;
 const [P, A, S, O, F] = await Promise.all(['pimpinan', 'admin', 'sales', 'operasional', 'finance'].map(login));
 
@@ -274,6 +287,7 @@ async function purchaseFor(d, soId) {
   }
   for (const po of Array.isArray(pos) ? pos : [pos]) {
     await call(F, 'POST', `/purchase-orders/${po.id}/send`, {}, d);
+    await payDp(F, po.id, d);
     await call(F, 'POST', `/purchase-orders/${po.id}/confirm`, undefined, d);
     count('PO principal');
     const arrive = workday(addDays(d, int(3, 12)));

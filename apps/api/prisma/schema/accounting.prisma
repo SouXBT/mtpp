@@ -134,6 +134,8 @@ model Payments {
   partnerId                      Int                  @map("partner_id")
   invoiceId                      Int?                 @map("invoice_id")
   mtppSaleOrderId                Int?                 @map("mtpp_sale_order_id")
+  // uang muka kepada principal atas PO (sebelum tagihan ada)
+  mtppPurchaseOrderId            Int?                 @map("mtpp_purchase_order_id")
   amount                         Decimal              @db.Decimal(18, 2)
   amountApplied                  Decimal              @default(0) @map("mtpp_amount_applied") @db.Decimal(18, 2)
   date                           DateTime             @db.Date
@@ -150,11 +152,13 @@ model Payments {
   partner                        Partners             @relation("payments_partnerId", fields: [partnerId], references: [id], map: "payments_partner_id_partners_id_fk", onDelete: NoAction, onUpdate: NoAction)
   invoice                        JournalEntries?      @relation("payments_invoiceId", fields: [invoiceId], references: [id], map: "payments_invoice_id_journal_entries_id_fk", onDelete: NoAction, onUpdate: NoAction)
   mtppSaleOrder                  SalesOrders?         @relation("payments_mtppSaleOrderId", fields: [mtppSaleOrderId], references: [id], map: "payments_mtpp_sale_order_id_sales_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
+  mtppPurchaseOrder              PurchaseOrders?      @relation("payments_mtppPurchaseOrderId", fields: [mtppPurchaseOrderId], references: [id], map: "payments_mtpp_purchase_order_id_purchase_orders_id_fk", onDelete: NoAction, onUpdate: NoAction)
   revBankStatementLinesPaymentId BankStatementLines[] @relation("bankStatementLines_paymentId")
 
   @@index([invoiceId], map: "payments_invoice_id_idx")
   @@index([journalId], map: "payments_journal_id_idx")
   @@index([mtppSaleOrderId], map: "payments_mtpp_sale_order_id_idx")
+  @@index([mtppPurchaseOrderId], map: "payments_mtpp_purchase_order_id_idx")
   @@index([moveId], map: "payments_move_id_idx")
   @@index([partnerId], map: "payments_partner_id_idx")
   @@map("payments")

@@ -40,6 +40,19 @@ async function call(token, method, path, body) {
   if (!r.ok) throw new Error(`${method} ${path} -> ${r.status} ${j?.message || t}`);
   return j;
 }
+
+// PO principal wajib uang muka (Pengaturan → Syarat PO, bawaan 30%) sebelum dikonfirmasi
+async function payDp(token, poId) {
+  const po = await call(token, 'GET', `/purchase-orders/${poId}`, undefined);
+  if (po.dp?.due > 0.5)
+    await call(token, 'POST', '/payments', {
+      purchaseId: poId,
+      amount: po.dp.due,
+      kind: 'dp',
+      method: 'BNK',
+      memo: `Uang muka ${po.name}`,
+    });
+}
 const login = async (u) => (await call('', 'POST', '/auth/login', { login: `${u}@mtpp.co.id`, password: PASS })).token;
 const csvCell = (v) => {
   const s = v == null ? '' : String(v);
@@ -389,8 +402,8 @@ const so4 = await confirm(
 console.log(`  ${so4.name}: siap dikirim`);
 
 const so5 = await confirm(await quote('Husada', 'PO-RSHM-3321', [['EV-DC-120-2', 1]]));
-for (const po of asList(await call(F, 'POST', `/purchase-orders/from-sale/${so5.id}`)))
-  await call(F, 'POST', `/purchase-orders/${po.id}/confirm`);
+for (const po of asList(await call(F, 'POST', `/purchase-orders/from-sale/${so5.id}`))) await payDp(F, po.id);
+await call(F, 'POST', `/purchase-orders/${po.id}/confirm`);
 console.log(`  ${so5.name}: PO Principal dikonfirmasi, menunggu penerimaan`);
 
 const so6 = await confirm(await quote('Anugerah', 'PO-APL-0921', [['MTR-IEM3100', 10]]));

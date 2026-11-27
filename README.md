@@ -15,15 +15,19 @@ Sales        Buat penawaran (PN/...) -> isi PO Pelanggan -> Konfirmasi (SO/...)
              stok kurang ----------- pelanggan baru ----------- stok tersedia
                   |                        |                        |
 Finance      Buat PO Principal       Terima pembayaran              |
-             -> kirim, konfirmasi          | wajib lunas            |
+             -> kirim               (DP / lunas)                    |
+             -> bayar DP 30%               | wajib lunas            |
+             -> konfirmasi                 |                        |
                   |                        v                        v
-Operasional  Validasi penerimaan ------> Buat surat jalan -> Validasi surat jalan
+Operasional  Terima barang -------> Buat surat jalan -> Validasi surat jalan
                   |                                                 |
-Finance      Catat tagihan,                                         v
-             bayar principal     Buat invoice -> Posting -> Catat pembayaran
+Finance      Catat tagihan (- DP),                                  v
+             bayar sisa 70%      Buat invoice -> Posting -> Catat pembayaran
 ```
 
 Satu sales order bisa menempuh beberapa jalur sekaligus. Keterangan **Berikutnya** di detail sales order menyebut langkah yang menunggu.
+
+PO Principal baru bisa dikonfirmasi setelah uang muka 30% dibayar ke principal (**Bayar Uang Muka 30%** di halaman PO). Pimpinan dapat mengecualikan satu PO lewat **Konfirmasi tanpa Uang Muka** dengan alasan. Uang muka otomatis memotong tagihan principal saat diposting. Persennya diatur di Pengaturan → Syarat pesanan & pembayaran (0 = tidak wajib). Penerimaan barang bisa divalidasi dari Stok → Penerimaan Barang atau langsung dengan **Terima Barang** di halaman PO.
 
 ## Menjalankan dengan Docker (cara paling mudah)
 
@@ -181,7 +185,7 @@ Sama dengan bagian "Modul dan pemilik" di rencana build (berdasarkan Tabel 1.1 b
 
 **Operasional** — Pemantauan PO Principal & penerimaan terlambat · Barang masuk + bukti penerimaan · Stok fisik/terikat/bebas + mutasi · Surat jalan 3 lembar & pengiriman bertahap · Penerimaan susulan · Dropship · Stok minimum · Jadwal pengiriman & filter terlambat · Alamat kirim · Laporan stok & pengiriman · Buat Surat Jalan dari detail SO atau daftar Siap Dikirim · Operasional melihat harga beli di PO Principal; harga pokok dan margin di halaman SO tetap tersembunyi.
 
-**Finance** — Pricelist & diskon principal · PO dari SO terkonfirmasi (kekurangan stok, satu PO per principal, dropship dipisah) · Tagihan & pembayaran principal (status: menunggu barang → lunas) · Proforma invoice (persen ⇄ nominal, tanpa jurnal) · Invoice (DPP, PPN 12% × 11/12, terbilang, jatuh tempo) · Pembayaran & umur piutang (uang muka pelanggan baru dipakai otomatis) · Kas · Bagan akun & jurnal otomatis seimbang · Jurnal penyesuaian, pembalik, buku besar · Rekonsiliasi bank (impor CSV, cocok otomatis).
+**Finance** — Pricelist & diskon principal · PO dari SO terkonfirmasi (kekurangan stok, satu PO per principal, dropship dipisah) · Uang muka ke principal sebelum PO dikonfirmasi (bawaan 30%, diatur di Pengaturan → Syarat pesanan & pembayaran; Pimpinan dapat mengecualikan per PO dengan alasan; dipotong otomatis dari tagihan principal) · Tagihan & pembayaran principal (status: menunggu barang → lunas) · Proforma invoice (persen ⇄ nominal, tanpa jurnal) · Invoice (DPP, PPN 12% × 11/12, terbilang, jatuh tempo) · Pembayaran & umur piutang (uang muka pelanggan baru dipakai otomatis) · Kas · Bagan akun & jurnal otomatis seimbang · Jurnal penyesuaian, pembalik, buku besar · Rekonsiliasi bank (impor CSV, cocok otomatis).
 
 ## Pembuat dokumen (menu Surat & Berita Acara)
 

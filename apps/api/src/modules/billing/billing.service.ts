@@ -5,7 +5,7 @@ import { AuthUser, dataRule } from '../../shared/auth';
 import { SettingsService } from '../../shared/settings.service';
 import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
-import { graduateCustomer, refreshPurchase, refreshSale, salePayments } from '../../shared/status';
+import { graduateCustomer, purchaseAdvances, refreshPurchase, refreshSale, salePayments } from '../../shared/status';
 import {
   addDays,
   fail,
@@ -407,9 +407,46 @@ export class BillingService {
         await this.applyAdvances(tx, id, u.id);
         await graduateCustomer(tx, e.saleId, this.chatter, u.id);
       }
+      if (e.purchaseId && e.moveType === 'in_invoice') await this.applyPurchaseAdvances(tx, id, u.id);
       if (e.purchaseId) await refreshPurchase(tx, e.purchaseId);
     });
     return this.get(id);
+  }
+
+  // uang muka PO dipakai otomatis saat tagihan principal diposting: Debit Utang Usaha, Kredit Uang Muka Pembelian
+  private async applyPurchaseAdvances(tx: any, billId: number, uid: number) {
+    const bill = await tx.journalEntries.findFirst({ where: { id: billId } });
+    let residual = Number(bill.amountResidual);
+    const adv = await purchaseAdvances(tx, bill.purchaseId);
+    if (!adv.available || residual <= 0) return;
+    for (const p of adv.rows) {
+      const avail = round2(Number(p.amount) - Number(p.amountApplied));
+      if (avail <= 0 || residual <= 0) continue;
+      const x = round2(Math.min(avail, residual));
+      await this.journal.create(tx, {
+        journal: 'UMM',
+        partnerId: bill.partnerId,
+        ref: `${REF_USE}${p.name} untuk ${bill.name}`,
+        post: true,
+        uid,
+        lines: [
+          { accountId: await this.journal.map('payable', tx), debit: x, name: bill.name },
+          { accountId: await this.journal.map('purchaseAdvance', tx), credit: x, name: 'Pemakaian uang muka' },
+        ],
+      });
+      await tx.payments.updateMany({
+        where: { id: p.id },
+        data: { amountApplied: round2(Number(p.amountApplied) + x) },
+      });
+      residual = round2(residual - x);
+    }
+    await tx.journalEntries.updateMany({
+      where: { id: billId },
+      data: {
+        amountResidual: residual,
+        paymentState: residual <= 0.5 ? 'paid' : residual < Number(bill.amountTotal) ? 'partial' : 'not_paid',
+      },
+    });
   }
 
   // Jurnal UMM yang menyelesaikan sebuah invoice, dikenali dari keterangannya (lihat applyAdvances dan settleRounding).
@@ -450,7 +487,7 @@ export class BillingService {
       return 'Dokumen tidak dapat dibalik';
     if (await tx.payments.findFirst({ where: { invoiceId: e.id, state: { not: 'cancel' } } }))
       return 'Dokumen sudah memiliki pembayaran; batalkan pembayaran dulu';
-    const uses = e.moveType === 'out_invoice' ? await this.advanceUses(tx, e) : [];
+    const uses = await this.advanceUses(tx, e);
     const settled = uses.filter((x: any) => x.receivable).reduce((a: number, x: any) => a + x.amount, 0);
     if (Number(e.amountResidual) + settled < Number(e.amountTotal) - 0.5)
       return 'Dokumen sudah dibayar sebagian; koreksi dengan jurnal penyesuaian';
@@ -570,19 +607,18 @@ export class BillingService {
     if (block) fail(block);
     const r = await this.db.$transaction(async (tx) => {
       const lines = await tx.journalEntryLines.findMany({ where: { moveId: id } });
-      // pemakaian uang muka dibatalkan lebih dulu sehingga uangnya kembali ke uang muka SO
-      if (e.moveType === 'out_invoice')
-        for (const use of await this.advanceUses(tx, e)) {
-          await this.journal.reverse(tx, use.id, u.id);
-          if (use.paymentName) {
-            const p = await tx.payments.findFirst({ where: { name: use.paymentName } });
-            if (p)
-              await tx.payments.updateMany({
-                where: { id: p.id },
-                data: { amountApplied: round2(Math.max(Number(p.amountApplied) - use.amount, 0)) },
-              });
-          }
+      // pemakaian uang muka dibatalkan lebih dulu sehingga uangnya kembali ke uang muka SO atau PO
+      for (const use of await this.advanceUses(tx, e)) {
+        await this.journal.reverse(tx, use.id, u.id);
+        if (use.paymentName) {
+          const p = await tx.payments.findFirst({ where: { name: use.paymentName } });
+          if (p)
+            await tx.payments.updateMany({
+              where: { id: p.id },
+              data: { amountApplied: round2(Math.max(Number(p.amountApplied) - use.amount, 0)) },
+            });
         }
+      }
       const rv = await this.journal.reverse(tx, id, u.id, e.moveType === 'out_invoice' ? 'out_refund' : 'in_refund');
       await tx.invoiceInstallments.deleteMany({ where: { invoiceId: id } });
       for (const l of lines) {
@@ -841,6 +877,68 @@ export class BillingService {
         await graduateCustomer(tx, so.id, this.chatter, u.id);
         return p;
       }
+      if (b.purchaseId && b.kind === 'dp') {
+        // uang muka kepada principal atas PO: Debit Uang Muka Pembelian, Kredit Kas/Bank
+        const po = must(await tx.purchaseOrders.findFirst({ where: { id: b.purchaseId } }), 'Pesanan');
+        if (!['draft', 'sent', 'purchase'].includes(po.state))
+          fail('Uang muka dibayar untuk PO yang belum selesai atau batal');
+        const adv = await purchaseAdvances(tx, po.id);
+        const left = round2(Number(po.amountTotal) - adv.paid);
+        if (amount > left + 0.5) fail(`Jumlah melebihi sisa nilai PO (${rupiah(left)})`);
+        const e = await this.journal.create(tx, {
+          journal: method,
+          date,
+          partnerId: po.partnerId,
+          ref: `Uang muka ${po.name}${b.memo ? ' – ' + b.memo : ''}`,
+          post: true,
+          uid: u.id,
+          lines: [
+            {
+              accountId: await this.journal.map('purchaseAdvance', tx),
+              debit: amount,
+              name: `Uang muka ${po.name}`,
+            },
+            { accountId: cashAcc, credit: amount, name: po.name },
+          ],
+        });
+        const p = await tx.payments.create({
+          data: {
+            name: e.name,
+            moveId: e.id,
+            journalId: jr.id,
+            partnerId: po.partnerId,
+            mtppPurchaseOrderId: po.id,
+            amount,
+            date,
+            paymentType: 'outbound',
+            partnerType: 'supplier',
+            memo: b.memo,
+            createUid: u.id,
+          },
+        });
+        await this.chatter.log(
+          'purchase_orders',
+          po.id,
+          u.id,
+          `Uang muka ${rupiah(amount)} dibayar ke principal (${e.name})`,
+          [],
+          tx,
+        );
+        // tagihan yang sudah diposting dan belum lunas langsung dipotong
+        const bills = await tx.journalEntries.findMany({
+          where: {
+            AND: [
+              { purchaseId: po.id },
+              { state: 'posted' },
+              { moveType: 'in_invoice' },
+              { amountResidual: { gt: 0 } },
+            ],
+          },
+        });
+        for (const x of bills) await this.applyPurchaseAdvances(tx, x.id, u.id);
+        await refreshPurchase(tx, po.id);
+        return p;
+      }
       if (b.purchaseId) {
         // bayar principal: tagihan diposting yang belum lunas, dari yang terlama
         const bills = await tx.journalEntries.findMany({
@@ -984,6 +1082,10 @@ export class BillingService {
         if (inv.saleId) await refreshSale(tx, inv.saleId);
       }
       if (p.mtppSaleOrderId) await this.chatter.log('sales_orders', p.mtppSaleOrderId, u.id, msg, [], tx);
+      if (p.mtppPurchaseOrderId) {
+        await this.chatter.log('purchase_orders', p.mtppPurchaseOrderId, u.id, msg, [], tx);
+        await refreshPurchase(tx, p.mtppPurchaseOrderId);
+      }
     });
     return { ok: true };
   }

@@ -28,7 +28,8 @@ export const DEFAULT_SETTINGS: Record<string, any> = {
     validityDays: 30,
     warranty: 'Garansi 12 bulan sesuai ketentuan pabrik.',
   },
-  po_terms: { note: 'Mohon konfirmasi ketersediaan barang dan tanggal kirim.' },
+  // dpPercent: uang muka minimal kepada principal sebelum PO dapat dikonfirmasi (0 = tidak wajib)
+  po_terms: { note: 'Mohon konfirmasi ketersediaan barang dan tanggal kirim.', dpPercent: 30 },
   bank: {
     text: 'Bank Central Asia — KCP Kedungdoro, Surabaya\nNo. Rekening 103.023.8938 a.n. PT Mentari Timur Prima Perkasa',
   },
@@ -47,6 +48,7 @@ export const DEFAULT_SETTINGS: Record<string, any> = {
     income: '4-1000',
     expense: '5-1000',
     advance: '2-1200',
+    purchaseAdvance: '1-1500',
     opening: '3-9000',
     cash: '1-1100',
     bank: '1-1200',

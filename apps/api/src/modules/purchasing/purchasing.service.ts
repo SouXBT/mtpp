@@ -1,12 +1,12 @@
 import { nowDate } from '../../shared/clock';
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { AuthUser, dataRule } from '../../shared/auth';
+import { AuthUser, checkPerm, dataRule } from '../../shared/auth';
 import { NumberingService } from '../../shared/numbering.service';
 import { SettingsService } from '../../shared/settings.service';
 import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
-import { refreshPurchase } from '../../shared/status';
+import { purchaseAdvances, refreshPurchase } from '../../shared/status';
 import {
   addDays,
   fail,
@@ -103,6 +103,7 @@ export class PurchasingService {
     const dest = o.destAddressId ? await this.db.partners.findFirst({ where: { id: o.destAddressId } }) : null;
     return {
       ...o,
+      dp: await this.dpInfo(o),
       stateLabel: PO_STATE[o.state],
       destAddress: dest,
       lines: lines.map((r) => ({ ...r.l, code: r.code, uom: r.uom })),
@@ -225,12 +226,52 @@ export class PurchasingService {
     });
   }
 
-  async confirm(u: AuthUser, id: number) {
+  // Uang muka kepada principal: persen dari Pengaturan (Syarat PO), wajib terbayar sebelum PO dikonfirmasi
+  async dpInfo(o: { id: number; amountTotal: any; mtppDpWaiveNote?: string | null }, tx: any = this.db) {
+    const percent = Number((await this.settings.get('po_terms')).dpPercent ?? 30);
+    const required = round2((Number(o.amountTotal) * percent) / 100);
+    const adv = await purchaseAdvances(tx, o.id);
+    return {
+      percent,
+      required,
+      paid: adv.paid,
+      available: adv.available,
+      due: round2(Math.max(required - adv.paid, 0)),
+      waived: !!o.mtppDpWaiveNote,
+      waiveNote: o.mtppDpWaiveNote ?? null,
+    };
+  }
+
+  // waive: pengecualian tanpa uang muka, hanya Pimpinan, alasan wajib
+  async confirm(u: AuthUser, id: number, b: { waive?: boolean; note?: string } = {}) {
     const o = must(await this.db.purchaseOrders.findFirst({ where: { id: id } }), 'Pesanan');
     if (!['draft', 'sent'].includes(o.state)) fail('Pesanan sudah dikonfirmasi atau batal');
+    const dp = await this.dpInfo(o);
+    const short = dp.percent > 0 && dp.due > 0.5;
+    const note = String(b.note || '').trim();
+    if (short && !b.waive)
+      fail(
+        `Bayar uang muka ${dp.percent}% ke principal (${rupiah(dp.required)}) sebelum PO dikonfirmasi; sudah dibayar ${rupiah(dp.paid)}`,
+      );
+    if (short && b.waive) {
+      if (u.group !== 'PIMPINAN') fail('Hanya Pimpinan yang dapat mengonfirmasi PO tanpa uang muka');
+      if (!note) fail('Isi alasan konfirmasi tanpa uang muka');
+    } else checkPerm(u, 'pengadaan', 'write');
     const lines = await this.db.purchaseOrderLines.findMany({ where: { orderId: id } });
     await this.db.$transaction(async (tx) => {
-      await tx.purchaseOrders.updateMany({ where: { id: id }, data: { state: 'purchase', writeUid: u.id } });
+      await tx.purchaseOrders.updateMany({
+        where: { id: id },
+        data: { state: 'purchase', writeUid: u.id, ...(short ? { mtppDpWaiveNote: note } : {}) },
+      });
+      if (short)
+        await this.chatter.log(
+          MODEL,
+          id,
+          u.id,
+          `Dikonfirmasi tanpa uang muka ${dp.percent}% (pengecualian): ${note}`,
+          [],
+          tx,
+        );
       const items = lines.map((l) => ({
         productId: l.productId,
         qty: Number(l.productQty),

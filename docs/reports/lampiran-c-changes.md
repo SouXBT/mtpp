@@ -78,3 +78,22 @@ Nama tabel dan kolom lama tidak berubah. Dua tabel, dua kolom, dan sembilan rela
 | `purchase_return_lines.product_id` | `products.id` | ditolak |
 
 **Tanpa tabel baru**: bukti transfer disimpan di `attachments` dengan `res_model = 'payments'`. Uang muka hangus dicatat sebagai jurnal UMM (Debit 2-1200 Uang Muka Pelanggan, Kredit 4-2000 Pendapatan Lain-lain) yang terhubung ke `journal_entries.mtpp_sale_order_id`.
+
+## Migrasi `20261127090000_purchase_down_payment`
+
+Uang muka (DP) kepada principal: PO baru dapat dikonfirmasi setelah uang muka minimal sebesar persen di Pengaturan (bawaan 30%) dibayar, kecuali Pimpinan mengecualikannya dengan alasan.
+
+**Kolom baru**
+
+| Tabel | Kolom | Tipe | Arti |
+| --- | --- | --- | --- |
+| `payments` | `mtpp_purchase_order_id` | integer, boleh kosong | PO yang dibayar uang mukanya kepada principal (sebelum tagihan ada) |
+| `purchase_orders` | `mtpp_dp_waive_note` | text, boleh kosong | Alasan PO dikonfirmasi tanpa uang muka (pengecualian oleh Pimpinan) |
+
+**Relasi baru**
+
+| Dari | Ke | Saat data induk dihapus |
+| --- | --- | --- |
+| `payments.mtpp_purchase_order_id` | `purchase_orders.id` | ditolak |
+
+**Jurnal**: pembayaran uang muka Debit 1-1500 Uang Muka Pembelian, Kredit Kas/Bank. Saat tagihan principal diposting, uang muka dipakai lewat jurnal UMM (Debit 2-1100 Utang Usaha, Kredit 1-1500 Uang Muka Pembelian). Persen uang muka disimpan di `settings` (kunci `po_terms`, nilai `dpPercent`), tanpa tabel baru.

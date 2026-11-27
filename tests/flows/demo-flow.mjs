@@ -52,6 +52,19 @@ async function call(token, method, path, body, raw = false) {
   }
   return j;
 }
+
+// PO principal wajib uang muka (Pengaturan → Syarat PO, bawaan 30%) sebelum dikonfirmasi
+async function payDp(token, poId) {
+  const po = await call(token, 'GET', `/purchase-orders/${poId}`, undefined);
+  if (po.dp?.due > 0.5)
+    await call(token, 'POST', '/payments', {
+      purchaseId: poId,
+      amount: po.dp.due,
+      kind: 'dp',
+      method: 'BNK',
+      memo: `Uang muka ${po.name}`,
+    });
+}
 const expectFail = async (p, status, m) => {
   try {
     await p;
@@ -154,8 +167,31 @@ const pos2 = await call(F, 'POST', `/purchase-orders/from-sale/${q2.id}`);
 const allPo = [...(Array.isArray(pos1) ? pos1 : [pos1]), ...(Array.isArray(pos2) ? pos2 : [pos2])];
 ok(allPo.length >= 3, `${allPo.length} PO Principal dibuat (dropship dipisah)`);
 await expectFail(call(F, 'POST', `/purchase-orders/from-sale/${q2.id}`), 400, 'PO ganda untuk kekurangan yang sama');
+// uang muka ke principal: tanpa DP konfirmasi ditolak, Pimpinan dapat mengecualikan dengan alasan
+const dpPo = await call(F, 'GET', `/purchase-orders/${allPo[0].id}`);
+ok(
+  dpPo.dp.percent === 30 && Math.abs(dpPo.dp.required - dpPo.amountTotal * 0.3) < 1,
+  'uang muka principal 30% dari nilai PO',
+);
+await expectFail(call(F, 'POST', `/purchase-orders/${dpPo.id}/confirm`), 400, 'konfirmasi PO tanpa uang muka ditolak');
+await expectFail(
+  call(F, 'POST', `/purchase-orders/${dpPo.id}/confirm`, { waive: true, note: 'kredit principal' }),
+  400,
+  'pengecualian uang muka hanya oleh Pimpinan',
+);
+await expectFail(
+  call(P, 'POST', `/purchase-orders/${dpPo.id}/confirm`, { waive: true }),
+  400,
+  'pengecualian uang muka wajib beralasan',
+);
+await expectFail(
+  call(F, 'POST', '/payments', { purchaseId: dpPo.id, amount: dpPo.amountTotal + 1000, kind: 'dp', method: 'BNK' }),
+  400,
+  'uang muka melebihi nilai PO ditolak',
+);
 for (const po of allPo) {
   await call(F, 'POST', `/purchase-orders/${po.id}/send`, {});
+  await payDp(F, po.id);
   await call(F, 'POST', `/purchase-orders/${po.id}/confirm`);
 }
 ok(true, 'PO dikirim dan dikonfirmasi');
@@ -281,10 +317,18 @@ const pol = await call(F, 'GET', '/purchase-orders');
 for (const po of pol.filter((p) => p.state === 'purchase' || p.state === 'done')) {
   const b = await call(F, 'POST', `/invoices/from-purchase/${po.id}`, { ref: 'INV-PRC-' + po.id }).catch((e) => null);
   if (!b) continue;
-  await call(F, 'POST', `/invoices/${b.id}/post`);
+  const bp = await call(F, 'POST', `/invoices/${b.id}/post`);
+  // uang muka PO dipotong otomatis dari tagihan pertama
+  if (po.id === dpPo.id)
+    ok(
+      Math.abs(Number(bp.amountResidual) - Math.max(Number(bp.amountTotal) - dpPo.dp.required, 0)) < 1,
+      'uang muka principal memotong tagihan saat diposting',
+    );
+  const left = Number(bp.amountResidual);
+  if (left <= 0.5) continue;
   await call(F, 'POST', '/payments', {
     purchaseId: po.id,
-    amount: Math.round(b.amountTotal / (po.id % 2 ? 1 : 2)),
+    amount: po.id % 2 ? left : Math.round(left / 2),
     method: 'BNK',
   });
 }

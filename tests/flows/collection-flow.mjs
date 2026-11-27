@@ -53,6 +53,19 @@ async function call(token, method, path, body, raw = false) {
   }
   return j;
 }
+
+// PO principal wajib uang muka (Pengaturan → Syarat PO, bawaan 30%) sebelum dikonfirmasi
+async function payDp(token, poId) {
+  const po = await call(token, 'GET', `/purchase-orders/${poId}`, undefined);
+  if (po.dp?.due > 0.5)
+    await call(token, 'POST', '/payments', {
+      purchaseId: poId,
+      amount: po.dp.due,
+      kind: 'dp',
+      method: 'BNK',
+      memo: `Uang muka ${po.name}`,
+    });
+}
 const expectFail = async (p, status, m, re) => {
   try {
     await p;
@@ -120,6 +133,7 @@ async function stockFor(soId) {
   const pos = await call(F, 'POST', `/purchase-orders/from-sale/${soId}`);
   for (const po of Array.isArray(pos) ? pos : [pos]) {
     await call(F, 'POST', `/purchase-orders/${po.id}/send`, {});
+    await payDp(F, po.id);
     await call(F, 'POST', `/purchase-orders/${po.id}/confirm`);
     const rec = (await call(O, 'GET', `/transfers?kind=incoming&purchaseId=${po.id}`)).filter(
       (t) => t.state !== 'done',

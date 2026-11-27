@@ -5,6 +5,7 @@ import {
   DatePicker,
   Descriptions,
   Input,
+  message,
   InputNumber,
   Modal,
   Radio,
@@ -18,7 +19,7 @@ import {
 import { MailOutlined, PrinterOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useCan } from '../../app/auth';
+import { useAuth, useCan } from '../../app/auth';
 import { useFetch, useQueryState } from '../../shared/hooks';
 import { api, idr, nf, openFile, paymentForm, qf, rp, run, tgl, today } from '../../shared/lib';
 import { EmailTag, LABEL, emptyText, PageHead, Pill, SearchBar, StatusBar } from '../../shared/ui';
@@ -238,12 +239,15 @@ export function PODetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const can = useCan();
+  const { me } = useAuth();
   const doc = useFetch<any>(`/purchase-orders/${id}`);
   const [o, setO] = useState<any>(null);
   const [dirty, setDirty] = useState(false);
   const [rk, setRk] = useState(0);
   const [billOpen, setBillOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [dpOpen, setDpOpen] = useState(false);
+  const [waiveOpen, setWaiveOpen] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
   const [retOpen, setRetOpen] = useState(false);
   useEffect(() => {
@@ -287,6 +291,41 @@ export function PODetail() {
   const canBill =
     ['purchase', 'done'].includes(o.state) && o.lines.some((l: any) => Number(l.qtyReceived) > Number(l.qtyInvoiced));
   const due = Number(o.mtppAmountDue || 0);
+  // uang muka kepada principal wajib sebelum konfirmasi (persen dari Pengaturan → Syarat PO); Pimpinan dapat mengecualikan
+  const dp = o.dp || { percent: 0, required: 0, paid: 0, due: 0 };
+  const preConfirm = ['draft', 'sent'].includes(o.state);
+  const dpShort = preConfirm && dp.percent > 0 && dp.due > 0.5;
+  const confirmPO = (extra: any = {}) =>
+    Modal.confirm({
+      title: 'Konfirmasi PO?',
+      content: o.isDropship
+        ? 'Surat jalan dropship dibuat otomatis.'
+        : 'Penerimaan barang dibuat otomatis di gudang principal.',
+      okText: 'Konfirmasi',
+      cancelText: 'Batal',
+      onOk: async () => {
+        if (dirty) await save();
+        if ((await run(api.post(`/purchase-orders/${id}/confirm`, extra), 'Pesanan dikonfirmasi')) !== undefined)
+          reload();
+      },
+    });
+  // penerimaan (atau surat jalan dropship) yang belum divalidasi; divalidasi langsung dari PO sebesar kuantitas pesanan
+  const openTransfers = (o.transfers || []).filter((t: any) => !['done', 'cancel'].includes(t.state));
+  const receiveAll = () =>
+    Modal.confirm({
+      title: o.isDropship ? 'Konfirmasi barang dropship diterima pelanggan?' : 'Terima semua barang PO ini?',
+      content: o.isDropship
+        ? 'Surat jalan dropship divalidasi sebesar kuantitas pesanan. Stok gudang tidak berubah.'
+        : 'Penerimaan barang divalidasi sebesar kuantitas pesanan dan stok gudang bertambah. Untuk menerima sebagian, buka dokumen penerimaannya di tab Penerimaan Barang.',
+      okText: o.isDropship ? 'Konfirmasi' : 'Terima Barang',
+      cancelText: 'Batal',
+      onOk: async () => {
+        for (const t of openTransfers)
+          if ((await run(api.post(`/transfers/${t.id}/validate`, {}))) === undefined) return reload();
+        message.success(o.isDropship ? 'Barang dropship dikonfirmasi diterima' : 'Barang diterima');
+        reload();
+      },
+    });
   const payStep = PAY_STATES.includes(o.mtppPaymentState) ? o.mtppPaymentState : 'menunggu barang';
 
   return (
@@ -320,21 +359,26 @@ export function PODetail() {
         <Button icon={<PrinterOutlined />} onClick={() => openFile(`/purchase-orders/${id}/pdf`)}>
           Cetak
         </Button>
-        {['draft', 'sent'].includes(o.state) && can('pengadaan', 'write') && (
+        {dpShort && can('pengadaan', 'create') && (
+          <Button type="primary" onClick={() => setDpOpen(true)}>
+            Bayar Uang Muka {nf(dp.percent, 0)}%
+          </Button>
+        )}
+        {preConfirm && can('pengadaan', 'write') && (
           <Button
-            onClick={() =>
-              Modal.confirm({
-                title: 'Konfirmasi PO?',
-                content: o.isDropship
-                  ? 'Surat jalan dropship dibuat otomatis.'
-                  : 'Penerimaan barang dibuat otomatis di gudang principal.',
-                okText: 'Konfirmasi',
-                cancelText: 'Batal',
-                onOk: () => act('confirm', 'Pesanan dikonfirmasi'),
-              })
-            }
+            disabled={dpShort}
+            title={dpShort ? `Bayar uang muka ${nf(dp.percent, 0)}% ke principal dulu` : undefined}
+            onClick={() => confirmPO()}
           >
             Konfirmasi
+          </Button>
+        )}
+        {dpShort && me?.group === 'PIMPINAN' && (
+          <Button onClick={() => setWaiveOpen(true)}>Konfirmasi tanpa Uang Muka</Button>
+        )}
+        {o.state === 'purchase' && openTransfers.length > 0 && can('gudang', 'write') && (
+          <Button type={dirty ? 'default' : 'primary'} onClick={receiveAll}>
+            {o.isDropship ? 'Konfirmasi Diterima Pelanggan' : 'Terima Barang'}
           </Button>
         )}
         {canBill && can('pengadaan', 'create') && (
@@ -431,6 +475,20 @@ export function PODetail() {
             {o.isDropship ? `${o.destAddress?.name || ''}, ${o.destAddress?.street || ''}` : o.warehouse?.name}
           </Descriptions.Item>
           <Descriptions.Item label="Tanggal PO">{tgl(o.dateOrder)}</Descriptions.Item>
+          {(dp.percent > 0 || dp.paid > 0) && (
+            <Descriptions.Item label={`Uang muka ${nf(dp.percent, 0)}%`}>
+              {o.mtppDpWaiveNote ? (
+                <Tag color="orange" title={o.mtppDpWaiveNote}>
+                  dikecualikan: {o.mtppDpWaiveNote}
+                </Tag>
+              ) : (
+                <>
+                  {rp(dp.paid)} dari {rp(dp.required)}{' '}
+                  {dp.due <= 0.5 ? <Tag color="green">terbayar</Tag> : <Tag color="gold">kurang {rp(dp.due)}</Tag>}
+                </>
+              )}
+            </Descriptions.Item>
+          )}
         </Descriptions>
         <Row gutter={24} style={{ marginTop: 12 }}>
           <Col xs={24} md={8}>
@@ -606,6 +664,25 @@ export function PODetail() {
           }}
         />
       )}
+      {dpOpen && (
+        <PayModal
+          title={`Uang muka ${nf(dp.percent, 0)}% ke ${o.partner?.name}`}
+          body={{ purchaseId: o.id, kind: 'dp', memo: `Uang muka ${nf(dp.percent, 0)}% ${o.name}` }}
+          max={dp.due}
+          onClose={(ok) => {
+            setDpOpen(false);
+            if (ok) reload();
+          }}
+        />
+      )}
+      {waiveOpen && (
+        <WaiveModal
+          onClose={(note) => {
+            setWaiveOpen(false);
+            if (note) confirmPO({ waive: true, note });
+          }}
+        />
+      )}
       {payOpen && (
         <PayModal
           title={`Bayar ${o.partner?.name}`}
@@ -714,6 +791,32 @@ function RefundModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void }
         Nomor nota kredit
       </div>
       <Input value={v.ref} onChange={(e) => setV({ ...v, ref: e.target.value })} />
+    </Modal>
+  );
+}
+
+// alasan konfirmasi PO tanpa uang muka kepada principal (pengecualian Pimpinan)
+function WaiveModal({ onClose }: { onClose: (note?: string) => void }) {
+  const [note, setNote] = useState('');
+  return (
+    <Modal
+      open
+      title="Konfirmasi tanpa uang muka"
+      okText="Lanjut"
+      cancelText="Batal"
+      okButtonProps={{ disabled: !note.trim() }}
+      onCancel={() => onClose()}
+      onOk={() => onClose(note.trim())}
+    >
+      <p className="muted">
+        Pengecualian: PO dikonfirmasi tanpa uang muka ke principal. Alasannya dicatat di PO dan riwayat.
+      </p>
+      <Input.TextArea
+        rows={3}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Contoh: principal memberi kredit penuh 30 hari untuk proyek ini"
+      />
     </Modal>
   );
 }

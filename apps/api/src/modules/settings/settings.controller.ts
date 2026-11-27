@@ -35,6 +35,10 @@ export class SettingsController {
         d = Number(b.dppDen);
       if (!(r >= 0 && r <= 100) || !(n > 0) || !(d > 0)) fail('Tarif PPN atau DPP tidak valid');
     }
+    if (key === 'po_terms' && b.dpPercent !== undefined) {
+      const x = Number(b.dpPercent);
+      if (!(x >= 0 && x <= 100)) fail('Persen uang muka principal harus 0 sampai 100');
+    }
     return this.settings.set(key, b);
   }
 

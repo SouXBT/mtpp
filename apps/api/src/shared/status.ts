@@ -27,6 +27,17 @@ export async function salePayments(tx: any, saleId: number) {
   return { advance, available, amount: round2(advance + onInvoices) };
 }
 
+// Uang muka kepada principal atas PO: paid = total dibayar, available = belum dipakai tagihan
+export async function purchaseAdvances(tx: any, poId: number) {
+  const rows = await tx.payments.findMany({
+    where: { AND: [{ mtppPurchaseOrderId: poId }, { state: { not: 'cancel' } }, { paymentType: 'outbound' }] },
+    orderBy: { id: 'asc' },
+  });
+  const paid = round2(rows.reduce((a: number, p: any) => a + Number(p.amount), 0));
+  const available = round2(rows.reduce((a: number, p: any) => a + Number(p.amount) - Number(p.amountApplied), 0));
+  return { rows, paid, available };
+}
+
 // Penanda pelanggan baru berakhir saat sales order terkirim seluruhnya dan lunas
 export async function graduateCustomer(
   tx: any,
