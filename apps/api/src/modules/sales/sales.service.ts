@@ -955,11 +955,14 @@ export class SalesService {
     const partial = amount < total - 0.5;
     const pDate = b.date || today();
     if (o.dateOrder && pDate < String(o.dateOrder)) fail('Tanggal proforma tidak boleh sebelum tanggal sales order');
-    if (partial && !b.settleDate) fail('Isi tanggal pelunasan sisa pembayaran');
-    if (partial && String(b.settleDate) <= pDate) fail('Tanggal pelunasan harus setelah tanggal proforma');
+    // pelanggan baru melunasi sisa pada tanggal yang disepakati; sisa pelanggan lama ditagih lewat invoice (term)
+    const cust = await this.db.partners.findFirst({ where: { id: o.partnerId }, select: { mtppIsNewCustomer: true } });
+    const settle = partial ? b.settleDate || null : null;
+    if (partial && !settle && cust?.mtppIsNewCustomer) fail('Isi tanggal pelunasan sisa pembayaran');
+    if (settle && String(settle) <= pDate) fail('Tanggal pelunasan harus setelah tanggal proforma');
     const dueDate = addDays(pDate, grace);
     // sisa dilunasi setelah batas bayar uang muka, bukan sebelumnya
-    if (partial && String(b.settleDate) < dueDate)
+    if (settle && String(settle) < dueDate)
       fail(`Tanggal pelunasan sisa tidak boleh sebelum batas bayar uang muka (${dueDate})`);
     return this.db.$transaction(async (tx) => {
       // dikunci dan dibaca ulang: penerbitan bersamaan memakai satu nomor PI, tanpa nomor yang terbuang
@@ -976,7 +979,7 @@ export class SalesService {
           mtppDpPercent: percent,
           mtppDpAmount: amount,
           mtppProformaNote: b.note ?? o.mtppProformaNote,
-          mtppSettleDate: partial ? b.settleDate : null,
+          mtppSettleDate: settle,
           mtppProformaDueDate: dueDate,
         },
       });

@@ -9,7 +9,6 @@ import {
   Form,
   Input,
   InputNumber,
-  message,
   Modal,
   Popconfirm,
   Radio,
@@ -531,7 +530,9 @@ export function SalesDetail() {
   const poRule = poMin > 0 ? `wajib untuk pesanan mulai ${rp(poMin)}` : 'wajib';
   const confirmSO = () => {
     let po = String(o.clientOrderRef ?? '');
-    Modal.confirm({
+    // tombol Konfirmasi nonaktif selama PO wajib belum diisi
+    const blocked = () => ({ disabled: poRequired && !po.trim() });
+    const dlg = Modal.confirm({
       title: 'Konfirmasi menjadi sales order?',
       content: (
         <>
@@ -556,20 +557,16 @@ export function SalesDetail() {
               defaultValue={po}
               onChange={(e) => {
                 po = e.target.value;
+                dlg.update({ okButtonProps: blocked() });
               }}
             />
           </div>
         </>
       ),
       okText: 'Konfirmasi',
+      okButtonProps: blocked(),
       cancelText: 'Batal',
-      onOk: () => {
-        if (poRequired && !po.trim()) {
-          message.error('Isi nomor PO dari pelanggan dulu');
-          return Promise.reject();
-        }
-        return act('confirm', 'Sales order dikonfirmasi', { clientOrderRef: po.trim() });
-      },
+      onOk: () => act('confirm', 'Sales order dikonfirmasi', { clientOrderRef: po.trim() }),
     });
   };
   const moreItems = [
@@ -1360,7 +1357,7 @@ function ProformaModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void
         note,
         date,
         graceDays,
-        settleDate: mode === 'lunas' ? undefined : settleDate,
+        settleDate: mode === 'lunas' || !o.partner?.mtppIsNewCustomer ? undefined : settleDate,
       }),
       'Proforma diterbitkan (tanpa jurnal)',
     );
@@ -1467,7 +1464,12 @@ function ProformaModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void
         />
         <span className="muted">bayar paling lambat {tgl(dayjs(date).add(graceDays, 'day').format('YYYY-MM-DD'))}</span>
       </Space>
-      {mode !== 'lunas' && (
+      {mode !== 'lunas' && !o.partner?.mtppIsNewCustomer && (
+        <p className="muted" style={{ marginTop: 12 }}>
+          Pelanggan lama: sisa nilai sales order ditagih lewat invoice sesuai term of payment.
+        </p>
+      )}
+      {mode !== 'lunas' && o.partner?.mtppIsNewCustomer && (
         <>
           <div style={{ marginTop: 12 }} className="muted">
             Sisa dilunasi paling lambat

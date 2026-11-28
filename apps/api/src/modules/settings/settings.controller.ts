@@ -61,6 +61,8 @@ export class SettingsController {
       if (!(r >= 0 && r <= 100) || !(n > 0) || !(d > 0)) fail('Tarif PPN atau DPP tidak valid');
     }
     if (key === 'collection') {
+      // simpan sebagian: kolom yang tidak dikirim tetap memakai nilai tersimpan, bukan kembali ke bawaan
+      b = { ...((await this.settings.get('collection')) || {}), ...b };
       // setiap angka penagihan diperiksa batasnya dan disimpan sebagai angka, bukan teks
       const ranges: [string, number, number, string][] = [
         ['graceDays', 0, 90, 'Masa tenggang bawaan harus 0 sampai 90 hari'],

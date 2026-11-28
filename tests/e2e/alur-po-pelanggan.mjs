@@ -145,9 +145,13 @@ try {
   await page.waitForLoadState('networkidle').catch(() => {});
   await page.getByRole('button', { name: 'Konfirmasi' }).click();
   await dialog.waitFor();
-  await dialog.getByRole('button', { name: 'Konfirmasi' }).click();
-  await page.waitForTimeout(1000);
-  cek(await dialog.isVisible(), 'tanpa PO, dialog tetap terbuka');
+  cek(await dialog.getByRole('button', { name: 'Konfirmasi' }).isDisabled(), 'tanpa PO, tombol Konfirmasi nonaktif');
+  await dialog.getByLabel('PO Pelanggan').fill('PO-SEMENTARA');
+  cek(
+    await dialog.getByRole('button', { name: 'Konfirmasi' }).isEnabled(),
+    'setelah PO diisi, tombol Konfirmasi aktif',
+  );
+  await dialog.getByLabel('PO Pelanggan').fill('');
   cek((await ambil(b.id)).state === 'draft', 'tanpa PO, penawaran tetap draf');
   await dialog.getByRole('button', { name: 'Batal' }).click();
   await dialog.waitFor({ state: 'hidden' });
