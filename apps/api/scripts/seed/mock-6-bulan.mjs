@@ -484,11 +484,11 @@ async function invoice(d, soId) {
       if (half <= 0.5) return;
       await call(F, 'POST', '/payments', { invoiceId: inv.id, amount: half, method: 'BNK' }, d2);
       count('pembayaran invoice sebagian');
-      at(workday(addDays(due, int(-2, 20))), 'pelunasan invoice', (d3) => payRest(d3, inv.id));
+      at(workday(addDays(due, -int(0, 2))), 'pelunasan invoice', (d3) => payRest(d3, inv.id));
     });
   } else {
-    // kebanyakan tepat waktu, sebagian dalam masa tenggang, sebagian terlambat lama
-    const off = r < 0.6 ? -int(0, 8) : r < 0.8 ? int(1, 6) : r < 0.9 ? int(10, 30) : int(35, 75);
+    // semua pelanggan membayar paling lambat pada jatuh tempo: tidak ada yang menunggak
+    const off = -int(0, 8);
     at(workday(addDays(due, off)), 'pembayaran invoice', (d2) => payRest(d2, inv.id));
   }
   if (chance(0.4))
@@ -524,7 +524,7 @@ function installments(d, e) {
     at(workday(addDays(d2, 1)), 'setujui cicilan', async (d3) => {
       await call(F, 'POST', `/invoices/${e.id}/installments/approve`, undefined, d3);
       for (const t of termins)
-        at(workday(addDays(t.dateDue, int(-3, 4))), 'bayar termin', async (d4) => {
+        at(workday(addDays(t.dateDue, -int(0, 3))), 'bayar termin', async (d4) => {
           const y = await call(F, 'GET', `/invoices/${e.id}`, undefined, d4);
           const amt = Math.min(t.amount, Number(y.amountResidual));
           if (amt > 0.5) {
@@ -797,6 +797,33 @@ await (async () => {
     if (pos.length) stats['PO isi ulang akhir periode'] = pos.length;
   } catch (e) {
     warn.push(`isi ulang akhir: ${e.message}`);
+  }
+  // semua invoice pelanggan dan tagihan principal yang masih terbuka dilunasi hari ini: tidak ada yang menunggak
+  for (const type of ['out', 'bill']) {
+    const open = await call(
+      F,
+      'GET',
+      `/invoices?type=${type}&state=posted&paymentState=not_paid,partial`,
+      undefined,
+      END,
+    );
+    for (const x of open) {
+      const e = x.e || x;
+      if (!['out_invoice', 'in_invoice'].includes(e.moveType)) continue;
+      try {
+        if (e.moveType === 'out_invoice') await payRest(END, e.id);
+        else {
+          const y = await call(F, 'GET', `/invoices/${e.id}`, undefined, END);
+          const left = Number(y.amountResidual);
+          if (left > 0.5) {
+            await call(F, 'POST', '/payments', { invoiceId: e.id, amount: left, method: 'BNK' }, END);
+            count('pembayaran principal');
+          }
+        }
+      } catch (err) {
+        warn.push(`${END} pelunasan ${e.name}: ${err.msg || err.message}`);
+      }
+    }
   }
   const after = await call(O, 'GET', '/stock', undefined, END);
   const notSafe = after.filter((r) => r.minQty != null && r.status !== 'aman');
