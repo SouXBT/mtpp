@@ -8,6 +8,8 @@ import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
 import { salePayments } from '../../shared/status';
 import {
+  customerPoRequired,
+  poRequiredMsg,
   PROFORMA_MAX_GRACE,
   PROFORMA_MIN_GRACE,
   collectionSettings,
@@ -531,6 +533,10 @@ export class SalesService {
       // setelah dikonfirmasi baris terkunci; hanya tanggal rencana kirim, PO pelanggan, dan alamat kirim
       if (Object.keys(b).some((k) => !headOnly.includes(k)))
         fail('Sales order sudah dikonfirmasi; batalkan dan kembalikan ke Draf untuk mengubah baris');
+      if (o.state === 'sale' && b.clientOrderRef !== undefined && !String(b.clientOrderRef ?? '').trim()) {
+        const rule = await customerPoRequired(this.db, Number(o.amountTotal));
+        if (rule.required) fail(poRequiredMsg(rule.min));
+      }
     }
     const head: any = {};
     for (const k of HEAD_FIELDS) if (b[k] !== undefined) head[k] = b[k] === '' ? null : b[k];
@@ -629,6 +635,9 @@ export class SalesService {
         o.quotationNumber && o.name === o.quotationNumber ? await this.numbering.next(tx, 'SO', today()) : null;
       // PO pelanggan: hanya string yang mengubah nilai ('' = dikosongkan); tidak dikirim atau null = tetap
       const po = typeof b.clientOrderRef === 'string' ? b.clientOrderRef.trim() || null : o.clientOrderRef;
+      // PO dari pelanggan (lama maupun baru) menjadi dasar pesanan mulai batas minimal di Pengaturan
+      const rule = await customerPoRequired(tx, Number(o.amountTotal));
+      if (!po && rule.required) fail(poRequiredMsg(rule.min));
       const head =
         b.clientOrderRef !== undefined || b.commitmentDate !== undefined
           ? { clientOrderRef: po, commitmentDate: b.commitmentDate || o.commitmentDate }

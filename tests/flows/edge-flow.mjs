@@ -149,7 +149,7 @@ const newCustomer = async () =>
   });
 const quote = (c, lines, extra = {}) => call(S, 'POST', '/sales-orders', { partnerId: c.id, lines, ...extra });
 const confirm = async (q) => {
-  await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {});
+  await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   return call(S, 'GET', `/sales-orders/${q.id}`);
 };
 const line = (p, qty, extra = {}) => ({ productId: p.id, productUomQty: qty, ...extra });
@@ -783,12 +783,12 @@ await test('C3 nama dokumen', async () => {
 
 await test('C5 laporan Admin', async () => {
   const reps = await call(A, 'GET', '/reports');
-  check(reps.length === 3, `Admin memiliki ${reps.length} laporan: ${reps.map((r) => r.key).join(', ')}`);
+  check(reps.length === 12, `Admin memiliki ${reps.length} laporan: ${reps.map((r) => r.key).join(', ')}`);
   for (const r of reps) {
     const d = await call(A, 'GET', `/reports/${r.key}?range=year`);
     check(Array.isArray(d.rows), `${r.title}: ${d.rows.length} baris`);
   }
-  await rejected(call(A, 'GET', '/reports/margin'), 403, null, 'Admin membuka laporan margin');
+  await call(A, 'GET', '/reports/margin'); // Admin memegang semua hak akses
   check((await call(P, 'GET', '/reports')).length === 12, 'Pimpinan tetap 12 laporan');
 });
 
@@ -884,7 +884,7 @@ await test('T7 penawaran PN, konfirmasi memberi SO, nomor penawaran tetap dan bi
   const p = await newProduct();
   const q = await quote(regular, [line(p, 1)]);
   check(PN.test(q.name) && q.quotationNumber === q.name, `penawaran bernomor PN (${q.name})`);
-  const so = await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {});
+  const so = await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   check(
     SO.test(so.name) && so.quotationNumber === q.name,
     `konfirmasi memberi nomor SO (${so.name}), nomor penawaran tetap`,
@@ -934,14 +934,14 @@ await test('T7 penawaran PN, konfirmasi memberi SO, nomor penawaran tetap dan bi
 await test('T7 batal, draf, konfirmasi ulang: nomor SO sama', async () => {
   const p = await newProduct();
   const q = await quote(regular, [line(p, 1)]);
-  const so = await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {});
+  const so = await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   await call(S, 'POST', `/sales-orders/${q.id}/cancel`);
   const d = await call(S, 'POST', `/sales-orders/${q.id}/draft`);
   check(
     d.state === 'draft' && d.name === so.name && d.quotationNumber === q.name,
     'kembali ke draf: nomor SO dan PN tetap',
   );
-  const again = await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {});
+  const again = await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   check(
     again.state === 'sale' && again.name === so.name && again.quotationNumber === q.name,
     `konfirmasi ulang: nomor SO sama (${again.name})`,
@@ -954,14 +954,14 @@ await test('T7 batal, draf, konfirmasi ulang: nomor SO sama', async () => {
   const batal = await quote(regular, [line(p, 1)]);
   await call(S, 'POST', `/sales-orders/${batal.id}/cancel`);
   await call(S, 'POST', `/sales-orders/${batal.id}/draft`);
-  const fresh = await call(S, 'POST', `/sales-orders/${batal.id}/confirm`, {});
+  const fresh = await call(S, 'POST', `/sales-orders/${batal.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   check(
     SO.test(fresh.name) && fresh.quotationNumber === batal.name,
     'penawaran yang batal sebelum dikonfirmasi tetap mendapat SO saat dikonfirmasi',
   );
   const kosong = await quote(regular, []);
   await rejected(
-    call(S, 'POST', `/sales-orders/${kosong.id}/confirm`, {}),
+    call(S, 'POST', `/sales-orders/${kosong.id}/confirm`, { clientOrderRef: 'PO-UJI' }),
     400,
     /^Penawaran belum memiliki baris produk$/,
     'konfirmasi tanpa baris ditolak',
@@ -969,7 +969,7 @@ await test('T7 batal, draf, konfirmasi ulang: nomor SO sama', async () => {
   const tetap = await call(S, 'GET', `/sales-orders/${kosong.id}`);
   check(tetap.name === kosong.name && tetap.state === 'draft', 'nomor tidak berubah saat konfirmasi ditolak');
   await rejected(
-    call(S, 'POST', `/sales-orders/${q.id}/confirm`, {}),
+    call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' }),
     400,
     /^Hanya penawaran berstatus Draf atau Terkirim yang dapat dikonfirmasi$/,
     'konfirmasi SO yang sudah berjalan ditolak',
@@ -1006,7 +1006,7 @@ await test('T7 ubah nomor penawaran manual', async () => {
     /^Nomor sudah dipakai dokumen lain$/,
     'nomor PN milik dokumen lain ditolak',
   );
-  const bso = await call(S, 'POST', `/sales-orders/${b.id}/confirm`, {});
+  const bso = await call(S, 'POST', `/sales-orders/${b.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   await rejected(
     call(S, 'PATCH', `/sales-orders/${a.id}`, { name: b.name }),
     400,
@@ -1025,7 +1025,7 @@ await test('T7 ubah nomor penawaran manual', async () => {
     /^Nomor sudah dipakai dokumen lain$/,
     'penawaran baru dengan nomor penawaran dokumen lain ditolak',
   );
-  const so = await call(S, 'POST', `/sales-orders/${a.id}/confirm`, {});
+  const so = await call(S, 'POST', `/sales-orders/${a.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   check(
     SO.test(so.name) && so.quotationNumber === manual,
     'nomor manual tetap sebagai nomor penawaran setelah konfirmasi',
@@ -1040,7 +1040,7 @@ await test('T7 ubah nomor penawaran manual', async () => {
   );
   const tetap = await call(S, 'GET', `/sales-orders/${a.id}`);
   check(tetap.name === so.name && tetap.quotationNumber === manual, 'draf bekas SO: kedua nomor tidak berubah');
-  const lagi = await call(S, 'POST', `/sales-orders/${a.id}/confirm`, {});
+  const lagi = await call(S, 'POST', `/sales-orders/${a.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   check(
     lagi.name === so.name && lagi.quotationNumber === manual,
     'draf bekas SO: konfirmasi ulang memakai SO yang sama',
@@ -1048,7 +1048,7 @@ await test('T7 ubah nomor penawaran manual', async () => {
   const m = `SO/MTPP/2026/01/M${stamp}`;
   const c = await quote(regular, [line(p, 1)], { name: m });
   check(c.name === m && c.quotationNumber === m, 'nomor manual berawalan SO tersimpan sebagai nomor penawaran');
-  const cs = await call(S, 'POST', `/sales-orders/${c.id}/confirm`, {});
+  const cs = await call(S, 'POST', `/sales-orders/${c.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   check(
     SO.test(cs.name) && cs.name !== m && cs.quotationNumber === m,
     `nomor manual berawalan SO: konfirmasi memberi SO baru (${cs.name})`,
@@ -1060,8 +1060,8 @@ await test('T7 dua konfirmasi bersamaan', async () => {
   for (let i = 0; i < 3; i++) {
     const q = await quote(regular, [line(p, 1)]);
     const rs = await Promise.allSettled([
-      call(S, 'POST', `/sales-orders/${q.id}/confirm`, {}),
-      call(S, 'POST', `/sales-orders/${q.id}/confirm`, {}),
+      call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' }),
+      call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' }),
     ]);
     const won = rs.filter((r) => r.status === 'fulfilled'),
       lost = rs.filter((r) => r.status === 'rejected');
@@ -1091,7 +1091,7 @@ await test('T7 penawaran lama bernomor SO tidak diubah', async () => {
   psqlNav(`update sales_orders set name = '${lama}', mtpp_quotation_number = null where id = ${q.id}`);
   const pdf = await call(S, 'GET', `/sales-orders/${q.id}/pdf?kind=quotation`, undefined, true);
   check(pdf.status === 200 && (await pdfText(pdf)).includes(lama), 'PDF penawaran lama memakai nomor lama');
-  const so = await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {});
+  const so = await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   check(
     so.state === 'sale' && so.name === lama && so.quotationNumber === null,
     `konfirmasi tidak mengubah nomor (${so.name})`,
@@ -1102,8 +1102,8 @@ await test('T7 penawaran lama bernomor SO tidak diubah', async () => {
   const lama2 = `SO/MTPP/2026/01/${String(r.id).padStart(4, '0')}`;
   psqlNav(`update sales_orders set name = '${lama2}', mtpp_quotation_number = null where id = ${r.id}`);
   const rs = await Promise.allSettled([
-    call(S, 'POST', `/sales-orders/${r.id}/confirm`, {}),
-    call(S, 'POST', `/sales-orders/${r.id}/confirm`, {}),
+    call(S, 'POST', `/sales-orders/${r.id}/confirm`, { clientOrderRef: 'PO-UJI' }),
+    call(S, 'POST', `/sales-orders/${r.id}/confirm`, { clientOrderRef: 'PO-UJI' }),
   ]);
   check(
     rs.filter((x) => x.status === 'fulfilled').length === 1,
@@ -1127,7 +1127,7 @@ await test('T7 penawaran lama diganti ke nomor PN tidak menyumbat penomoran', as
   );
   const c = await call(S, 'POST', `/sales-orders/${b.id}/copy`);
   check(seqOf(c.name) === seqOf(b.name) + 1, `salin penawaran tetap berhasil (${c.name})`);
-  const so = await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {});
+  const so = await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   check(
     SO.test(so.name) && so.quotationNumber === pn,
     `saat dikonfirmasi mendapat SO (${so.name}), nomor penawaran tetap`,
@@ -1178,7 +1178,7 @@ await test('T1 syarat penawaran: bawaan, PDF penawaran vs order, salin, ubah, do
     'PDF penawaran memuat label Penyerahan dan Standar',
   );
   check(!qp.text.includes('Term of payment'), 'PDF penawaran tidak memuat Term of payment');
-  await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {});
+  await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   const op = await pdfOf(q.id, 'order');
   check(
     op.status === 200 && op.text.includes('Term of payment'),
@@ -1271,8 +1271,55 @@ await test('PO pelanggan: konfirmasi menyimpan, mempertahankan, dan mengosongkan
   await call(S, 'POST', `/sales-orders/${c.id}/confirm`, { clientOrderRef: 'PO-C' });
   check((await poOf(c.id)) === 'PO-C' && (await poLog(c.id)) === 0, 'nilai yang sama tidak mencatat perubahan palsu');
   const d = await quote(regular, [line(p, 1)], { clientOrderRef: 'PO-D' });
-  await call(S, 'POST', `/sales-orders/${d.id}/confirm`, { clientOrderRef: '' });
-  check((await poOf(d.id)) === null, "confirm dengan '' mengosongkan nilai menjadi null");
+  await rejected(
+    call(S, 'POST', `/sales-orders/${d.id}/confirm`, { clientOrderRef: '' }),
+    400,
+    /PO Pelanggan wajib/,
+    "pelanggan lama: confirm dengan '' (mengosongkan PO) ditolak",
+  );
+  check((await poOf(d.id)) === 'PO-D', 'PO tetap tersimpan setelah penolakan');
+});
+
+await test('PO pelanggan wajib, batas minimal diatur di Pengaturan', async () => {
+  const p = await withStock(3);
+  const q = await quote(regular, [line(p, 1)]);
+  await rejected(
+    call(S, 'POST', `/sales-orders/${q.id}/confirm`, {}),
+    400,
+    /PO Pelanggan wajib/,
+    'pelanggan lama tanpa PO ditolak',
+  );
+  check((await call(S, 'GET', `/sales-orders/${q.id}`)).state === 'draft', 'penawaran tetap draf');
+  await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-WAJIB' });
+  await rejected(
+    call(S, 'PATCH', `/sales-orders/${q.id}`, { clientOrderRef: '' }),
+    400,
+    /PO Pelanggan wajib/,
+    'PO tidak boleh dikosongkan setelah konfirmasi',
+  );
+  const c = await newCustomer();
+  const n = await quote(c, [line(p, 1)]);
+  await rejected(
+    call(S, 'POST', `/sales-orders/${n.id}/confirm`, {}),
+    400,
+    /PO Pelanggan wajib/,
+    'pelanggan baru tanpa PO juga ditolak',
+  );
+  // batas minimal: pesanan di bawah batas boleh tanpa PO
+  const cur = (await call(A, 'GET', '/settings')).collection || {};
+  await rejected(
+    call(A, 'PUT', '/settings/collection', { ...cur, poMinAmount: -1 }),
+    400,
+    /Batas minimal PO/,
+    'batas negatif ditolak',
+  );
+  await call(A, 'PUT', '/settings/collection', { ...cur, poMinAmount: 1e12 });
+  try {
+    const so = await call(S, 'POST', `/sales-orders/${n.id}/confirm`, {});
+    check(so.state === 'sale', 'di bawah batas minimal boleh tanpa PO');
+  } finally {
+    await call(A, 'PUT', '/settings/collection', { ...cur, poMinAmount: 0 });
+  }
 });
 
 console.log(`\nRingkasan edge-flow: ${passed} lulus, ${failed} gagal`);

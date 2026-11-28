@@ -43,26 +43,8 @@ export const DEFAULT_MATRIX: Record<string, Record<string, P>> = {
     dokumen: 'R',
     laporan: 'R',
   },
-  ADMIN: {
-    pelanggan: 'CRUD',
-    principal: 'CRUD',
-    produk: 'CRUD',
-    top: 'R',
-    pricelist_jual: 'R',
-    pricelist_principal: '',
-    pengguna: 'CRUD',
-    perusahaan: 'CRUD',
-    penjualan: '',
-    pengadaan: '',
-    gudang: '',
-    stok: '',
-    penagihan: '',
-    akuntansi: '',
-    email: 'RU',
-    pengaturan: 'CRUD',
-    dokumen: 'CRUD',
-    laporan: 'R',
-  },
+  // Admin memegang semua hak akses (keputusan pemilik 2026-11-28)
+  ADMIN: Object.fromEntries(MENUS.map((m) => [m.key, 'CRUD'])),
   SALES: {
     pelanggan: 'R',
     principal: 'R',
@@ -126,25 +108,26 @@ export const DEFAULT_MATRIX: Record<string, Record<string, P>> = {
 };
 
 // Grup yang boleh melihat harga pokok, margin, dan pricelist principal (hasil wawancara).
-export const COST_GROUPS = ['PIMPINAN', 'SALES', 'FINANCE'];
+export const COST_GROUPS = ['PIMPINAN', 'ADMIN', 'SALES', 'FINANCE'];
 
 // Laporan per grup (kunci laporan lihat reports.service.ts)
+const ALL_REPORTS = [
+  'penjualan_periode',
+  'penjualan_pelanggan',
+  'penjualan_produk',
+  'margin',
+  'pembelian_utang',
+  'pesanan_belum_diterima',
+  'stok_gudang',
+  'pengiriman',
+  'umur_piutang',
+  'kas',
+  'status_bayar_po',
+  'buku_besar',
+];
 export const REPORTS_BY_GROUP: Record<string, string[]> = {
-  PIMPINAN: [
-    'penjualan_periode',
-    'penjualan_pelanggan',
-    'penjualan_produk',
-    'margin',
-    'pembelian_utang',
-    'pesanan_belum_diterima',
-    'stok_gudang',
-    'pengiriman',
-    'umur_piutang',
-    'kas',
-    'status_bayar_po',
-    'buku_besar',
-  ],
-  ADMIN: ['pesanan_belum_diterima', 'stok_gudang', 'pengiriman'],
+  PIMPINAN: ALL_REPORTS,
+  ADMIN: ALL_REPORTS,
   SALES: ['penjualan_periode', 'penjualan_pelanggan', 'penjualan_produk', 'margin', 'stok_gudang'],
   OPERASIONAL: ['pesanan_belum_diterima', 'stok_gudang', 'pengiriman'],
   FINANCE: ['penjualan_periode', 'margin', 'pembelian_utang', 'umur_piutang', 'kas', 'status_bayar_po', 'buku_besar'],

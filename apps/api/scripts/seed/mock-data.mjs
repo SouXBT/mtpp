@@ -361,7 +361,9 @@ const quote = (partner, ref, lines) =>
     clientOrderRef: ref,
     lines: lines.map(([c, q]) => ({ productId: pid(c), productUomQty: q })),
   });
-const confirm = (q) => call(S, 'POST', `/sales-orders/${q.id}/confirm`, {});
+// pelanggan lama wajib menyertakan PO; bila penawaran belum memuatnya dipakai nomor contoh
+const confirm = (q) =>
+  call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: q.clientOrderRef || `PO-${q.name.slice(-4)}` });
 const asList = (x) => (Array.isArray(x) ? x : [x]);
 async function deliver(soId) {
   for (const t of asList(await call(O, 'POST', `/transfers/from-sale/${soId}`))) {

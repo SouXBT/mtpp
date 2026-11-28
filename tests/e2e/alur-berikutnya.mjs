@@ -49,7 +49,7 @@ const q = await api(tok.sales, 'POST', '/sales-orders', {
   partnerId: pel.id,
   lines: [{ productId: prod.id, productUomQty: 1 }],
 });
-await api(tok.sales, 'POST', `/sales-orders/${q.id}/confirm`, {});
+await api(tok.sales, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' });
 const so = await api(tok.sales, 'GET', `/sales-orders/${q.id}`);
 
 const browser = await chromium.launch();

@@ -111,7 +111,19 @@ export const COLLECTION_DEFAULTS = {
   blockDelivery: true,
   maxInstallments: 12,
   maxMonths: 12,
+  // PO dari pelanggan wajib untuk sales order mulai nilai ini (Rp, termasuk PPN); 0 = semua sales order
+  poMinAmount: 0,
 };
+
+// PO pelanggan wajib bila total sales order mencapai batas minimal di Pengaturan
+export async function customerPoRequired(tx: any, total: number) {
+  const min = Number((await collectionSettings(tx)).poMinAmount) || 0;
+  return { required: Number(total) >= min, min };
+}
+export const poRequiredMsg = (min: number) =>
+  min > 0
+    ? `PO Pelanggan wajib diisi untuk pesanan mulai Rp ${min.toLocaleString('id-ID')} sebelum sales order dikonfirmasi`
+    : 'PO Pelanggan wajib diisi sebelum sales order dikonfirmasi';
 
 export async function collectionSettings(tx: any) {
   const r = await tx.settings.findFirst({ where: { key: 'collection' } });

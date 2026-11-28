@@ -50,7 +50,7 @@ const buatSO = async () => {
     partnerId: pelanggan.id,
     lines: [{ productId: produk.id, productUomQty: 1 }],
   });
-  await api(tokS, 'POST', `/sales-orders/${q.id}/confirm`, {});
+  await api(tokS, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   return api(tokS, 'GET', `/sales-orders/${q.id}`);
 };
 const dokumenSO = async (so) =>
@@ -153,7 +153,7 @@ try {
     partnerId: baru.id,
     lines: [{ productId: produk.id, productUomQty: 1 }],
   });
-  await api(tokS, 'POST', `/sales-orders/${qn.id}/confirm`, {});
+  await api(tokS, 'POST', `/sales-orders/${qn.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   await page.goto(`${BASE}/penjualan/${qn.id}`, { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('networkidle').catch(() => {});
   const tn = page.getByRole('button', { name: 'Buat Surat Jalan' });

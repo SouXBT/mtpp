@@ -9,6 +9,7 @@ import {
   Form,
   Input,
   InputNumber,
+  message,
   Modal,
   Popconfirm,
   Radio,
@@ -522,6 +523,10 @@ export function SalesDetail() {
   // draf bekas SO dan penawaran lama yang nomornya tidak diganti tetap memakai nomor yang ada
   const getsSoNumber = !fromQuote && (o.quotationNumber || (o.nameEdit && o.nameEdit !== o.name));
   // Nilai PO Pelanggan disimpan di variabel lokal; dialog statis tidak punya state komponen.
+  // PO pelanggan (lama maupun baru) wajib mulai batas minimal di Pengaturan > Penagihan; 0 = semua pesanan
+  const poMin = Number(settings?.collection?.poMinAmount ?? 0) || 0;
+  const poRequired = Number(editable ? untaxed + tax : o.amountTotal) >= poMin;
+  const poRule = poMin > 0 ? `wajib untuk pesanan mulai ${rp(poMin)}` : 'wajib';
   const confirmSO = () => {
     let po = String(o.clientOrderRef ?? '');
     Modal.confirm({
@@ -539,7 +544,9 @@ export function SalesDetail() {
             />
           )}
           <div style={{ marginTop: 12 }}>
-            <label htmlFor="po-konfirmasi">PO Pelanggan</label>
+            <label htmlFor="po-konfirmasi">
+              PO Pelanggan{poRequired && <span style={{ color: '#90241D' }}> * {poRule}</span>}
+            </label>
             <Input
               id="po-konfirmasi"
               maxLength={80}
@@ -554,7 +561,13 @@ export function SalesDetail() {
       ),
       okText: 'Konfirmasi',
       cancelText: 'Batal',
-      onOk: () => act('confirm', 'Sales order dikonfirmasi', { clientOrderRef: po.trim() }),
+      onOk: () => {
+        if (poRequired && !po.trim()) {
+          message.error('Isi nomor PO dari pelanggan dulu');
+          return Promise.reject();
+        }
+        return act('confirm', 'Sales order dikonfirmasi', { clientOrderRef: po.trim() });
+      },
     });
   };
   const moreItems = [
@@ -931,7 +944,12 @@ export function SalesDetail() {
             </Form.Item>
           </Col>
           <Col xs={24} md={6}>
-            <Form.Item label="PO Pelanggan" layout="vertical">
+            <Form.Item
+              label="PO Pelanggan"
+              layout="vertical"
+              required={poRequired}
+              extra={poRequired && !o.clientOrderRef ? `PO dari pelanggan ${poRule} sebelum konfirmasi` : undefined}
+            >
               <Input
                 disabled={!can('penjualan', 'write') || o.state === 'cancel'}
                 value={o.clientOrderRef}

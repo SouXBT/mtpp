@@ -264,8 +264,13 @@ function newQuote(day, cust, isNew) {
   });
 }
 
+// nomor PO dari pelanggan; pelanggan lama wajib mengirim PO sebelum pesanan dikonfirmasi
+// nomor urut, bukan acak, supaya urutan acak data contoh tidak bergeser
+let poSeq = 0;
+const custPo = (d) => `PO-${d.slice(2, 4)}${d.slice(5, 7)}-${String(++poSeq).padStart(4, '0')}`;
+
 async function confirmOrder(d, id, cust, isNew) {
-  await call(S, 'POST', `/sales-orders/${id}/confirm`, {}, d);
+  await call(S, 'POST', `/sales-orders/${id}/confirm`, { clientOrderRef: custPo(d) }, d);
   count('sales order');
   const so = await call(F, 'GET', `/sales-orders/${id}`, undefined, d);
   // kekurangan stok: Finance memesan ke principal
@@ -565,7 +570,7 @@ function projectOrder(day, key, project, lines, dp) {
     at(workday(addDays(d, int(1, 3))), 'konfirmasi proyek', async (d2) => {
       if (!dp) return confirmOrder(d2, q.id, cust, false);
       // seperti jurnal MTPP Finance "DP 30% PO cubicle IBN (uang muka pelanggan)"
-      await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {}, d2);
+      await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: custPo(d2) }, d2);
       count('sales order');
       const so = await call(F, 'GET', `/sales-orders/${q.id}`, undefined, d2);
       if ((so.shortage || []).some((x) => x.shortage > 0))

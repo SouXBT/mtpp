@@ -10,7 +10,7 @@ Panduan langkah demi langkah, termasuk cadangan dan penanganan masalah: [`CARA-M
 ## Alur kerja
 
 ```
-Sales        Buat penawaran (PN/...) -> isi PO Pelanggan -> Konfirmasi (SO/...)
+Sales        Buat penawaran (PN/...) -> isi PO Pelanggan (wajib, batas minimal di Pengaturan) -> Konfirmasi (SO/...)
                                                                 |
              stok kurang ----------- pelanggan baru ----------- stok tersedia
                   |                        |                        |
@@ -182,11 +182,11 @@ Sama dengan bagian "Modul dan pemilik" di rencana build (berdasarkan Tabel 1.1 b
 
 ## Pemetaan 60 fitur
 
-**Seluruh peran** — Login dan akses menurut grup (`/login`, AuthGuard + `group_permissions`) · Dashboard per peran (`/`) · Dokumen berurutan (penawaran → SO → PO → penerimaan → surat jalan → invoice; PDF dwibahasa + tanda tangan) · Laporan dan filter (`/laporan`, 12 laporan; jumlah mengikuti grup: Pimpinan 12, Finance 7, Sales 5, Operasional 3, Admin 3) · Ekspor laporan (spreadsheet/PDF) · Pencarian dan filter favorit (bilah cari + ★ Favorit) · Catatan internal · Lampiran · Aktivitas terjadwal (lonceng di bilah atas) · Profil dan kata sandi (`/profil`).
+**Seluruh peran** — Login dan akses menurut grup (`/login`, AuthGuard + `group_permissions`) · Dashboard per peran (`/`) · Dokumen berurutan (penawaran → SO → PO → penerimaan → surat jalan → invoice; PDF dwibahasa + tanda tangan) · Laporan dan filter (`/laporan`, 12 laporan; jumlah mengikuti grup: Pimpinan 12, Admin 12, Finance 7, Sales 5, Operasional 3) · Ekspor laporan (spreadsheet/PDF) · Pencarian dan filter favorit (bilah cari + ★ Favorit) · Catatan internal · Lampiran · Aktivitas terjadwal (lonceng di bilah atas) · Profil dan kata sandi (`/profil`).
 
 **Pimpinan** — Term of payment pelanggan (data pelanggan) · Riwayat perubahan (tab Catatan dan Riwayat) · Pricelist penjualan · Laporan penjualan per periode/pelanggan/produk · margin · piutang jatuh tempo (belum JT, 1–30, 31–60, 61–90, >90) · pembelian dan utang principal · stok per gudang · kas · buku besar dan neraca saldo.
 
-**Admin** — Laporan pesanan belum diterima, stok per gudang, dan pengiriman · Akun dan grup (matriks Baca/Buat/Ubah/Hapus) · Master pelanggan + alamat kirim · Master principal + gudang otomatis · Master produk · Arsip master (hapus ditolak bila sudah dipakai) · Pengaturan PPN, syarat, dan penomoran `<kode>/MTPP/<tahun>/<bulan>/<urut>` · Pencadangan (`infra/backup/backup.sh`, `docs/restore.md`) · Kategori dan satuan · Data perusahaan, logo, tanda tangan · Impor data awal (pelanggan, alamat, principal, produk, pricelist principal, stok awal, saldo awal akun, invoice & tagihan terbuka).
+**Admin** — Memegang semua hak akses: semua menu (Baca/Buat/Ubah/Hapus), semua 12 laporan, dan harga pokok ·  Akun dan grup (matriks Baca/Buat/Ubah/Hapus) · Master pelanggan + alamat kirim · Master principal + gudang otomatis · Master produk · Arsip master (hapus ditolak bila sudah dipakai) · Pengaturan PPN, syarat, dan penomoran `<kode>/MTPP/<tahun>/<bulan>/<urut>` · Pencadangan (`infra/backup/backup.sh`, `docs/restore.md`) · Kategori dan satuan · Data perusahaan, logo, tanda tangan · Impor data awal (pelanggan, alamat, principal, produk, pricelist principal, stok awal, saldo awal akun, invoice & tagihan terbuka).
 
 **Sales** — Surat penawaran · Margin (hanya Pimpinan/Sales/Finance, tidak tercetak) · Kirim email · Konfirmasi menjadi SO · Salin · Masa berlaku & tanda kedaluwarsa · Cetak PDF · Batal & kembali ke draf · Riwayat transaksi pelanggan · Status terkirim/tertagih per baris · PO Pelanggan dicatat di penawaran dan SO · teks Pembayaran bawaan penawaran baru: "DP 30% saat PO diterima, 70% sebelum barang dikirim" (tercetak saja, bukan tagihan DP; Sales dapat mengubahnya per penawaran) · keterangan "Berikutnya" di detail SO menunjukkan langkah yang menunggu (PO Principal, pembayaran, surat jalan, invoice).
 

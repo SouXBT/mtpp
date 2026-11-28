@@ -137,7 +137,7 @@ const cp = await call(S, 'POST', `/sales-orders/${q1.id}/copy`);
 ok(cp.name !== q1.name, `salin penawaran → ${cp.name}`);
 await call(S, 'POST', `/sales-orders/${cp.id}/cancel`);
 ok(true, 'salinan dibatalkan');
-await call(S, 'POST', `/sales-orders/${q1.id}/confirm`, {});
+await call(S, 'POST', `/sales-orders/${q1.id}/confirm`, { clientOrderRef: 'PO-UJI' });
 const so1 = await call(S, 'GET', `/sales-orders/${q1.id}`);
 ok(
   so1.state === 'sale' && /^SO\/MTPP\/\d{4}\/\d{2}\/\d{4}$/.test(so1.name) && so1.quotationNumber === q1.name,
@@ -152,7 +152,7 @@ const q2 = await call(S, 'POST', '/sales-orders', {
     { productId: id('KBL-NYY-4X50'), productUomQty: 150 },
   ],
 });
-await call(S, 'POST', `/sales-orders/${q2.id}/confirm`, {});
+await call(S, 'POST', `/sales-orders/${q2.id}/confirm`, { clientOrderRef: 'PO-UJI' });
 const so2 = await call(S, 'GET', `/sales-orders/${q2.id}`);
 ok(so2.lines.find((l) => l.code === 'PNL-MDP-400').priceUnit === 66000000, 'pricelist kontraktor dipakai otomatis');
 

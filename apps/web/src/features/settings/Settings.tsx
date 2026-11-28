@@ -596,6 +596,19 @@ export function DocumentSettings() {
                     />
                   </Col>
                   <Col>
+                    <div className="muted">PO pelanggan wajib mulai nilai pesanan (Rp, 0 = semua)</div>
+                    <InputNumber
+                      disabled={!w}
+                      min={0}
+                      precision={0}
+                      style={{ width: 200 }}
+                      value={col.poMinAmount ?? 0}
+                      formatter={(v) => `${v ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
+                      parser={(v) => Number(String(v ?? '').replace(/\D/g, '')) as any}
+                      onChange={(v) => setCol({ ...col, poMinAmount: v ?? 0 })}
+                    />
+                  </Col>
+                  <Col>
                     <div className="muted">Tahan surat jalan setelah masa tenggang</div>
                     <Switch
                       disabled={!w}

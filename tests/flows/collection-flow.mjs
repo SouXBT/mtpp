@@ -124,7 +124,7 @@ async function order(qty) {
     paymentTermId: top30.id,
     lines: [{ productId: prod.id, productUomQty: qty, mtppIsDropship: false }],
   });
-  await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {});
+  await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   return q.id;
 }
 async function stockFor(soId) {
@@ -266,7 +266,7 @@ async function newOrder(qty) {
     partnerId: nc.id,
     lines: [{ productId: prod.id, productUomQty: qty, mtppIsDropship: false }],
   });
-  await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {});
+  await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   return call(S, 'GET', `/sales-orders/${q.id}`);
 }
 const n1 = await newOrder(2);
@@ -366,7 +366,7 @@ ok(proofDl.ok, 'bukti transfer dapat diunduh');
     paymentTermId: top30.id,
     lines: [{ productId: prod.id, productUomQty: 1, mtppIsDropship: false }],
   });
-  await call(S, 'POST', `/sales-orders/${q.id}/confirm`, {});
+  await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-UJI' });
   await stockFor(q.id);
   await deliver(q.id);
   const inv = await call(F, 'POST', `/invoices/from-sale/${q.id}`, {});

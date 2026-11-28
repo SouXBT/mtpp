@@ -73,6 +73,7 @@ export class SettingsController {
         ['maxInstallments', 2, 24, 'Cicilan paling banyak harus 2 sampai 24 termin'],
         ['maxMonths', 1, 36, 'Batas cicilan harus 1 sampai 36 bulan'],
       ];
+      ranges.push(['poMinAmount', 0, 1e14, 'Batas minimal PO pelanggan harus 0 atau lebih (Rupiah)']);
       for (const [k, lo, hi, msg] of ranges) {
         if (b[k] === undefined) continue;
         const x = Number(b[k]);

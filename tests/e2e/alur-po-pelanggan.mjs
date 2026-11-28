@@ -140,6 +140,18 @@ try {
     `hasil akhir nilai dialog (state=${sd.state}, PO=${sd.clientOrderRef})`,
   );
 
+  console.log('PO wajib untuk pelanggan lama');
+  await page.goto(`${BASE}/penjualan/${b.id}`, { waitUntil: 'domcontentloaded' });
+  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.getByRole('button', { name: 'Konfirmasi' }).click();
+  await dialog.waitFor();
+  await dialog.getByRole('button', { name: 'Konfirmasi' }).click();
+  await page.waitForTimeout(1000);
+  cek(await dialog.isVisible(), 'tanpa PO, dialog tetap terbuka');
+  cek((await ambil(b.id)).state === 'draft', 'tanpa PO, penawaran tetap draf');
+  await dialog.getByRole('button', { name: 'Batal' }).click();
+  await dialog.waitFor({ state: 'hidden' });
+
   console.log('Nomor ganda belum tersimpan');
   await page.goto(`${BASE}/penjualan/${c.id}`, { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('networkidle').catch(() => {});
