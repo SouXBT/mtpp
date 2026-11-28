@@ -35,7 +35,8 @@ export default function Shell() {
   const total = due.length + lowRows.length;
   // pemberitahuan sekali per sesi login, dan lagi bila jumlah produk stok rendah bertambah
   useEffect(() => {
-    if (!lowRows.length || !me) return;
+    // pop-up hanya untuk yang dapat menindaklanjuti (gudang atau pengadaan); peran lain cukup lewat lonceng
+    if (!lowRows.length || !me || !(can('pengadaan', 'create') || can('gudang', 'write'))) return;
     const key = `mtpp-low-stock-${me.id}`;
     const seen = Number(sessionStorage.getItem(key) || 0);
     if (lowRows.length <= seen) return;

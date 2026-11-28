@@ -9,13 +9,14 @@ interface Order {
   invoiceStatus?: string;
   invoices?: { id?: number; moveType: string; state: string; paymentState?: string }[];
   transfers?: { id?: number; code?: string; state: string }[];
+  purchaseOrders?: { id?: number; name?: string; state: string }[];
   creditHold?: { blocking?: boolean };
 }
 
 const tglPendek = (d: string) =>
   new Date(d + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 
-export type StepAction = 'po' | 'pay' | 'hold' | 'deliver' | 'validate' | 'post' | 'invoice' | 'payinv';
+export type StepAction = 'po' | 'pay' | 'hold' | 'deliver' | 'validate' | 'post' | 'invoice' | 'payinv' | 'waitpo';
 export interface Step {
   text: string;
   action: StepAction;
@@ -28,6 +29,12 @@ export function nextStepItems(o: Order): Step[] {
   const add = (text: string, action: StepAction) => out.push({ text, action });
   if (o.state === 'sale') {
     if ((o.shortage || []).some((x) => x.shortage > 0)) add('Berikutnya: Finance membuat PO Principal.', 'po');
+    const waiting = (o.purchaseOrders || []).filter((p) => ['draft', 'sent', 'purchase'].includes(p.state));
+    if (waiting.length)
+      add(
+        `Menunggu barang dari principal (${waiting.map((p) => p.name).join(', ')}); surat jalan untuk sisanya dibuat setelah barang diterima.`,
+        'waitpo',
+      );
     if (o.partner?.mtppIsNewCustomer && !o.payment?.paidFull)
       add(
         Number(o.payment?.amount || 0) > 0 && o.mtppSettleDate

@@ -1004,7 +1004,7 @@ export class BillingService {
             date,
             paymentType: 'outbound',
             partnerType: 'supplier',
-            memo: b.memo,
+            memo: b.memo || `Uang muka ${po.name}`,
             createUid: u.id,
           },
         });
@@ -1254,6 +1254,7 @@ export class BillingService {
       jr: journal.name,
     }));
     const sos = await this.db.salesOrders.findMany({ select: { id: true, name: true } });
+    const pos = await this.db.purchaseOrders.findMany({ select: { id: true, name: true } });
     const proofs = await this.db.attachments.findMany({
       where: { resModel: 'payments', resId: { in: rows.map((r) => r.p.id) } },
       select: { id: true, resId: true, name: true },
@@ -1269,10 +1270,14 @@ export class BillingService {
         journal: r.jr,
         saleId: r.saleId,
         sale: sos.find((x) => x.id === r.saleId)?.name,
+        purchase: pos.find((x) => x.id === r.p.mtppPurchaseOrderId)?.name,
       }))
       .filter(
         (r) =>
-          !qq || `${r.name} ${r.partner} ${r.memo || ''} ${r.invoice || ''} ${r.sale || ''}`.toLowerCase().includes(qq),
+          !qq ||
+          `${r.name} ${r.partner} ${r.memo || ''} ${r.invoice || ''} ${r.sale || ''} ${r.purchase || ''}`
+            .toLowerCase()
+            .includes(qq),
       );
   }
 

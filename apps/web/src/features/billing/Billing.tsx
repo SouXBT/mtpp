@@ -30,7 +30,10 @@ import { PayModal } from '../purchasing/Purchasing';
 const cancelPayment = (p: any, after: () => void) =>
   Modal.confirm({
     title: `Batalkan pembayaran ${p.name}?`,
-    content: `${rp(p.amount)} dikembalikan ke sisa tagihan dan jurnal pembalik dibuat.`,
+    // kalimat mengikuti jenis pembayaran: atas tagihan/invoice, atau uang muka yang belum ada tagihannya
+    content: p.invoiceId
+      ? `${rp(p.amount)} dikembalikan ke sisa tagihan dan jurnal pembalik dibuat.`
+      : `Uang muka ${rp(p.amount)} dibatalkan dan jurnal pembalik dibuat${p.mtppPurchaseOrderId ? '; PO dapat dibatalkan setelahnya' : ''}.`,
     okText: 'Batalkan Pembayaran',
     cancelText: 'Tidak',
     onOk: async () => {
@@ -831,6 +834,12 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
           body={{ invoiceId: e.id }}
           proof={cust}
           max={Number(e.amountResidual)}
+          // cicilan yang disetujui: nominal awal = sisa termin terlama yang belum lunas
+          initial={
+            e.installments?.state === 'approved'
+              ? Number((e.installments.rows || []).find((x: any) => Number(x.open) > 0.5)?.open || 0)
+              : undefined
+          }
           onClose={(ok) => {
             setPayOpen(false);
             if (ok) reload();
@@ -914,6 +923,10 @@ export function PaymentsList({ embedded = false }: { embedded?: boolean }) {
                   <>
                     {r.paymentType === 'outbound' ? 'pengembalian uang muka' : 'uang muka'}{' '}
                     <Link to={`/penjualan/${r.mtppSaleOrderId}`}>{r.sale}</Link>
+                  </>
+                ) : r.purchase ? (
+                  <>
+                    uang muka <Link to={`/pengadaan/${r.mtppPurchaseOrderId}`}>{r.purchase}</Link>
                   </>
                 ) : (
                   '-'

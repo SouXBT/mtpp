@@ -496,6 +496,10 @@ export function SalesDetail() {
         // Pimpinan memakai tombol Izinkan Kirim di peringatan merah di atas, tidak digandakan di sini
         return first && can('penagihan', 'create') ? go(`/penagihan/${first.id}`, `Tagih ${first.name}`) : null;
       }
+      case 'waitpo': {
+        const p = (o.purchaseOrders || []).find((x: any) => ['draft', 'sent', 'purchase'].includes(x.state));
+        return p && can('pengadaan') ? go(`/pengadaan/${p.id}`, `Buka ${p.name}`) : null;
+      }
       case 'validate': {
         const t = (o.transfers || []).find(
           (x: any) => x.code === 'outgoing' && ['draft', 'waiting', 'assigned'].includes(x.state),
@@ -685,7 +689,7 @@ export function SalesDetail() {
               Buat Invoice
             </Button>
           )}
-        {o.state === 'sale' && can('penagihan', 'create') && o.partner?.mtppIsNewCustomer && (
+        {o.state === 'sale' && can('penagihan', 'create') && o.partner?.mtppIsNewCustomer && !pay.paidFull && (
           <Button onClick={() => setPfOpen(true)}>Proforma Invoice</Button>
         )}
         {o.state === 'sale' && can('penagihan', 'create') && o.partner?.mtppIsNewCustomer && !pay.paidFull && (
@@ -774,12 +778,13 @@ export function SalesDetail() {
                 }`
           }
           description={
-            o.mtppProformaNumber
+            o.mtppProformaNumber && !pay.paidFull
               ? `Proforma ${o.mtppProformaNumber} · ${tgl(o.mtppProformaDate)} · diminta ${rp(o.mtppDpAmount)} (${nf(o.mtppDpPercent, 0)}%)${o.mtppProformaDueDate ? ` · bayar paling lambat ${tgl(o.mtppProformaDueDate)}` : ''}`
               : undefined
           }
           action={
-            o.mtppProformaNumber && (
+            o.mtppProformaNumber &&
+            !pay.paidFull && (
               <Button size="small" onClick={() => openFile(`/sales-orders/${id}/pdf?kind=proforma`)}>
                 Cetak proforma
               </Button>
@@ -1427,7 +1432,8 @@ function ProformaModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void
             value={dayjs(settleDate)}
             format="D MMMM YYYY"
             allowClear={false}
-            disabledDate={(d) => !d.isAfter(dayjs(date), 'day')}
+            // sisa dilunasi setelah batas bayar uang muka (tanggal proforma + masa tenggang)
+            disabledDate={(d) => d.isBefore(dayjs(date).add(graceDays, 'day'), 'day')}
             onChange={(d) => setSettleDate(d.format('YYYY-MM-DD'))}
           />
         </>

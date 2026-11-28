@@ -14,6 +14,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Upload,
 } from 'antd';
 import { MailOutlined, PrinterOutlined, UploadOutlined } from '@ant-design/icons';
@@ -382,13 +383,16 @@ export function PODetail() {
           </Button>
         )}
         {preConfirm && can('pengadaan', 'write') && (
-          <Button
-            disabled={dpShort}
-            title={dpShort ? `Bayar uang muka ${nf(dp.percent, 0)}% ke principal dulu` : undefined}
-            onClick={() => confirmPO()}
+          // tombol nonaktif tidak menampilkan tooltip sendiri; dibungkus supaya alasannya terlihat
+          <Tooltip
+            title={dpShort ? `Bayar uang muka ${nf(dp.percent, 0)}% ke principal dulu (kurang ${rp(dp.due)})` : ''}
           >
-            Konfirmasi
-          </Button>
+            <span>
+              <Button disabled={dpShort} onClick={() => confirmPO()}>
+                Konfirmasi
+              </Button>
+            </span>
+          </Tooltip>
         )}
         {dpShort && me?.group === 'PIMPINAN' && (
           <Button onClick={() => setWaiveOpen(true)}>Konfirmasi tanpa Uang Muka</Button>
@@ -426,22 +430,37 @@ export function PODetail() {
               Tutup sisa PO
             </Button>
           )}
-        {!['done', 'cancel'].includes(o.state) && can('pengadaan', 'delete') && (
-          <Button
-            danger
-            onClick={() =>
-              Modal.confirm({
-                title: 'Batalkan PO?',
-                okText: 'Batalkan',
-                cancelText: 'Tidak',
-                onOk: () => act('cancel', 'Pesanan dibatalkan'),
-              })
-            }
-          >
-            Batalkan
-          </Button>
-        )}
+        {!['done', 'cancel'].includes(o.state) &&
+          can('pengadaan', 'delete') &&
+          // barang yang sudah diterima tidak dapat dibatalkan (gunakan Tutup sisa PO); uang muka dibatalkan dulu
+          !(o.lines || []).some((l: any) => Number(l.qtyReceived) > 0) && (
+            <Tooltip
+              title={
+                Number(dp.available) > 0.009
+                  ? `Batalkan pembayaran uang muka ${rp(dp.available)} dulu di Penagihan > Pembayaran`
+                  : ''
+              }
+            >
+              <span>
+                <Button
+                  danger
+                  disabled={Number(dp.available) > 0.009}
+                  onClick={() =>
+                    Modal.confirm({
+                      title: 'Batalkan PO?',
+                      okText: 'Batalkan',
+                      cancelText: 'Tidak',
+                      onOk: () => act('cancel', 'Pesanan dibatalkan'),
+                    })
+                  }
+                >
+                  Batalkan
+                </Button>
+              </span>
+            </Tooltip>
+          )}
         <EmailTag s={o.emailStatus} />
+        {o.state === 'cancel' && <Pill v="cancel" kind="po" />}
         <span className="spacer" />
         <StatusBar
           value={o.state === 'cancel' ? 'draft' : o.state}
@@ -544,7 +563,13 @@ export function PODetail() {
               ) : (
                 <>
                   {rp(dp.paid)} dari {rp(dp.required)}{' '}
-                  {dp.due <= 0.5 ? <Tag color="green">terbayar</Tag> : <Tag color="gold">kurang {rp(dp.due)}</Tag>}
+                  {o.state === 'cancel' ? (
+                    <Tag>PO batal</Tag>
+                  ) : dp.due <= 0.5 ? (
+                    <Tag color="green">terbayar</Tag>
+                  ) : (
+                    <Tag color="gold">kurang {rp(dp.due)}</Tag>
+                  )}
                 </>
               )}
             </Descriptions.Item>
@@ -876,16 +901,24 @@ export function PayModal({
   title,
   body,
   max,
+  initial,
   proof,
   onClose,
 }: {
   title: string;
   body: any;
   max: number;
+  // nominal awal, misalnya termin cicilan yang jatuh tempo; tanpa ini seluruh sisa
+  initial?: number;
   proof?: boolean;
   onClose: (ok?: boolean) => void;
 }) {
-  const [v, setV] = useState<any>({ amount: max, method: 'BNK', date: today(), memo: '' });
+  const [v, setV] = useState<any>({
+    amount: initial && initial > 0 && initial <= max ? initial : max,
+    method: 'BNK',
+    date: today(),
+    memo: '',
+  });
   const [file, setFile] = useState<File | null>(null);
   return (
     <Modal
