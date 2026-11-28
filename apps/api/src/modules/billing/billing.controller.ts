@@ -118,7 +118,10 @@ export class BillingController {
   }
 
   @Get('payments') list2(@CurrentUser() u: AuthUser, @Query() q: any) {
-    if (!u.perms.penagihan?.read && !u.perms.pengadaan?.read) throw new ForbiddenException('Anda tidak memiliki akses');
+    // pembayaran pelanggan hanya untuk hak Penagihan; pembayaran ke principal untuk Penagihan atau Pengadaan
+    const supplierOnly = q.partnerType === 'supplier';
+    if (!u.perms.penagihan?.read && !(supplierOnly && u.perms.pengadaan?.read))
+      throw new ForbiddenException('Anda tidak memiliki akses');
     return this.b.payments(q);
   }
   // Pembayaran pelanggan (uang muka, pelunasan, invoice) wajib disertai bukti transfer: multipart, field "file"

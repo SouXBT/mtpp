@@ -595,18 +595,22 @@ export function InvoiceDetail({ type }: { type: 'invoice' | 'bill' }) {
         items={[
           {
             label: 'Sales Order',
-            docs: e.sale ? [{ id: e.sale.id, name: e.sale.name, to: `/penjualan/${e.sale.id}` }] : [],
+            docs:
+              e.sale && can('penjualan') ? [{ id: e.sale.id, name: e.sale.name, to: `/penjualan/${e.sale.id}` }] : [],
           },
           {
             label: 'PO Principal',
-            docs: e.purchase ? [{ id: e.purchase.id, name: e.purchase.name, to: `/pengadaan/${e.purchase.id}` }] : [],
+            docs:
+              e.purchase && can('pengadaan')
+                ? [{ id: e.purchase.id, name: e.purchase.name, to: `/pengadaan/${e.purchase.id}` }]
+                : [],
           },
           {
             label: 'Pembayaran',
             docs: [...(e.payments || []), ...(e.advances || [])].map((p: any) => ({
               id: p.id,
               name: p.name,
-              to: `/penagihan/pembayaran?q=${encodeURIComponent(p.name)}`,
+              to: `/penagihan/pembayaran?q=${encodeURIComponent(p.name)}${cust ? '' : '&partnerType=supplier'}`,
               note: rp(p.amount),
             })),
           },
@@ -851,7 +855,15 @@ export function PaymentsPage() {
       <Segmented
         style={{ marginBottom: 14 }}
         value={tab}
-        onChange={(v) => set({ tab: v === 'so' ? 'so' : undefined, partnerType: undefined, kind: undefined })}
+        onChange={(v) =>
+          set({
+            tab: v === 'so' ? 'so' : undefined,
+            partnerType: undefined,
+            kind: undefined,
+            q: undefined,
+            group: undefined,
+          })
+        }
         options={[
           { value: 'all', label: 'Semua pembayaran' },
           { value: 'so', label: 'Per sales order' },

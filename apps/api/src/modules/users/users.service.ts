@@ -98,6 +98,17 @@ export class UsersService {
     id: number,
     rows: { menu: string; read: boolean; create: boolean; write: boolean; delete: boolean }[],
   ) {
+    must(await this.db.groups.findFirst({ where: { id } }), 'Grup');
+    if (!Array.isArray(rows)) fail('Isi daftar hak akses');
+    const keys = MENUS.map((m) => m.key);
+    const flag = (v: unknown) => v === true || v === 'true' || v === 1;
+    for (const r of rows) {
+      if (!r || typeof r !== 'object' || !keys.includes(r.menu)) fail(`Menu ${r?.menu ?? ''} tidak dikenal`);
+      for (const k of ['read', 'create', 'write', 'delete'] as const)
+        if (r[k] !== undefined && ![true, false, 'true', 'false', 0, 1].includes(r[k] as any))
+          fail(`Hak ${k} harus ya atau tidak`);
+      Object.assign(r, { read: flag(r.read), create: flag(r.create), write: flag(r.write), delete: flag(r.delete) });
+    }
     await this.db.$transaction(async (tx) => {
       for (const r of rows) {
         const v = {

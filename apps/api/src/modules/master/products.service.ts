@@ -97,6 +97,10 @@ export class ProductsService {
     if (!b.code || !b.name || !b.uomId) fail('Kode, nama, dan satuan wajib diisi');
     checkColumnTypes('ProductTemplates', b, T_FIELDS);
     checkProduct(b);
+    if (b.mainSupplierId) {
+      const sp = await this.db.partners.findFirst({ where: { id: +b.mainSupplierId } });
+      if (!sp || !(Number(sp.supplierRank) > 0)) fail('Principal pemasok harus partner principal');
+    }
     return this.db.$transaction(async (tx) => {
       const t = await tx.productTemplates.create({ data: { ...pick(b, T_FIELDS), createUid: u.id } as any });
       const p = await tx.products.create({ data: { productTmplId: t.id, defaultCode: b.code } });
@@ -108,6 +112,10 @@ export class ProductsService {
     const p = must(await this.db.products.findFirst({ where: { id: id } }), 'Produk');
     checkColumnTypes('ProductTemplates', b, [...T_FIELDS, 'active']);
     checkProduct(b);
+    if (b.mainSupplierId) {
+      const sp = await this.db.partners.findFirst({ where: { id: +b.mainSupplierId } });
+      if (!sp || !(Number(sp.supplierRank) > 0)) fail('Principal pemasok harus partner principal');
+    }
     await this.db.$transaction(async (tx) => {
       const tv = pick(b, [...T_FIELDS, 'active']);
       if (Object.keys(tv).length)

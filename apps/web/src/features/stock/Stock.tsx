@@ -428,11 +428,14 @@ export function TransferDetail() {
         items={[
           {
             label: 'Sales Order',
-            docs: t.sale ? [{ id: t.saleId, name: t.sale.name, to: `/penjualan/${t.saleId}` }] : [],
+            docs: t.sale && can('penjualan') ? [{ id: t.saleId, name: t.sale.name, to: `/penjualan/${t.saleId}` }] : [],
           },
           {
             label: 'PO Principal',
-            docs: t.purchase ? [{ id: t.purchaseId, name: t.purchase.name, to: `/pengadaan/${t.purchaseId}` }] : [],
+            docs:
+              t.purchase && can('pengadaan')
+                ? [{ id: t.purchaseId, name: t.purchase.name, to: `/pengadaan/${t.purchaseId}` }]
+                : [],
           },
           {
             label: 'Dokumen susulan',

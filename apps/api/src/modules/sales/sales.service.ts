@@ -7,7 +7,13 @@ import { SettingsService } from '../../shared/settings.service';
 import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
 import { salePayments } from '../../shared/status';
-import { PROFORMA_MAX_GRACE, PROFORMA_MIN_GRACE, collectionSettings, pastGrace } from '../../shared/collection';
+import {
+  PROFORMA_MAX_GRACE,
+  PROFORMA_MIN_GRACE,
+  collectionSettings,
+  pastGrace,
+  receivableSlices,
+} from '../../shared/collection';
 import { lockRow } from '../../shared/lock';
 import {
   addDays,
@@ -121,10 +127,19 @@ export class SalesService {
           sql`select coalesce(p.mtpp_sale_order_id, e.mtpp_sale_order_id) as sid, sum(case when p.payment_type = 'outbound' then -p.amount else p.amount end)::float as amt from payments p left join journal_entries e on e.id = p.invoice_id where p.state <> 'cancel' and p.partner_type = 'customer' and coalesce(p.mtpp_sale_order_id, e.mtpp_sale_order_id) = any(${ids}) group by 1`,
         )
       : [];
-    const lateRows: any[] = ids.length
-      ? await this.db.$queryRaw(
-          sql`select distinct mtpp_sale_order_id as sid from journal_entries where move_type = 'out_invoice' and state = 'posted' and amount_residual > 0.5 and invoice_date_due < ${t}::date and mtpp_sale_order_id = any(${ids})`,
-        )
+    // lewat jatuh tempo: potongan piutang yang jatuh temponya sudah lewat; termin cicilan yang disetujui memakai
+    // tanggal terminnya (sama dengan detail invoice dan umur piutang)
+    const openInv = ids.length
+      ? await this.db.journalEntries.findMany({
+          where: { saleId: { in: ids }, moveType: 'out_invoice', state: 'posted', amountResidual: { gt: 0.5 } },
+          select: { id: true, saleId: true },
+        })
+      : [];
+    const saleOfInv = new Map(openInv.map((x: any) => [x.id, x.saleId]));
+    const lateRows = openInv.length
+      ? (await receivableSlices(this.db, { invoiceIds: openInv.map((x: any) => x.id) }))
+          .filter((x) => x.open > 0.5 && !!x.due && String(x.due) < t)
+          .map((x) => ({ sid: saleOfInv.get(x.invoiceId) }))
       : [];
     const paidOf = new Map(paidRows.map((x) => [Number(x.sid), Number(x.amt)]));
     const late = new Set(lateRows.map((x) => Number(x.sid)));
@@ -160,6 +175,19 @@ export class SalesService {
         l.priceUnit == null || (l as any).priceUnit === ''
           ? await this.pricing.salePrice(l.productId, partnerId, Number(l.productUomQty), date)
           : null;
+      // angka harus angka (atau teks angka), bukan daftar atau ya/tidak yang diam-diam diubah menjadi angka
+      for (const [k, v] of [
+        ['Kuantitas', l.productUomQty],
+        ['Harga', l.priceUnit],
+        ['Diskon', l.discount],
+      ] as const)
+        if (
+          v != null &&
+          (v as any) !== '' &&
+          typeof v !== 'number' &&
+          !(typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v))
+        )
+          fail(`${k} harus berupa angka`);
       const qty = Number(l.productUomQty),
         price = Number(auto ? auto.priceUnit : l.priceUnit),
         disc = Number(l.discount ?? auto?.discount ?? 0);
@@ -506,6 +534,20 @@ export class SalesService {
     }
     const head: any = {};
     for (const k of HEAD_FIELDS) if (b[k] !== undefined) head[k] = b[k] === '' ? null : b[k];
+    // pemeriksaan yang sama dengan pembuatan penawaran
+    const partnerId = head.partnerId ?? o.partnerId;
+    if (head.partnerId !== undefined) {
+      const p = must(await this.db.partners.findFirst({ where: { id: +head.partnerId } }), 'Pelanggan');
+      if (!(Number(p.customerRank) > 0)) fail('Penawaran hanya untuk pelanggan, bukan principal');
+    }
+    if (head.partnerShippingId) {
+      const a = await this.db.partners.findFirst({ where: { id: +head.partnerShippingId } });
+      if (!a || (a.id !== partnerId && a.parentId !== partnerId)) fail('Alamat kirim bukan milik pelanggan ini');
+    }
+    const dOrder = head.dateOrder ?? o.dateOrder;
+    if (head.commitmentDate && dOrder && String(head.commitmentDate) < String(dOrder))
+      fail('Rencana kirim tidak boleh sebelum tanggal penawaran');
+    if (b.name !== undefined && b.name !== null && !String(b.name).trim()) fail('Nomor tidak boleh kosong');
     if (head.dateOrder !== undefined || head.validityDate !== undefined)
       checkValidity(
         head.dateOrder ?? o.dateOrder,
@@ -886,8 +928,11 @@ export class SalesService {
       amount = total;
     } else if (b.mode === 'persen') amount = round2((total * percent) / 100);
     else percent = total > 0 ? round2((amount / total) * 100) : 0;
-    if (amount <= 0 || amount > total + 0.5)
-      fail('Nilai proforma harus lebih dari 0 dan tidak melebihi total sales order');
+    if (b.mode === 'persen' && (!(percent > 0) || percent > 100))
+      fail('Persen uang muka harus lebih dari 0 sampai 100');
+    // paling sedikit Rp 1 dan tidak melebihi total sales order (tanpa toleransi)
+    if (amount < 1 || amount > total + 0.009)
+      fail('Nilai proforma harus paling sedikit Rp 1 dan tidak melebihi total sales order');
     // uang muka: tanggal pelunasan sisa wajib disepakati
     const partial = amount < total - 0.5;
     const pDate = b.date || today();
@@ -895,8 +940,15 @@ export class SalesService {
     if (partial && !b.settleDate) fail('Isi tanggal pelunasan sisa pembayaran');
     if (partial && String(b.settleDate) <= pDate) fail('Tanggal pelunasan harus setelah tanggal proforma');
     const dueDate = addDays(pDate, grace);
+    // sisa dilunasi setelah batas bayar uang muka, bukan sebelumnya
+    if (partial && String(b.settleDate) < dueDate)
+      fail(`Tanggal pelunasan sisa tidak boleh sebelum batas bayar uang muka (${dueDate})`);
     return this.db.$transaction(async (tx) => {
-      const nomor = o.mtppProformaNumber || (await this.numbering.next(tx, 'PI', b.date || today()));
+      // dikunci dan dibaca ulang: penerbitan bersamaan memakai satu nomor PI, tanpa nomor yang terbuang
+      await lockRow(tx, 'sales_orders', id);
+      const cur = must(await tx.salesOrders.findFirst({ where: { id: id } }), 'Sales order');
+      if (cur.state !== 'sale') fail('Proforma hanya diterbitkan dari sales order yang sudah dikonfirmasi');
+      const nomor = cur.mtppProformaNumber || (await this.numbering.next(tx, 'PI', b.date || today()));
       await tx.salesOrders.updateMany({
         where: { id: id },
         data: {

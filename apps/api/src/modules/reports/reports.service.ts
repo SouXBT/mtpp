@@ -559,10 +559,12 @@ export class ReportsService {
         const rows = await this
           .q(sql`select e.id, e.date, e.name, coalesce(e.ref, l.name) as memo, a.name as account, j.code as journal, l.debit::float as receipt, l.credit::float as expense, p.name as partner
           from journal_entry_lines l join journal_entries e on e.id = l.move_id join accounts a on a.id = l.account_id join journals j on j.id = e.journal_id left join partners p on p.id = e.partner_id
-          where e.state = 'posted' and j.type in ('cash','bank') and l.account_id = j.default_account_id and e.date between ${from} and ${to} order by e.date, e.id`);
-        const [op] = await this
-          .q(sql`select coalesce(sum(l.debit - l.credit),0)::float as b from journal_entry_lines l join journal_entries e on e.id = l.move_id join journals j on j.id = e.journal_id
-          where e.state = 'posted' and j.type in ('cash','bank') and l.account_id = j.default_account_id and e.date < ${from}`);
+          where e.state = 'posted' and l.account_id in (select default_account_id from journals where type in ('cash','bank') and default_account_id is not null) and e.date between ${from} and ${to} order by e.date, e.id`);
+        const [op] =
+          await // saldo akun kas dan bank dari semua jurnal (saldo awal, beban, setoran PPN ikut), sama dengan buku besar
+          this
+            .q(sql`select coalesce(sum(l.debit - l.credit),0)::float as b from journal_entry_lines l join journal_entries e on e.id = l.move_id
+          where e.state = 'posted' and l.account_id in (select default_account_id from journals where type in ('cash','bank') and default_account_id is not null) and e.date < ${from}`);
         let run = op?.b || 0;
         rows.forEach((r) => {
           run = round2(run + r.receipt - r.expense);

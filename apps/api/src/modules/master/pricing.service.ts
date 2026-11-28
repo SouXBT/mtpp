@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DB, Db } from '../../db/db.module';
-import { round2, today } from '../../shared/util';
+import { fail, round2, today } from '../../shared/util';
 import { Prisma } from '@prisma/client';
 
 const sql = Prisma.sql;
@@ -14,6 +14,7 @@ export class PricingService {
     const [r] = (await this.db.products.findMany({ where: { id: productId }, include: { template: true } })).map(
       ({ template, ...p }) => ({ p, t: template }),
     );
+    if (!r) fail('Produk tidak ditemukan');
     return r;
   }
 

@@ -18,6 +18,22 @@ export const MODEL_MENU: Record<string, string[]> = {
   products: ['produk'],
 };
 
+const MODEL_TABLE: Record<string, string> = {
+  sales_orders: 'salesOrders',
+  purchase_orders: 'purchaseOrders',
+  stock_transfers: 'stockTransfers',
+  payments: 'payments',
+  journal_entries: 'journalEntries',
+  partners: 'partners',
+  products: 'products',
+};
+const isDay = (s: unknown) => {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  const y = +s.slice(0, 4);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s && y >= 2000 && y <= 2100;
+};
+
 // boleh membuka catatan/lampiran jika punya hak pada salah satu menu pemilik dokumen
 function can(u: AuthUser, model: string, action: 'read' | 'write') {
   const menus = MODEL_MENU[model];
@@ -34,6 +50,20 @@ export class RecordsService {
     private files: FilesService,
   ) {}
 
+  // catatan, lampiran, dan aktivitas hanya untuk dokumen yang benar-benar ada
+  private async mustExist(model: string, id: number) {
+    const t = MODEL_TABLE[model];
+    if (!t) fail('Model tidak dikenal');
+    must(await (this.db as any)[t].findFirst({ where: { id: +id } }), 'Dokumen');
+  }
+
+  // bukti transfer pelanggan hanya untuk hak Penagihan; pembayaran ke principal juga untuk Pengadaan
+  private async canPayment(u: AuthUser, id: number, action: 'read' | 'write') {
+    const p = await this.db.payments.findFirst({ where: { id: +id } });
+    const ok = u.perms.penagihan?.[action] || (p?.partnerType === 'supplier' && u.perms.pengadaan?.[action]);
+    if (!ok) throw new ForbiddenException('Anda tidak memiliki akses');
+  }
+
   messages(u: AuthUser, model: string, id: number) {
     can(u, model, 'read');
     return this.chatter.list(model, id);
@@ -41,18 +71,23 @@ export class RecordsService {
 
   async note(u: AuthUser, model: string, id: number, b: { body: string }) {
     can(u, model, 'read');
+    if (typeof b.body !== 'string') fail('Catatan harus berupa teks');
+    await this.mustExist(model, id);
     if (!b.body?.trim()) fail('Catatan tidak boleh kosong');
     const [m] = await this.chatter.note(model, id, u.id, b.body.trim());
     return m;
   }
 
-  attachments(u: AuthUser, model: string, id: number) {
+  async attachments(u: AuthUser, model: string, id: number) {
     can(u, model, 'read');
+    if (model === 'payments') await this.canPayment(u, id, 'read');
     return this.files.list(model, id);
   }
 
   async upload(u: AuthUser, model: string, id: number, f: Express.Multer.File) {
     can(u, model, 'read');
+    await this.mustExist(model, id);
+    if (model === 'payments') await this.canPayment(u, id, 'write');
     if (!f) fail('File belum dipilih');
     const a = await this.files.save(f.buffer, f.originalname, f.mimetype, model, id, u.id);
     await this.chatter.log(model, id, u.id, `Lampiran ditambahkan: ${f.originalname}`);
@@ -62,6 +97,7 @@ export class RecordsService {
   async download(u: AuthUser, id: number, res: Response) {
     const f = await this.files.get(id);
     if (MODEL_MENU[f.meta.resModel]) can(u, f.meta.resModel, 'read');
+    if (f.meta.resModel === 'payments') await this.canPayment(u, f.meta.resId, 'read');
     res
       .set({
         'Content-Type': f.meta.mimetype,
@@ -107,6 +143,11 @@ export class RecordsService {
   async createActivity(u: AuthUser, b: any) {
     can(u, b.resModel, 'read');
     if (!b.summary || !b.dateDeadline) fail('Ringkasan dan tanggal jatuh tempo wajib diisi');
+    if (!isDay(b.dateDeadline)) fail('Tanggal jatuh tempo aktivitas tidak valid');
+    if (!Number.isInteger(Number(b.resId))) fail('Dokumen tidak valid');
+    await this.mustExist(b.resModel, +b.resId);
+    if (b.userId !== undefined && b.userId !== null && b.userId !== '')
+      must(await this.db.users.findFirst({ where: { id: +b.userId } }), 'Pengguna');
     const a = await this.db.activities.create({
       data: {
         resModel: b.resModel,
@@ -137,6 +178,9 @@ export class RecordsService {
     const v: any = {};
     for (const k of ['summary', 'note', 'dateDeadline', 'activityType', 'done', 'userId'])
       if (b[k] !== undefined) v[k] = b[k];
+    if (v.dateDeadline !== undefined && !isDay(v.dateDeadline)) fail('Tanggal jatuh tempo aktivitas tidak valid');
+    if (v.done !== undefined && typeof v.done !== 'boolean') fail('Status selesai harus ya atau tidak');
+    if (v.userId !== undefined) must(await this.db.users.findFirst({ where: { id: +v.userId } }), 'Pengguna');
     const [r] = await this.db.activities.updateManyAndReturn({ where: { id: id }, data: v });
     if (b.done === true) await this.chatter.log(a.resModel, a.resId, u.id, `Aktivitas selesai: ${a.summary}`);
     return r;

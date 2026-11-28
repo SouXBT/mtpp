@@ -30,8 +30,10 @@ export interface CrudOpts {
   // batas angka per kolom [min, max] dan pilihan teks yang diperbolehkan
   ranges?: Record<string, [number, number]>;
   oneOf?: Record<string, string[]>;
-  // pemeriksaan tambahan, misalnya tanggal mulai tidak setelah tanggal akhir
+  // pemeriksaan tambahan, misalnya tanggal mulai tidak setelah tanggal akhir (b = data lama digabung isian baru)
   check?: (b: any) => string | null;
+  // pemeriksaan yang membaca database, misalnya partner harus principal
+  verify?: (db: any, b: any) => Promise<string | null>;
 }
 
 function checkRules(o: CrudOpts, b: any) {
@@ -102,13 +104,19 @@ export function makeCrud(o: CrudOpts) {
         if (b[k] === undefined || b[k] === null || b[k] === '') throw new ConflictException(`Kolom ${k} wajib diisi`);
       checkColumnTypes(o.table, b, o.writable);
       checkRules(o, b);
+      const bad = o.verify && (await o.verify(this.db, b));
+      if (bad) throw new BadRequestException(bad);
       return this.model.create({ data: pick(b, o.writable) });
     }
     @Patch(':id')
     @Perm(o.menu, 'write')
     async update(@Param('id', ParseIntPipe) id: number, @Body() b: any) {
       checkColumnTypes(o.table, b, [...o.writable, 'active']);
-      checkRules(o, b);
+      const cur = must(await this.model.findFirst({ where: { id } }));
+      const merged = { ...cur, ...pick(b, [...o.writable, 'active']) };
+      checkRules(o, merged);
+      const bad = o.verify && (await o.verify(this.db, merged));
+      if (bad) throw new BadRequestException(bad);
       const [r] = await this.model.updateManyAndReturn({ where: { id }, data: pick(b, [...o.writable, 'active']) });
       return must(r);
     }

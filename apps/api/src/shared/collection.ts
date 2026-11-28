@@ -60,6 +60,20 @@ export function splitEven(residual: number, n: number, firstDue: string, everyDa
   }));
 }
 
+// tanggal YYYY-MM-DD yang benar-benar ada (30 Februari ditolak, bukan digeser ke Maret)
+const isDay = (s: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(s))) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+};
+// tambah bulan kalender; tanggal yang tidak ada di bulan tujuan menjadi hari terakhir bulan itu (31 Jan + 1 = 28/29 Feb)
+export const addMonths = (s: string, n: number) => {
+  const [y, m, d] = s.slice(0, 10).split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1 + n, 1));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(d, last))).toISOString().slice(0, 10);
+};
+
 // Aturan jadwal cicilan. Mengembalikan pesan kesalahan pertama, atau null bila jadwal sah.
 export function planError(
   termins: { dateDue: string; amount: number }[],
@@ -71,12 +85,13 @@ export function planError(
   if (termins.length > opts.maxTermins) return `Cicilan paling banyak ${opts.maxTermins} termin`;
   for (const [i, x] of termins.entries()) {
     if (!x.dateDue) return `Tanggal jatuh tempo termin ${i + 1} belum diisi`;
+    if (!isDay(x.dateDue)) return `Tanggal jatuh tempo termin ${i + 1} tidak valid`;
     if (!(Number(x.amount) > 0)) return `Nominal termin ${i + 1} harus lebih dari 0`;
     if (x.dateDue < invoiceDate) return `Jatuh tempo termin ${i + 1} sebelum tanggal invoice`;
     if (i && x.dateDue <= termins[i - 1].dateDue) return `Jatuh tempo termin ${i + 1} harus setelah termin ${i}`;
   }
   const last = termins[termins.length - 1].dateDue;
-  if (last > addDays(invoiceDate, opts.maxMonths * 31))
+  if (last > addMonths(invoiceDate, opts.maxMonths))
     return `Termin terakhir paling lambat ${opts.maxMonths} bulan setelah tanggal invoice`;
   const sum = round2(termins.reduce((a, x) => a + Number(x.amount), 0));
   if (Math.abs(sum - round2(residual)) > 0.009)
@@ -118,6 +133,20 @@ export interface Slice {
   graceDays: number;
 }
 
+// Pembayaran yang masuk setelah jadwal cicilan diajukan, termasuk uang muka SO yang dipakai ke invoice:
+// (jumlah termin - sisa tagihan) ditambah pembayaran sebelum jadwal yang kemudian dibatalkan (pembatalan itu
+// menaikkan sisa tagihan, bukan mengurangi pembayaran sesudah jadwal).
+export async function paidAfterPlan(tx: any, invoiceId: number, residual: number, termins: any[]) {
+  const planned = round2(termins.reduce((a: number, x: any) => a + Number(x.amount), 0));
+  const since = termins.reduce((a: Date, r: any) => (r.createDate < a ? r.createDate : a), termins[0].createDate);
+  const cancelledBefore = await tx.payments.findMany({
+    where: { invoiceId, state: 'cancel', createDate: { lt: since } },
+    select: { amount: true },
+  });
+  const back = round2(cancelledBefore.reduce((x: number, p: any) => x + Number(p.amount), 0));
+  return round2(Math.max(planned - residual + back, 0));
+}
+
 // Piutang terbuka dipecah per tanggal jatuh tempo: termin cicilan yang disetujui memakai tanggal terminnya,
 // sisanya memakai jatuh tempo invoice. Dipakai umur piutang, beranda, daftar invoice, dan blokir pengiriman.
 export async function receivableSlices(tx: any, f: { partnerId?: number; invoiceIds?: number[] } = {}) {
@@ -153,16 +182,7 @@ export async function receivableSlices(tx: any, f: { partnerId?: number; invoice
       out.push({ ...base, due: e.invoiceDateDue, open: residual, sequence: null });
       continue;
     }
-    // pembayaran yang masuk setelah jadwal diajukan (sama dengan detail invoice)
-    const since = e.installments.reduce(
-      (a: Date, r: any) => (r.createDate < a ? r.createDate : a),
-      e.installments[0].createDate,
-    );
-    const after = await tx.payments.findMany({
-      where: { invoiceId: e.id, state: { not: 'cancel' }, createDate: { gte: since } },
-      select: { amount: true },
-    });
-    const paidAfter = round2(after.reduce((x: number, p: any) => x + Number(p.amount), 0));
+    const paidAfter = await paidAfterPlan(tx, e.id, residual, e.installments);
     const a = allocate(Number(e.amountTotal), residual, e.installments, paidAfter);
     for (const x of a.rows) if (x.open > 0.5) out.push({ ...base, due: x.dateDue, open: x.open, sequence: x.sequence });
     if (a.outside > 0.5) out.push({ ...base, due: e.invoiceDateDue, open: a.outside, sequence: null });

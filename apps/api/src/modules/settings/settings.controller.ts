@@ -38,7 +38,15 @@ export class SettingsController {
     if (key === 'lock_date') {
       // seperti lock date Odoo: bukan tanggal masa depan, dan tidak ada dokumen draf yang tertinggal di periode itu
       const d = b.date ? String(b.date) : null;
-      if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) fail('Format tanggal kunci tidak valid');
+      const real = d && new Date(`${d}T00:00:00Z`);
+      if (
+        d &&
+        (!/^\d{4}-\d{2}-\d{2}$/.test(d) ||
+          !real ||
+          Number.isNaN(real.getTime()) ||
+          real.toISOString().slice(0, 10) !== d)
+      )
+        fail('Format tanggal kunci tidak valid');
       if (d && d > today()) fail('Tanggal kunci tidak boleh di masa depan');
       if (d) {
         const draft = await this.db.journalEntries.findFirst({ where: { state: 'draft', date: { lte: d } } });

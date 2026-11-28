@@ -130,7 +130,9 @@ export default function Shell() {
                         <Link to="/stok?low=true">
                           {lowRows.length > 5 ? `Lihat semua ${lowRows.length} produk` : 'Buka Stok per Gudang'}
                         </Link>
-                        {can('pengadaan', 'create') && <Link to="/stok?low=true">Isi ulang stok ke principal</Link>}
+                        {can('pengadaan', 'create') && (
+                          <Link to="/pengadaan/perlu-pesanan">Isi ulang stok ke principal</Link>
+                        )}
                       </span>
                     }
                     renderItem={(r: any) => (

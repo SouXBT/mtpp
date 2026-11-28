@@ -14,7 +14,8 @@ export function ReplenishButton({ type = 'default' }: { type?: 'default' | 'prim
   const plan = useFetch<any[]>(allowed ? '/purchase-orders/replenish/plan' : null);
   const [busy, setBusy] = useState(false);
   if (!allowed) return null;
-  const n = plan.data?.length || 0;
+  const n = (plan.data || []).filter((x) => !x.issue).length;
+  const skipped = (plan.data || []).filter((x) => x.issue);
   const open = () =>
     Modal.confirm({
       title: 'Buat PO isi ulang stok minimum?',
@@ -23,13 +24,27 @@ export function ReplenishButton({ type = 'default' }: { type?: 'default' | 'prim
         <>
           <p>Dipesan sampai 2× batas minimum, satu PO per principal:</p>
           <ul style={{ paddingLeft: 18, maxHeight: 260, overflow: 'auto' }}>
-            {(plan.data || []).map((x) => (
-              <li key={`${x.productId}-${x.warehouseId}`}>
-                {x.product} ({x.warehouse}): {qf(x.qty)} · bebas {qf(x.free)}, dalam perjalanan {qf(x.incoming)},
-                minimum {qf(x.minQty)}
-              </li>
-            ))}
+            {(plan.data || [])
+              .filter((x) => !x.issue)
+              .map((x) => (
+                <li key={`${x.productId}-${x.warehouseId}`}>
+                  {x.product} ({x.warehouse}): {qf(x.qty)} · bebas {qf(x.free)}, dalam perjalanan {qf(x.incoming)},
+                  minimum {qf(x.minQty)}
+                </li>
+              ))}
           </ul>
+          {skipped.length > 0 && (
+            <>
+              <p className="muted">Dilewati, perlu diperbaiki dulu:</p>
+              <ul className="muted" style={{ paddingLeft: 18 }}>
+                {skipped.map((x) => (
+                  <li key={`s-${x.productId}-${x.warehouseId}`}>
+                    {x.product} ({x.warehouse}): {x.issue}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </>
       ),
       okText: 'Buat PO',

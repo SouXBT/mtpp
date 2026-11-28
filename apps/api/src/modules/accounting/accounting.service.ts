@@ -47,25 +47,36 @@ export function parseCsv(text: string): string[][] {
 
 export function parseAmount(v: string) {
   if (v == null) return 0;
-  let t = String(v).replace(/[^\d,.\-]/g, '');
+  const raw = String(v).trim();
+  // tanda keluar: (5.001), 5.002-, -5.000, atau akhiran DB/D; akhiran CR/K berarti masuk
+  const neg =
+    /^\(.*\)$/.test(raw) || /-\s*$/.test(raw) || /^-/.test(raw.replace(/^rp\.?\s*/i, '')) || /\b(DB|D)\s*$/i.test(raw);
+  let t = raw.replace(/[^\d,.]/g, '');
   if (!t) return 0;
   // format Indonesia: 1.500.000 atau 1.500.000,50 (titik ribuan, koma desimal)
   if (/,\d{1,2}$/.test(t)) t = t.replace(/\./g, '').replace(',', '.');
   else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
   else t = t.replace(/,/g, '');
-  return round2(parseFloat(t));
+  const n = round2(parseFloat(t));
+  return neg ? -Math.abs(n) : n;
 }
 
 export function parseDate(v: string, fmt: string) {
   if (!v) return null;
   const t = v.trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
+    const dt = new Date(`${t.slice(0, 10)}T00:00:00Z`);
+    return !Number.isNaN(dt.getTime()) && dt.toISOString().slice(0, 10) === t.slice(0, 10) ? t.slice(0, 10) : null;
+  }
   const m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
   if (!m) return null;
   let [, a, b, y] = m;
   if (y.length === 2) y = '20' + y;
   const [d, mo] = fmt.startsWith('MM') ? [b, a] : [a, b];
-  return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  const day = `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  // tanggal yang tidak ada (31/02) ditolak, bukan digeser ke bulan berikutnya
+  const dt = new Date(`${day}T00:00:00Z`);
+  return !Number.isNaN(dt.getTime()) && dt.toISOString().slice(0, 10) === day ? day : null;
 }
 
 // Kas (F.g), bagan akun dan jurnal (F.h), jurnal penyesuaian, buku besar, neraca saldo (F.i), rekonsiliasi bank (F.j)

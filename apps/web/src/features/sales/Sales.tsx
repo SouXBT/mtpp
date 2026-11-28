@@ -99,7 +99,7 @@ export function SalesList() {
       >
         <Radio.Group
           value={FILTER_TABS.some((t) => t.key === tab.key) ? tab.key : null}
-          onChange={(e) => set({ tab: e.target.value, expired: undefined })}
+          onChange={(e) => set({ tab: e.target.value, expired: undefined, pay: undefined })}
           optionType="button"
           options={FILTER_TABS.map((t) => ({ value: t.key, label: t.label }))}
         />
@@ -493,27 +493,22 @@ export function SalesDetail() {
         return null;
       case 'hold': {
         const first = hold.invoices?.[0];
-        if (me?.group === 'PIMPINAN')
-          return (
-            <Button size="small" type="primary" onClick={release}>
-              Izinkan Kirim
-            </Button>
-          );
-        return first && can('penagihan') ? go(`/penagihan/${first.id}`, `Tagih ${first.name}`) : null;
+        // Pimpinan memakai tombol Izinkan Kirim di peringatan merah di atas, tidak digandakan di sini
+        return first && can('penagihan', 'create') ? go(`/penagihan/${first.id}`, `Tagih ${first.name}`) : null;
       }
       case 'validate': {
         const t = (o.transfers || []).find(
           (x: any) => x.code === 'outgoing' && ['draft', 'waiting', 'assigned'].includes(x.state),
         );
-        return t && can('gudang') ? go(`/stok/dok/${t.id}`, `Buka ${t.name}`) : null;
+        return t && can('gudang', 'write') ? go(`/stok/dok/${t.id}`, `Buka ${t.name}`) : null;
       }
       case 'post': {
         const d = invs.find((i: any) => i.state === 'draft');
-        return d && can('penagihan') ? go(`/penagihan/${d.id}`, `Buka ${d.name}`) : null;
+        return d && can('penagihan', 'create') ? go(`/penagihan/${d.id}`, `Buka ${d.name}`) : null;
       }
       case 'payinv': {
         const u = invs.find((i: any) => i.state === 'posted' && ['not_paid', 'partial'].includes(i.paymentState));
-        return u && can('penagihan') ? go(`/penagihan/${u.id}`, `Bayar ${u.name}`) : null;
+        return u && can('penagihan', 'create') ? go(`/penagihan/${u.id}`, `Bayar ${u.name}`) : null;
       }
     }
   };
@@ -717,7 +712,7 @@ export function SalesDetail() {
           items={[
             {
               label: 'PO Principal',
-              docs: (o.purchaseOrders || []).map((p: any) => ({
+              docs: (can('pengadaan') ? o.purchaseOrders || [] : []).map((p: any) => ({
                 id: p.id,
                 name: p.name,
                 to: `/pengadaan/${p.id}`,
@@ -726,7 +721,7 @@ export function SalesDetail() {
             },
             {
               label: 'Surat Jalan',
-              docs: (o.transfers || [])
+              docs: (can('gudang') ? o.transfers || [] : [])
                 .filter((t: any) => t.code !== 'incoming')
                 .map((t: any) => ({
                   id: t.id,
@@ -737,7 +732,7 @@ export function SalesDetail() {
             },
             {
               label: 'Invoice',
-              docs: invs.map((i: any) => ({
+              docs: (can('penagihan') ? invs : []).map((i: any) => ({
                 id: i.id,
                 name: i.name,
                 to: `/penagihan/${i.id}`,
@@ -746,11 +741,11 @@ export function SalesDetail() {
             },
             {
               label: 'Nota Kredit',
-              docs: (o.invoices || [])
+              docs: (can('penagihan') ? o.invoices || [] : [])
                 .filter((i: any) => i.moveType === 'out_refund')
                 .map((i: any) => ({ id: i.id, name: i.name, to: `/penagihan/${i.id}` })),
             },
-            ...(['sale', 'done'].includes(o.state) && Number(pay.amount) > 0
+            ...(['sale', 'done'].includes(o.state) && Number(pay.amount) > 0 && can('penagihan')
               ? [
                   {
                     label: `dari ${rp(o.amountTotal)} dibayar`,
@@ -846,8 +841,11 @@ export function SalesDetail() {
           }}
         >
           {steps.map((t) => (
-            <div key={t.text} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '3px 0' }}>
-              <span style={{ flex: 1 }}>{t.text}</span>
+            <div
+              key={t.text}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '3px 0', flexWrap: 'wrap' }}
+            >
+              <span style={{ flex: '1 1 260px' }}>{t.text}</span>
               {stepButton(t.action)}
             </div>
           ))}

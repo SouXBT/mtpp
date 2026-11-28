@@ -458,20 +458,21 @@ export function PODetail() {
         items={[
           {
             label: 'Sales Order',
-            docs: o.sale
-              ? [
-                  {
-                    id: o.sale.id,
-                    name: o.sale.name,
-                    to: `/penjualan/${o.sale.id}`,
-                    note: o.sale.partner?.name,
-                  },
-                ]
-              : [],
+            docs:
+              o.sale && can('penjualan')
+                ? [
+                    {
+                      id: o.sale.id,
+                      name: o.sale.name,
+                      to: `/penjualan/${o.sale.id}`,
+                      note: o.sale.partner?.name,
+                    },
+                  ]
+                : [],
           },
           {
             label: o.isDropship ? 'Surat Jalan Dropship' : 'Penerimaan Barang',
-            docs: (o.transfers || []).map((t: any) => ({
+            docs: (can('gudang') ? o.transfers || [] : []).map((t: any) => ({
               id: t.id,
               name: t.name,
               to: `/stok/dok/${t.id}`,

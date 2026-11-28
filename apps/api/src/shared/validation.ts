@@ -54,7 +54,11 @@ const rule = (name: string, test: (v: unknown) => boolean, message: string) => (
 
 export const IsNumeric = rule('isNumeric', isNumeric, 'harus berupa angka');
 export const IsId = rule('isId', isIntLike, 'harus berupa angka bulat');
-export const IsDateLike = rule('isDateLike', isDateLike, 'harus berupa tanggal yang benar');
+// Tanggal bisnis pada isian (tanggal dokumen, bayar, jatuh tempo): hanya YYYY-MM-DD. Waktu dengan zona dulu bisa
+// menggeser tanggal tersimpan ke hari lain dan melewati tanggal kunci periode.
+const isDayOnly = (v: unknown) =>
+  isEmpty(v) || v instanceof Date || (typeof v === 'string' && DAY_RE.test(v) && inYears(v) && isRealDay(v));
+export const IsDateLike = rule('isDateLike', isDayOnly, 'harus berupa tanggal yang benar (YYYY-MM-DD)');
 export const IsText = rule('isText', (v) => isEmpty(v) || typeof v === 'string', 'harus berupa teks');
 export const IsFlag = rule('isFlag', isFlag, 'harus berupa ya atau tidak');
 // Untuk kolom wajib: bila dikirim tidak boleh null, karena kode dan database tidak menerimanya.

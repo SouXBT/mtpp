@@ -410,6 +410,8 @@ export class TransfersService {
       // dikunci berurutan (SO lalu dokumen): validasi bersamaan, atau validasi bersamaan dengan pembatalan SO,
       // menunggu dan membaca keadaan terbaru sehingga stok tidak terpotong dua kali
       if (head.saleId) await lockRow(tx, 'sales_orders', head.saleId);
+      // penerimaan dari PO: dikunci bersama pembatalan dan tutup sisa PO
+      if (head.purchaseId) await lockRow(tx, 'purchase_orders', head.purchaseId);
       await lockRow(tx, 'stock_transfers', id);
       const t: any = await this.get(id);
       if (['done', 'cancel'].includes(t.state)) fail('Dokumen sudah selesai atau batal');

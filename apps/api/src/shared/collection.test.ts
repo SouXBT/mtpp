@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { allocate, dueState, planError, splitEven, summarize } from './collection';
+import { addMonths, allocate, dueState, planError, splitEven, summarize } from './collection';
 
 const plan = [
   { sequence: 1, dateDue: '2026-12-01', amount: 400 },
@@ -113,4 +113,50 @@ test('pembayaran lama dibatalkan setelah ada pembayaran baru: pembayaran baru te
   assert.equal(a.rows[0].paid, 500000);
   assert.equal(a.rows[0].open, 665000);
   assert.equal(a.outside, 1000000);
+});
+
+test('batas termin terakhir 12 bulan kalender dan tanggal yang tidak ada ditolak', () => {
+  assert.equal(addMonths('2026-11-01', 12), '2027-11-01');
+  assert.equal(addMonths('2026-01-31', 1), '2026-02-28');
+  const o = { maxTermins: 12, maxMonths: 12 };
+  assert.match(
+    String(
+      planError(
+        [
+          { dateDue: '2026-12-08', amount: 50 },
+          { dateDue: '2027-11-06', amount: 50 },
+        ],
+        100,
+        '2026-11-01',
+        o,
+      ),
+    ),
+    /paling lambat 12 bulan/,
+  );
+  assert.equal(
+    planError(
+      [
+        { dateDue: '2026-12-08', amount: 50 },
+        { dateDue: '2027-11-01', amount: 50 },
+      ],
+      100,
+      '2026-11-01',
+      o,
+    ),
+    null,
+  );
+  assert.match(
+    String(
+      planError(
+        [
+          { dateDue: '2027-02-30', amount: 50 },
+          { dateDue: '2027-03-30', amount: 50 },
+        ],
+        100,
+        '2026-11-01',
+        o,
+      ),
+    ),
+    /tidak valid/,
+  );
 });

@@ -32,6 +32,7 @@ export class DocumentsService {
     const d = new Date(`${b.date}T00:00:00Z`);
     if (!ISO.test(b.date || '') || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== b.date)
       fail('Tanggal dokumen tidak valid');
+    if (+b.date.slice(0, 4) < 2000 || +b.date.slice(0, 4) > 2100) fail('Tahun dokumen harus 2000 sampai 2100');
     if (b.number !== undefined && b.number !== null && typeof b.number !== 'string') fail('Nomor dokumen harus teks');
     if (!b.data || typeof b.data !== 'object' || Array.isArray(b.data)) fail('Isi dokumen tidak valid');
   }

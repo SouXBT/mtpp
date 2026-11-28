@@ -27,6 +27,7 @@ import {
   planError,
   receivableSlices,
   summarize,
+  paidAfterPlan,
 } from '../../shared/collection';
 import { JournalService } from '../accounting/journal.service';
 import { lockKey, lockRow } from '../../shared/lock';
@@ -110,6 +111,14 @@ export class BillingService {
     );
   }
 
+  // Semua perubahan uang atas satu SO (pembayaran invoice, uang muka, posting, pembalik, cicilan, pembatalan)
+  // dikunci di tingkat SO lebih dulu, baru dokumennya: urutan tetap SO lalu invoice, sehingga pembayaran invoice dan
+  // pembayaran SO yang bersamaan tidak menerima uang dua kali dan tidak saling mengunci.
+  private async lockSaleOf(tx: any, entryId: number) {
+    const e = await tx.journalEntries.findFirst({ where: { id: entryId }, select: { saleId: true } });
+    if (e?.saleId) await lockRow(tx, 'sales_orders', e.saleId);
+  }
+
   // Jadwal cicilan beserta alokasi pembayaran per termin
   async installments(e: any) {
     const rows = await this.db.invoiceInstallments.findMany({
@@ -117,13 +126,7 @@ export class BillingService {
       orderBy: { sequence: 'asc' },
     });
     if (!rows.length) return { state: null, rows: [], outside: 0 };
-    // pembayaran yang masuk setelah jadwal diajukan dan belum dibatalkan
-    const since = rows.reduce((a: Date, r: any) => (r.createDate < a ? r.createDate : a), rows[0].createDate);
-    const after = await this.db.payments.findMany({
-      where: { invoiceId: e.id, state: { not: 'cancel' }, createDate: { gte: since } },
-      select: { amount: true },
-    });
-    const paidAfter = round2(after.reduce((x: number, p: any) => x + Number(p.amount), 0));
+    const paidAfter = await paidAfterPlan(this.db, e.id, Number(e.amountResidual), rows);
     const a = allocate(Number(e.amountTotal), Number(e.amountResidual), rows as any, paidAfter);
     const uids = [...new Set(rows.map((r) => r.approveUid).filter(Boolean))] as number[];
     const users = uids.length
@@ -149,7 +152,11 @@ export class BillingService {
     if (!(Number(e.amountResidual) > 0.5)) fail('Invoice sudah lunas');
     if (e.partner?.mtppIsNewCustomer) fail('Pelanggan baru wajib melunasi di muka; cicilan hanya untuk pelanggan lama');
     const cfg = await collectionSettings(this.db);
-    const termins = (b.termins || []).map((x) => ({
+    if (!Array.isArray(b.termins)) fail('Isi jadwal termin');
+    for (const x of b.termins)
+      if (typeof x?.amount !== 'number' && !(typeof x?.amount === 'string' && /^\d+(\.\d+)?$/.test(x.amount)))
+        fail('Nominal termin harus berupa angka');
+    const termins = b.termins.map((x) => ({
       dateDue: String(x.dateDue || ''),
       amount: round2(Number(x.amount)),
     }));
@@ -160,6 +167,7 @@ export class BillingService {
     if (err) fail(err);
     await this.db.$transaction(async (tx) => {
       // dikunci bersama pembayaran invoice: klik ganda tidak membuat termin dobel, dan sisa tagihan dibaca ulang
+      await this.lockSaleOf(tx, id);
       await lockRow(tx, 'journal_entries', id);
       const cur = must(await tx.journalEntries.findFirst({ where: { id } }), 'Invoice');
       if (cur.paymentState === 'reversed') fail('Invoice sudah dibalik');
@@ -194,6 +202,7 @@ export class BillingService {
   async approveInstallments(u: AuthUser, id: number) {
     await this.db.$transaction(async (tx) => {
       // dikunci bersama pembayaran invoice: persetujuan memakai sisa tagihan terbaru
+      await this.lockSaleOf(tx, id);
       await lockRow(tx, 'journal_entries', id);
       const rows = await tx.invoiceInstallments.findMany({ where: { invoiceId: id } });
       if (!rows.length) fail('Invoice belum memiliki jadwal cicilan');
@@ -214,6 +223,7 @@ export class BillingService {
 
   async cancelInstallments(u: AuthUser, id: number) {
     await this.db.$transaction(async (tx) => {
+      await this.lockSaleOf(tx, id);
       await lockRow(tx, 'journal_entries', id);
       const n = await tx.invoiceInstallments.count({ where: { invoiceId: id } });
       if (!n) fail('Invoice belum memiliki jadwal cicilan');
@@ -288,7 +298,8 @@ export class BillingService {
     const pays = pays0.map((p) => ({ ...p, proof: proofs.find((a) => a.resId === p.id) ?? null }));
     // hanya uang muka yang dipakai invoice ini
     const uses =
-      e.moveType === 'out_invoice'
+      // uang muka SO untuk invoice pelanggan, uang muka PO untuk tagihan principal
+      ['out_invoice', 'in_invoice'].includes(e.moveType)
         ? (await this.advanceUses(this.db, e)).filter((x: any) => x.receivable && x.paymentName)
         : [];
     const advPays = uses.length
@@ -398,6 +409,7 @@ export class BillingService {
   async post(u: AuthUser, id: number) {
     await this.db.$transaction(async (tx) => {
       // dikunci dan dibaca ulang: dua posting bersamaan tidak menambah qty tertagih dua kali
+      await this.lockSaleOf(tx, id);
       await lockRow(tx, 'journal_entries', id);
       const e = must(await tx.journalEntries.findFirst({ where: { id: id } }), 'Dokumen');
       if (e.state !== 'draft') fail('Dokumen sudah diposting');
@@ -628,6 +640,7 @@ export class BillingService {
   async reverse(u: AuthUser, id: number) {
     const r = await this.db.$transaction(async (tx) => {
       // dikunci dan diperiksa ulang di dalam transaksi: pembalikan bersamaan atau pembayaran yang baru masuk
+      await this.lockSaleOf(tx, id);
       await lockRow(tx, 'journal_entries', id);
       const e = must(await tx.journalEntries.findFirst({ where: { id: id } }), 'Dokumen');
       if (!['out_invoice', 'in_invoice'].includes(e.moveType)) fail('Hanya invoice atau tagihan yang dapat dibalik');
@@ -678,6 +691,8 @@ export class BillingService {
         }),
         'Pesanan',
       );
+      if (!['purchase', 'done'].includes(po.state))
+        fail('Tagihan hanya untuk PO yang sudah dikonfirmasi dan tidak batal');
       await lockKey(tx, `bill-ref:${po.partnerId}`);
       const draft = await tx.journalEntries.findMany({ where: { AND: [{ purchaseId: poId }, { state: 'draft' }] } });
       if (draft.length) fail(`Masih ada tagihan draf ${draft[0].name}`);
@@ -825,6 +840,7 @@ export class BillingService {
       const jr = await this.journal.journal(method, tx);
       if (b.invoiceId) {
         // dikunci dulu: pembayaran bersamaan atas invoice yang sama dibaca berurutan
+        await this.lockSaleOf(tx, b.invoiceId);
         await lockRow(tx, 'journal_entries', b.invoiceId);
         const inv = must(await tx.journalEntries.findFirst({ where: { id: b.invoiceId } }), 'Invoice');
         if (!['out_invoice', 'in_invoice'].includes(inv.moveType))
@@ -834,6 +850,8 @@ export class BillingService {
         if (Number(inv.amountResidual) <= 0.009) fail('Invoice sudah lunas');
         if (amount > Number(inv.amountResidual) + 0.009)
           fail(`Jumlah melebihi sisa tagihan (${rupiah(inv.amountResidual)})`);
+        if (inv.invoiceDate && date < String(inv.invoiceDate))
+          fail(`Tanggal pembayaran tidak boleh sebelum tanggal dokumen (${inv.invoiceDate})`);
         const isCust = inv.moveType === 'out_invoice';
         const e = await this.journal.create(tx, {
           journal: method,
@@ -883,6 +901,8 @@ export class BillingService {
         await lockRow(tx, 'sales_orders', b.saleId);
         const so = must(await tx.salesOrders.findFirst({ where: { id: b.saleId } }), 'Sales order');
         if (!['sale', 'done'].includes(so.state)) fail('Uang muka dicatat untuk sales order yang sudah dikonfirmasi');
+        if (so.dateOrder && date < String(so.dateOrder))
+          fail(`Tanggal pembayaran tidak boleh sebelum tanggal sales order (${so.dateOrder})`);
         // sisa = nilai SO dikurangi semua uang yang sudah diterima: uang muka dan pembayaran atas invoice SO ini
         const received = (await salePayments(tx, so.id)).amount;
         const left = round2(Number(so.amountTotal) - received);
@@ -952,6 +972,8 @@ export class BillingService {
         const po = must(await tx.purchaseOrders.findFirst({ where: { id: b.purchaseId } }), 'Pesanan');
         if (!['draft', 'sent', 'purchase'].includes(po.state))
           fail('Uang muka dibayar untuk PO yang belum selesai atau batal');
+        if (po.dateOrder && date < String(po.dateOrder))
+          fail(`Tanggal pembayaran tidak boleh sebelum tanggal PO (${po.dateOrder})`);
         const adv = await purchaseAdvances(tx, po.id);
         const left = round2(Number(po.amountTotal) - adv.paid);
         if (amount > left + 0.009) fail(`Jumlah melebihi sisa nilai PO (${rupiah(left)})`);
@@ -1097,13 +1119,15 @@ export class BillingService {
     });
     const total = Number(so.amountTotal);
     let paid = 0,
-      dp = 0;
+      dp = 0,
+      prior = 0; // pembayaran sebelum baris ini (uang muka maupun invoice), sama dengan riwayat pembayaran
     return pays.map((p) => {
       paid = round2(paid + Number(p.amount));
       const full = paid >= total - 0.5;
       const adv = !!p.mtppSaleOrderId;
       if (adv && !full) dp++;
-      const kind = full ? (dp === 0 && adv ? 'lunas_langsung' : 'pelunasan') : adv ? 'uang_muka' : 'invoice';
+      const kind = full ? (prior === 0 && adv ? 'lunas_langsung' : 'pelunasan') : adv ? 'uang_muka' : 'invoice';
+      prior++;
       return {
         id: p.id,
         kind,
@@ -1136,6 +1160,8 @@ export class BillingService {
       fail('Pembayaran sudah direkonsiliasi; batalkan pencocokan mutasi bank dulu');
     await this.db.$transaction(async (tx) => {
       // dikunci: pembatalan bersamaan atas pembayaran yang sama hanya diproses sekali
+      if (p.mtppSaleOrderId) await lockRow(tx, 'sales_orders', p.mtppSaleOrderId);
+      if (p.invoiceId) await this.lockSaleOf(tx, p.invoiceId);
       if (p.invoiceId) await lockRow(tx, 'journal_entries', p.invoiceId);
       await lockRow(tx, 'journal_entries', p.moveId);
       const cur = await tx.payments.findFirst({ where: { id } });
@@ -1159,12 +1185,50 @@ export class BillingService {
         if (inv.saleId) await refreshSale(tx, inv.saleId);
       }
       if (p.mtppSaleOrderId) await this.chatter.log('sales_orders', p.mtppSaleOrderId, u.id, msg, [], tx);
+      // pelanggan yang "lulus" dari pelanggan baru karena SO ini kembali menjadi pelanggan baru bila SO ini tidak lagi
+      // lunas dan belum ada SO lain yang terkirim penuh dan lunas (aturan bayar di muka berlaku lagi)
+      const saleId =
+        p.mtppSaleOrderId ??
+        (p.invoiceId ? (await tx.journalEntries.findFirst({ where: { id: p.invoiceId } }))?.saleId : null);
+      if (saleId) await this.revertGraduation(tx, saleId, u.id);
       if (p.mtppPurchaseOrderId) {
         await this.chatter.log('purchase_orders', p.mtppPurchaseOrderId, u.id, msg, [], tx);
         await refreshPurchase(tx, p.mtppPurchaseOrderId);
       }
     });
     return { ok: true };
+  }
+
+  private async revertGraduation(tx: any, saleId: number, uid: number) {
+    const so = await tx.salesOrders.findFirst({ where: { id: saleId }, include: { partner: true } });
+    if (!so || so.partner.mtppIsNewCustomer) return;
+    // hanya pelanggan yang pernah ditandai baru (riwayat partner mencatat kelulusannya)
+    const graduated = await tx.messages.findFirst({
+      where: {
+        model: 'partners',
+        resId: so.partnerId,
+        body: { contains: 'tidak lagi pelanggan baru', mode: 'insensitive' },
+      },
+    });
+    if (!graduated) return;
+    if ((await salePayments(tx, saleId)).amount >= Number(so.amountTotal) - 0.5) return;
+    const others = await tx.salesOrders.findMany({
+      where: { partnerId: so.partnerId, id: { not: saleId }, state: { in: ['sale', 'done'] } },
+    });
+    for (const o of others) {
+      const lines = await tx.salesOrderLines.findMany({ where: { orderId: o.id } });
+      const delivered = lines.length && lines.every((l: any) => Number(l.qtyDelivered) >= Number(l.productUomQty));
+      if (delivered && (await salePayments(tx, o.id)).amount >= Number(o.amountTotal) - 0.5) return;
+    }
+    await tx.partners.updateMany({ where: { id: so.partnerId }, data: { mtppIsNewCustomer: true } });
+    await this.chatter.log(
+      'partners',
+      so.partnerId,
+      uid,
+      `Kembali menjadi pelanggan baru: pembayaran ${so.name} dibatalkan sehingga belum ada pesanan yang lunas`,
+      [],
+      tx,
+    );
   }
 
   async payments(q: any) {

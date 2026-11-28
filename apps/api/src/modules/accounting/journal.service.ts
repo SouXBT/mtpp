@@ -99,6 +99,8 @@ export class JournalService {
 
   async create(tx: any, j: JIn) {
     const date = j.date || today();
+    // jurnal hanya bertanggal hari (YYYY-MM-DD), supaya tanggal kunci periode dan nomor bulan selalu sesuai
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) fail('Tanggal jurnal harus berformat YYYY-MM-DD');
     await this.assertOpen(date, tx);
     if (j.invoiceDate && j.due && j.due < j.invoiceDate) fail('Jatuh tempo tidak boleh sebelum tanggal dokumen');
     const jr = await this.journal(j.journal, tx);

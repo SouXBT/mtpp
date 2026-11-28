@@ -26,6 +26,10 @@ export class AppErrorFilter implements ExceptionFilter {
     }
     let status = 500,
       message = 'Terjadi kesalahan pada server';
+    if (e?.type === 'entity.too.large' || e?.status === 413)
+      return res.status(413).json({ statusCode: 413, message: 'Isian terlalu besar' });
+    if (e?.type === 'entity.parse.failed')
+      return res.status(400).json({ statusCode: 400, message: 'Isian tidak valid' });
     if (e instanceof Prisma.PrismaClientKnownRequestError && KNOWN[e.code]) [status, message] = KNOWN[e.code];
     else if (e instanceof Prisma.PrismaClientValidationError) [status, message] = [400, 'Isian tidak valid'];
     // galat Postgres yang dibungkus adapter: angka meluap, tanggal atau teks tidak valid

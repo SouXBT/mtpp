@@ -39,6 +39,11 @@ const crud = [
     menu: 'pricelist_principal',
     table: 'supplierPrices',
     writable: ['partnerId', 'productTmplId', 'price', 'discount', 'minQty', 'dateStart', 'dateEnd'],
+    verify: async (db, b) => {
+      if (!b.partnerId) return null;
+      const p = await db.partners.findFirst({ where: { id: +b.partnerId } });
+      return p && Number(p.supplierRank) > 0 ? null : 'Harga principal hanya untuk partner principal';
+    },
     ranges: { price: [0, 1e14], discount: [0, 100], minQty: [0, 1e9] },
     check: (b) =>
       b.dateStart && b.dateEnd && b.dateStart > b.dateEnd ? 'Tanggal mulai tidak boleh setelah tanggal akhir' : null,

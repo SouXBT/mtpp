@@ -99,8 +99,9 @@ function Guard({ children }: { children: React.ReactNode }) {
 const NotFound = () => <Result status="404" title="Halaman tidak ditemukan" />;
 // alamat lama Penjualan > Riwayat Pembayaran: sekarang tab Per sales order di Penagihan > Pembayaran
 function LegacyPayments() {
-  const q = new URLSearchParams(useLocation().search).get('q');
-  return <Navigate replace to={`/penagihan/pembayaran?tab=so${q ? `&q=${encodeURIComponent(q)}` : ''}`} />;
+  const p = new URLSearchParams(useLocation().search);
+  p.set('tab', 'so');
+  return <Navigate replace to={`/penagihan/pembayaran?${p.toString()}`} />;
 }
 // rute detail hanya untuk id angka atau 'baru' (formulir data baru); alamat lama atau salah ketik (mis. /pengadaan/retur) menjadi halaman 404
 function NumId({ el }: { el: ReactElement }) {

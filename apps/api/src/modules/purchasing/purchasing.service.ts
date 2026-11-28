@@ -201,12 +201,15 @@ export class PurchasingService {
     return created;
   }
 
-  // Isi ulang stok minimum (seperti reordering rule Odoo): produk yang proyeksi stok bebasnya (stok bebas ditambah
-  // barang PO yang belum datang) di bawah batas minimum dipesan sampai 2x minimum, satu PO per principal.
+  // Isi ulang stok minimum (seperti reordering rule Odoo): produk yang proyeksi stok bebasnya di bawah batas minimum
+  // dipesan sampai 2x minimum, satu PO per principal. Proyeksi = stok bebas (minimal 0) + barang PO isi ulang yang
+  // belum datang. Kekurangan karena SO (stok bebas minus) dipesan lewat Perlu PO Principal, dan PO untuk SO tidak
+  // dihitung di sini, sehingga keduanya tidak memesan barang yang sama dua kali.
+  // Produk yang tidak dapat dipesan diberi keterangan (issue) dan dilewati, tanpa menahan produk lain.
   async replenishPlan() {
     const rows = (await this.stock.overview({})).filter((r: any) => r.minQty != null && Number(r.minQty) > 0);
     const open = await this.db.purchaseOrderLines.findMany({
-      where: { order: { state: { in: ['draft', 'sent', 'purchase'] }, isDropship: false } },
+      where: { mtppSaleLineId: null, order: { state: { in: ['draft', 'sent', 'purchase'] }, isDropship: false } },
       select: { productId: true, productQty: true, qtyReceived: true, order: { select: { warehouseId: true } } },
     });
     const plan: any[] = [];
@@ -216,9 +219,19 @@ export class PurchasingService {
           .filter((l: any) => l.productId === r.productId && l.order.warehouseId === r.warehouseId)
           .reduce((a: number, l: any) => a + Math.max(Number(l.productQty) - Number(l.qtyReceived), 0), 0),
       );
-      const projected = round2(Number(r.free) + incoming);
+      const projected = round2(Math.max(Number(r.free), 0) + incoming);
       const min = Number(r.minQty);
       if (projected >= min) continue;
+      const pr = await this.pricing.product(r.productId);
+      const sup = pr?.t?.mainSupplierId;
+      const wh = sup ? await this.pricing.warehouseOf(sup) : null;
+      const qty = Math.ceil(2 * min - projected);
+      let issue: string | null = null;
+      if (pr?.t?.mtppRoute === 'dropship') issue = 'produk dropship tidak disimpan di gudang';
+      else if (!sup) issue = 'belum memiliki principal pemasok';
+      else if (!wh || wh.id !== r.warehouseId) issue = 'stok minimum di gudang yang bukan gudang principalnya';
+      else if ((await this.pricing.cost(r.productId, qty, today(), sup)).missing)
+        issue = 'harga principal belum ada atau sudah tidak berlaku';
       plan.push({
         productId: r.productId,
         code: r.code,
@@ -228,7 +241,9 @@ export class PurchasingService {
         free: r.free,
         incoming,
         minQty: min,
-        qty: Math.ceil(2 * min - projected),
+        qty,
+        supplierId: sup ?? null,
+        issue,
       });
     }
     return plan;
@@ -240,16 +255,16 @@ export class PurchasingService {
       // satu proses isi ulang pada satu waktu, supaya klik ganda tidak memesan dua kali
       await lockKey(tx, 'replenish');
       const plan = await this.replenishPlan();
-      if (!plan.length) fail('Semua stok di atas batas minimum; tidak ada yang perlu dipesan');
+      const ok = plan.filter((x) => !x.issue);
+      if (!ok.length)
+        fail(
+          plan.length
+            ? `Tidak ada produk yang dapat dipesan: ${plan.map((x) => `${x.code} (${x.issue})`).join('; ')}`
+            : 'Semua stok di atas batas minimum; tidak ada yang perlu dipesan',
+        );
       const groups = new Map<number, any[]>();
-      for (const x of plan) {
-        const pr = await this.pricing.product(x.productId);
-        const sup = pr.t.mainSupplierId;
-        if (!sup) fail(`Produk ${x.product} belum memiliki principal pemasok`);
-        const wh = await this.pricing.warehouseOf(sup);
-        if (wh && wh.id !== x.warehouseId) continue; // stok minimum di gudang lain: dipesan dari principal itu saja
-        groups.set(sup, [...(groups.get(sup) || []), { ...x, name: `[${x.code}] ${x.product}` }]);
-      }
+      for (const x of ok)
+        groups.set(x.supplierId, [...(groups.get(x.supplierId) || []), { ...x, name: `[${x.code}] ${x.product}` }]);
       const poTerms = await this.settings.get('po_terms');
       for (const [sup, items] of groups) {
         const wh = await this.pricing.warehouseOf(sup);
@@ -449,6 +464,12 @@ export class PurchasingService {
       fail('Tidak ada sisa barang yang perlu ditutup');
     await this.db.$transaction(async (tx) => {
       await lockRow(tx, 'purchase_orders', id);
+      // dibaca ulang setelah dikunci: penerimaan yang baru divalidasi ikut dihitung
+      const cur = must(await tx.purchaseOrders.findFirst({ where: { id: id } }), 'Pesanan');
+      if (cur.state !== 'purchase') fail('Hanya pesanan yang sudah dikonfirmasi yang dapat ditutup sisanya');
+      const lines = await tx.purchaseOrderLines.findMany({ where: { orderId: id } });
+      if (!lines.some((l: any) => Number(l.qtyReceived) < Number(l.productQty)))
+        fail('Tidak ada sisa barang yang perlu ditutup');
       const next = lines.map((l) => ({
         ...l,
         productQty: Number(l.qtyReceived),
