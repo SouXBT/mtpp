@@ -27,6 +27,10 @@ export class SalesController {
   @Get('worklist/ready') @Perm('penjualan', 'read') ready() {
     return this.sales.readyToShip();
   }
+  // Penagihan > Menunggu Pembayaran: SO yang menunggu pelunasan (pelanggan baru) atau uang muka minimal (pelanggan lama)
+  @Get('worklist/need-payment') @Perm('penagihan', 'read') needPayment() {
+    return this.sales.needPayment();
+  }
   @Get('payment-history') @Perm('penjualan', 'read') history(@Query() q: any) {
     return this.sales.paymentHistory(q);
   }

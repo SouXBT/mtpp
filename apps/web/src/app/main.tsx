@@ -13,7 +13,7 @@ import Shell from './Shell';
 import { Dashboard, Login, Profile } from '../features/home/Home';
 import { SalesDetail, SalesList } from '../features/sales/Sales';
 import { NeedPurchaseList, PODetail, POList, SupplierPricelist } from '../features/purchasing/Purchasing';
-import { InvoiceDetail, InvoiceList, PaymentsPage, ReadyToInvoice } from '../features/billing/Billing';
+import { AwaitingPayment, InvoiceDetail, InvoiceList, PaymentsPage, ReadyToInvoice } from '../features/billing/Billing';
 import {
   ReadyToShipList,
   StockMoves,
@@ -144,6 +144,7 @@ function AppRoutes() {
         <Route path="stok/minimum" element={<StockRules />} />
         <Route path="stok/mutasi" element={<StockMoves />} />
         <Route path="penagihan" element={<InvoiceList type="invoice" />} />
+        <Route path="penagihan/menunggu-bayar" element={<AwaitingPayment />} />
         <Route path="penagihan/siap" element={<ReadyToInvoice />} />
         <Route path="penagihan/pembayaran" element={<PaymentsPage />} />
         <Route path="penagihan/:id" element={<NumId el={<InvoiceDetail type="invoice" />} />} />

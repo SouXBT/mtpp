@@ -25,6 +25,7 @@ import { EmailTag, LABEL, emptyText, PageHead, Pill, RelatedBar, SearchBar, Stat
 import { GroupSelect, groupCols, groupRows } from '../../shared/ui';
 import Chatter from '../../shared/Chatter';
 import { PayModal } from '../purchasing/Purchasing';
+import { AdvanceModal } from '../sales/Sales';
 
 // pembatalan pembayaran: jurnal dibalik dan jumlahnya kembali ke sisa tagihan
 const cancelPayment = (p: any, after: () => void) =>
@@ -471,6 +472,85 @@ export function ReadyToInvoice() {
           ]}
         />
       </div>
+    </>
+  );
+}
+
+// SO yang menunggu pembayaran sebelum surat jalan: pelanggan baru belum lunas, pelanggan lama belum uang muka minimal.
+// Pembayaran dicatat langsung dari sini dengan dialog yang sama seperti di halaman sales order.
+export function AwaitingPayment() {
+  const list = useFetch<any[]>('/sales-orders/worklist/need-payment');
+  const can = useCan();
+  const [open, setOpen] = useState<any>(null);
+  const rows = list.data || [];
+  return (
+    <>
+      <PageHead
+        title="Menunggu Pembayaran"
+        sub="Sales order yang belum boleh dikirim: pelanggan baru harus lunas, pelanggan lama harus membayar uang muka minimal."
+      />
+      <div className="card" style={{ padding: 0 }}>
+        <Table<any>
+          rowKey="id"
+          loading={list.loading}
+          dataSource={rows}
+          pagination={false}
+          locale={{ emptyText: 'Tidak ada sales order yang menunggu pembayaran.' }}
+          columns={[
+            { title: 'Sales order', dataIndex: 'name', render: (v, r) => <Link to={`/penjualan/${r.id}`}>{v}</Link> },
+            { title: 'Pelanggan', dataIndex: 'partner' },
+            {
+              title: 'Menunggu',
+              dataIndex: 'need',
+              render: (v, r) =>
+                v === 'lunas' ? (
+                  <Pill v="waiting">Pelunasan (pelanggan baru)</Pill>
+                ) : (
+                  <Pill v="waiting">Uang muka {nf(r.payment?.dpPercent, 0)}%</Pill>
+                ),
+            },
+            { title: 'Total SO', dataIndex: 'amountTotal', align: 'right', render: (v: any) => idr(v) },
+            { title: 'Sudah dibayar', key: 'paid', align: 'right', render: (_, r) => idr(r.payment?.amount || 0) },
+            {
+              title: 'Kurang',
+              key: 'short',
+              align: 'right',
+              render: (_, r) =>
+                idr(
+                  Math.max(
+                    0,
+                    Number(r.need === 'lunas' ? r.amountTotal : r.payment?.dpNeeded) - Number(r.payment?.amount || 0),
+                  ),
+                ),
+            },
+            {
+              title: 'Lunas paling lambat',
+              dataIndex: 'mtppSettleDate',
+              render: (v, r) => (r.need === 'lunas' && v ? tgl(v) : '-'),
+            },
+            {
+              title: '',
+              key: 'a',
+              align: 'right',
+              render: (_, r) =>
+                can('penagihan', 'create') && (
+                  <Button type="primary" size="small" onClick={() => setOpen(r)}>
+                    Catat Pembayaran
+                  </Button>
+                ),
+            },
+          ]}
+        />
+      </div>
+      {open && (
+        <AdvanceModal
+          o={{ ...open, partner: open.customer }}
+          onClose={(ok) => {
+            setOpen(null);
+            if (ok) list.reload();
+          }}
+        />
+      )}
     </>
   );
 }

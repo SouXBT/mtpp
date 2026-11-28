@@ -58,6 +58,7 @@ export const MODULES: Module[] = [
     to: '/penagihan',
     menu: 'penagihan',
     items: [
+      { label: 'Menunggu Pembayaran', to: '/penagihan/menunggu-bayar', menu: 'penagihan' },
       { label: 'Siap Ditagih', to: '/penagihan/siap', menu: 'penagihan' },
       { label: 'Invoice', to: '/penagihan', menu: 'penagihan' },
       { label: 'Pembayaran', to: '/penagihan/pembayaran', menu: 'penagihan' },

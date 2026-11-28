@@ -32,6 +32,7 @@ const DAFTAR = [
   '/stok/minimum',
   '/stok/mutasi',
   '/penagihan',
+  '/penagihan/menunggu-bayar',
   '/penagihan/siap',
   '/penagihan/pembayaran',
   '/akuntansi/kas',

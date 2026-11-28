@@ -729,7 +729,28 @@ await test('C1 daftar kerja Finance dan Operasional', async () => {
     (await call(O, 'GET', `/sales-orders/${qn.id}`)).readyItems === 0,
     'readyItems 0 untuk pelanggan baru belum lunas',
   );
-  await call(F, 'POST', '/payments', { saleId: qn.id, amount: sn.amountTotal, method: 'BNK' });
+  check(
+    has(await call(F, 'GET', '/sales-orders/worklist/need-payment'), qn),
+    'pelanggan baru belum bayar masuk Menunggu Pembayaran',
+  );
+  const dpN = Math.round(sn.amountTotal * 0.3);
+  const settleN = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+  await call(F, 'POST', '/payments', { saleId: qn.id, amount: dpN, kind: 'dp', method: 'BNK', settleDate: settleN });
+  const wn = (await call(F, 'GET', '/sales-orders/worklist/need-payment')).find((r) => r.id === qn.id);
+  check(
+    wn?.need === 'lunas' && Math.abs(wn.payment.amount - dpN) < 1,
+    'sesudah DP 30% tetap di Menunggu Pembayaran (pelunasan)',
+  );
+  await call(F, 'POST', '/payments', {
+    saleId: qn.id,
+    amount: Math.round((sn.amountTotal - dpN) * 100) / 100,
+    kind: 'lunas',
+    method: 'BNK',
+  });
+  check(
+    !has(await call(F, 'GET', '/sales-orders/worklist/need-payment'), qn),
+    'sesudah lunas keluar dari Menunggu Pembayaran',
+  );
   check(has(await call(O, 'GET', '/sales-orders/worklist/ready'), qn), 'pelanggan baru lunas masuk');
   check(
     (await call(O, 'GET', `/sales-orders/${qn.id}`)).readyItems ===
@@ -1342,6 +1363,10 @@ await test('uang muka minimal pelanggan lama sebelum surat jalan', async () => {
     const so = await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-DP' });
     const d0 = await call(S, 'GET', `/sales-orders/${q.id}`);
     check(d0.payment.dpMet === false && !d0.canDeliver, 'sebelum uang muka: belum boleh kirim');
+    check(
+      (await call(F, 'GET', '/sales-orders/worklist/need-payment')).find((r) => r.id === q.id)?.need === 'dp',
+      'pelanggan lama belum uang muka masuk Menunggu Pembayaran',
+    );
     check(Math.abs(d0.payment.dpNeeded - so.amountTotal * 0.3) < 1, `uang muka minimal 30% = ${d0.payment.dpNeeded}`);
     await rejected(
       call(O, 'POST', `/transfers/from-sale/${q.id}`),
@@ -1370,6 +1395,10 @@ await test('uang muka minimal pelanggan lama sebelum surat jalan', async () => {
     });
     const d2 = await call(S, 'GET', `/sales-orders/${q.id}`);
     check(d2.payment.dpMet && d2.canDeliver, 'uang muka terpenuhi: boleh kirim');
+    check(
+      !(await call(F, 'GET', '/sales-orders/worklist/need-payment')).some((r) => r.id === q.id),
+      'uang muka terpenuhi: keluar dari Menunggu Pembayaran',
+    );
     const [t] = await call(O, 'POST', `/transfers/from-sale/${q.id}`);
     check(!!t, 'surat jalan dibuat setelah uang muka');
   } finally {

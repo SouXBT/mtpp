@@ -867,6 +867,35 @@ export class SalesService {
     return out;
   }
 
+  // SO yang belum boleh dikirim karena pembayarannya: pelanggan baru belum lunas, pelanggan lama belum uang muka minimal
+  async needPayment() {
+    const orders = await this.db.salesOrders.findMany({
+      where: { state: 'sale' },
+      include: { partner: true },
+      orderBy: { id: 'asc' },
+    });
+    const out: any[] = [];
+    for (const o of orders) {
+      // SO yang barangnya sudah terkirim semua tidak lagi menunggu pembayaran sebelum kirim; sisanya lewat invoice
+      const lines = await this.db.salesOrderLines.findMany({ where: { orderId: o.id } });
+      if (!lines.some((l) => Number(l.qtyDelivered) < Number(l.productUomQty))) continue;
+      const pay = await this.paid(o.id, Number(o.amountTotal));
+      const isNew = !!o.partner.mtppIsNewCustomer;
+      if (isNew ? pay.paidFull : pay.dpMet) continue;
+      out.push({
+        ...this.row(o),
+        need: isNew ? 'lunas' : 'dp',
+        payment: pay,
+        customer: { id: o.partner.id, name: o.partner.name, mtppIsNewCustomer: isNew },
+        mtppDpAmount: o.mtppDpAmount,
+        mtppDpMode: o.mtppDpMode,
+        mtppSettleDate: o.mtppSettleDate,
+        mtppProformaNumber: o.mtppProformaNumber,
+      });
+    }
+    return out;
+  }
+
   // jumlah baris SO yang sisanya sudah bisa dikirim dari stok bebas
   private async readyItems(id: number) {
     let items = 0;
