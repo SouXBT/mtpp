@@ -7,7 +7,7 @@ import { ChatterService } from '../../shared/chatter.service';
 import { PdfService } from '../../shared/pdf.service';
 import { graduateCustomer, refreshPurchase, refreshSale, salePayments } from '../../shared/status';
 import { fail, must, idr, num, round2, tglIndo, today } from '../../shared/util';
-import { collectionSettings, pastGrace } from '../../shared/collection';
+import { dpNeeded, collectionSettings, pastGrace } from '../../shared/collection';
 import { lockRow } from '../../shared/lock';
 import { StockService } from './stock.service';
 import { Prisma } from '@prisma/client';
@@ -154,6 +154,13 @@ export class TransfersService {
       const paid = (await salePayments(this.db, saleId)).amount;
       if (paid < Number(o.amountTotal) - 0.5)
         return `Pelanggan baru: sales order baru dibayar Rp ${idr(paid)} dari Rp ${idr(Number(o.amountTotal))}. Surat jalan hanya dapat diterbitkan setelah lunas.`;
+    } else {
+      // pelanggan lama: uang muka minimal (persen di Pengaturan > Penagihan) sebelum surat jalan
+      const pct = Number((await collectionSettings(this.db)).dpPercent) || 0;
+      const need = dpNeeded(Number(o.amountTotal), pct);
+      const paid = (await salePayments(this.db, saleId)).amount;
+      if (paid < need - 0.5)
+        return `Uang muka minimal ${pct}% belum terpenuhi: dibayar Rp ${idr(paid)} dari minimal Rp ${idr(need)}. Surat jalan diterbitkan setelah uang muka masuk.`;
     }
     if (dropship || o.mtppReleaseDate) return null;
     const cfg = await collectionSettings(this.db);

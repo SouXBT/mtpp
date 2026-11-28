@@ -156,6 +156,14 @@ await call(S, 'POST', `/sales-orders/${q2.id}/confirm`, { clientOrderRef: 'PO-UJ
 const so2 = await call(S, 'GET', `/sales-orders/${q2.id}`);
 ok(so2.lines.find((l) => l.code === 'PNL-MDP-400').priceUnit === 66000000, 'pricelist kontraktor dipakai otomatis');
 
+// ---------- uang muka minimal pelanggan lama (30%, Pengaturan > Penagihan) ----------
+ok(so2.payment.dpPercent === 30 && so2.payment.dpMet === false, 'pelanggan lama: uang muka 30% belum masuk');
+await expectFail(call(O, 'POST', `/transfers/from-sale/${q2.id}`), 400, 'surat jalan sebelum uang muka ditolak');
+for (const so of [so1, so2])
+  if (!so.payment.dpMet && !so.partner?.mtppIsNewCustomer)
+    await call(F, 'POST', '/payments', { saleId: so.id, amount: so.payment.dpNeeded, kind: 'dp', method: 'BNK' });
+ok((await call(S, 'GET', `/sales-orders/${q2.id}`)).payment.dpMet, 'uang muka 30% tercatat, surat jalan boleh dibuat');
+
 // ---------- pesanan kepada principal ----------
 const sh = await call(F, 'GET', `/sales-orders/${q1.id}/shortage`);
 ok(

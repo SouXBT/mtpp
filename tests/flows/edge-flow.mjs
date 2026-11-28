@@ -104,6 +104,11 @@ const P = await login('pimpinan@mtpp.co.id'),
   S = await login('sales@mtpp.co.id'),
   O = await login('operasional@mtpp.co.id'),
   F = await login('finance@mtpp.co.id');
+// uji di bawah ini fokus pada aturan lain: uang muka minimal pelanggan lama dimatikan dulu, lalu diuji tersendiri
+await call(A, 'PUT', '/settings/collection', {
+  ...((await call(A, 'GET', '/settings')).collection || {}),
+  dpPercent: 0,
+});
 const customers = await call(S, 'GET', '/partners?kind=customer');
 const regular = customers.find((c) => c.name.includes('Husada'));
 const graha = customers.find((c) => c.name.includes('Graha'));
@@ -1319,6 +1324,56 @@ await test('PO pelanggan wajib, batas minimal diatur di Pengaturan', async () =>
     check(so.state === 'sale', 'di bawah batas minimal boleh tanpa PO');
   } finally {
     await call(A, 'PUT', '/settings/collection', { ...cur, poMinAmount: 0 });
+  }
+});
+
+await test('uang muka minimal pelanggan lama sebelum surat jalan', async () => {
+  const cur = (await call(A, 'GET', '/settings')).collection || {};
+  await rejected(
+    call(A, 'PUT', '/settings/collection', { ...cur, dpPercent: 101 }),
+    400,
+    /Uang muka minimal/,
+    'persen > 100 ditolak',
+  );
+  const p = await withStock(3);
+  await call(A, 'PUT', '/settings/collection', { ...cur, dpPercent: 30 });
+  try {
+    const q = await quote(regular, [line(p, 2)]);
+    const so = await call(S, 'POST', `/sales-orders/${q.id}/confirm`, { clientOrderRef: 'PO-DP' });
+    const d0 = await call(S, 'GET', `/sales-orders/${q.id}`);
+    check(d0.payment.dpMet === false && !d0.canDeliver, 'sebelum uang muka: belum boleh kirim');
+    check(Math.abs(d0.payment.dpNeeded - so.amountTotal * 0.3) < 1, `uang muka minimal 30% = ${d0.payment.dpNeeded}`);
+    await rejected(
+      call(O, 'POST', `/transfers/from-sale/${q.id}`),
+      400,
+      /Uang muka minimal 30%/,
+      'surat jalan ditolak',
+    );
+    await call(F, 'POST', '/payments', {
+      saleId: q.id,
+      amount: Math.round(d0.payment.dpNeeded / 2),
+      kind: 'dp',
+      method: 'BNK',
+    });
+    await rejected(
+      call(O, 'POST', `/transfers/from-sale/${q.id}`),
+      400,
+      /Uang muka minimal/,
+      'uang muka sebagian: tetap ditolak',
+    );
+    const d1 = await call(S, 'GET', `/sales-orders/${q.id}`);
+    await call(F, 'POST', '/payments', {
+      saleId: q.id,
+      amount: Math.ceil(d1.payment.dpNeeded - d1.payment.amount),
+      kind: 'dp',
+      method: 'BNK',
+    });
+    const d2 = await call(S, 'GET', `/sales-orders/${q.id}`);
+    check(d2.payment.dpMet && d2.canDeliver, 'uang muka terpenuhi: boleh kirim');
+    const [t] = await call(O, 'POST', `/transfers/from-sale/${q.id}`);
+    check(!!t, 'surat jalan dibuat setelah uang muka');
+  } finally {
+    await call(A, 'PUT', '/settings/collection', { ...cur, dpPercent: 0 });
   }
 });
 

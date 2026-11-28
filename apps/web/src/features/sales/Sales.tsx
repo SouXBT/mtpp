@@ -518,6 +518,8 @@ export function SalesDetail() {
     }
   };
   // tombol toolbar yang menjadi langkah berikutnya diberi warna utama
+  // pelanggan baru: bayar sampai lunas; pelanggan lama: uang muka minimal (Pengaturan > Penagihan) sebelum surat jalan
+  const needsPay = o.partner?.mtppIsNewCustomer ? !pay.paidFull : pay.dpMet === false;
   const stepNow = (k: StepAction) => (steps.some((x) => x.action === k) ? 'primary' : 'default');
   const fromQuote = o.quotationNumber && o.name !== o.quotationNumber;
   // draf bekas SO dan penawaran lama yang nomornya tidak diganti tetap memakai nomor yang ada
@@ -702,10 +704,10 @@ export function SalesDetail() {
               Buat Invoice
             </Button>
           )}
-        {o.state === 'sale' && can('penagihan', 'create') && o.partner?.mtppIsNewCustomer && !pay.paidFull && (
+        {o.state === 'sale' && can('penagihan', 'create') && needsPay && (
           <Button onClick={() => setPfOpen(true)}>Proforma Invoice</Button>
         )}
-        {o.state === 'sale' && can('penagihan', 'create') && o.partner?.mtppIsNewCustomer && !pay.paidFull && (
+        {o.state === 'sale' && can('penagihan', 'create') && needsPay && (
           <Button type={stepNow('pay')} onClick={() => setPayOpen(true)}>
             Catat Pembayaran (DP / Lunas)
           </Button>
@@ -798,6 +800,27 @@ export function SalesDetail() {
           action={
             o.mtppProformaNumber &&
             !pay.paidFull && (
+              <Button size="small" onClick={() => openFile(`/sales-orders/${id}/pdf?kind=proforma`)}>
+                Cetak proforma
+              </Button>
+            )
+          }
+        />
+      )}
+
+      {!o.partner?.mtppIsNewCustomer && o.state === 'sale' && pay.dpMet === false && (
+        <Alert
+          style={{ marginBottom: 16 }}
+          type="warning"
+          showIcon
+          message={`Uang muka minimal ${nf(pay.dpPercent, 0)}%: dibayar ${rp(pay.amount)} dari minimal ${rp(pay.dpNeeded)}. Surat jalan diterbitkan setelah uang muka masuk.`}
+          description={
+            o.mtppProformaNumber
+              ? `Proforma ${o.mtppProformaNumber} · ${tgl(o.mtppProformaDate)} · diminta ${rp(o.mtppDpAmount)} (${nf(o.mtppDpPercent, 0)}%)${o.mtppProformaDueDate ? ` · bayar paling lambat ${tgl(o.mtppProformaDueDate)}` : ''}`
+              : undefined
+          }
+          action={
+            o.mtppProformaNumber && (
               <Button size="small" onClick={() => openFile(`/sales-orders/${id}/pdf?kind=proforma`)}>
                 Cetak proforma
               </Button>
@@ -1321,8 +1344,11 @@ function ProformaModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void
   const [mode, setMode] = useState<'persen' | 'nominal' | 'lunas'>(o.mtppDpMode || 'persen');
   const [settleDate, setSettleDate] = useState<string>(o.mtppSettleDate || dayjs().add(14, 'day').format('YYYY-MM-DD'));
   const issued = !!o.mtppProformaNumber;
-  const [percent, setPercent] = useState<number>(issued ? Number(o.mtppDpPercent ?? 30) : 30);
-  const [amount, setAmount] = useState<number>(issued ? Number(o.mtppDpAmount ?? 0) : Math.round(total * 0.3));
+  const dpDefault = Number(settings?.collection?.dpPercent ?? 30);
+  const [percent, setPercent] = useState<number>(issued ? Number(o.mtppDpPercent ?? dpDefault) : dpDefault);
+  const [amount, setAmount] = useState<number>(
+    issued ? Number(o.mtppDpAmount ?? 0) : Math.round((total * dpDefault) / 100),
+  );
   const [note, setNote] = useState(o.mtppProformaNote || '');
   const [date, setDate] = useState(o.mtppProformaDate || today());
   const issue = async (send: boolean) => {
@@ -1472,8 +1498,15 @@ function ProformaModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void
 // Pembayaran pelanggan atas SO: pilih uang muka (dengan tanggal pelunasan sisa) atau langsung lunas; bukti wajib
 export function AdvanceModal({ o, onClose }: { o: any; onClose: (ok?: boolean) => void }) {
   const left = Math.max(0, Math.round((Number(o.amountTotal) - Number(o.payment?.amount || 0)) * 100) / 100);
+  // pelanggan lama: sisa uang muka minimal; sisa nilai SO ditagih lewat invoice sesuai term of payment
+  const isNewC = !!o.partner?.mtppIsNewCustomer;
+  const dpShort = Math.max(0, Math.ceil(Number(o.payment?.dpNeeded || 0) - Number(o.payment?.amount || 0)));
   const firstDp =
-    Number(o.mtppDpAmount) && Number(o.mtppDpAmount) < left ? Number(o.mtppDpAmount) : Math.round(left * 0.3);
+    Number(o.mtppDpAmount) && Number(o.mtppDpAmount) < left
+      ? Number(o.mtppDpAmount)
+      : !isNewC && dpShort > 0 && dpShort < left
+        ? dpShort
+        : Math.round(left * 0.3);
   const [kind, setKind] = useState<'dp' | 'lunas'>(o.mtppDpMode === 'lunas' ? 'lunas' : 'dp');
   const [v, setV] = useState<any>({
     amount: o.mtppDpMode === 'lunas' ? left : firstDp,
@@ -1484,7 +1517,7 @@ export function AdvanceModal({ o, onClose }: { o: any; onClose: (ok?: boolean) =
   });
   const [file, setFile] = useState<File | null>(null);
   const amount = kind === 'lunas' ? left : Number(v.amount || 0);
-  const invalid = !file || (kind === 'dp' && (!(amount > 0) || amount >= left || !v.settleDate));
+  const invalid = !file || (kind === 'dp' && (!(amount > 0) || amount >= left || (isNewC && !v.settleDate)));
   return (
     <Modal
       open
@@ -1501,7 +1534,7 @@ export function AdvanceModal({ o, onClose }: { o: any; onClose: (ok?: boolean) =
           method: v.method,
           date: v.date,
           memo: v.memo,
-          settleDate: kind === 'dp' ? v.settleDate : undefined,
+          settleDate: kind === 'dp' && isNewC ? v.settleDate : undefined,
         };
         if (
           await run(
@@ -1531,7 +1564,13 @@ export function AdvanceModal({ o, onClose }: { o: any; onClose: (ok?: boolean) =
         ]}
       />
       <PaymentFields v={{ ...v, amount }} setV={setV} max={left} lockAmount={kind === 'lunas'} />
-      {kind === 'dp' && (
+      {kind === 'dp' && !isNewC && (
+        <p className="muted" style={{ marginTop: 8 }}>
+          Uang muka minimal {nf(o.payment?.dpPercent, 0)}%: {rp(o.payment?.dpNeeded)}. Sisa{' '}
+          {rp(Math.max(left - amount, 0))} ditagih lewat invoice sesuai term of payment.
+        </p>
+      )}
+      {kind === 'dp' && isNewC && (
         <div style={{ marginTop: 8 }}>
           <div className="muted">Sisa {rp(Math.max(left - amount, 0))} dilunasi paling lambat</div>
           <DatePicker

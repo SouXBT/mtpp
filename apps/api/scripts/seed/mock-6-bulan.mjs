@@ -420,8 +420,21 @@ async function processPO(d, po, soId, label, arriveDays = [3, 12]) {
 
 // surat jalan: pakai stok bebas yang ada; bila tertahan (stok, pembayaran, masa tenggang) dicoba lagi
 async function deliver(d, soId, tries) {
-  const so = await call(O, 'GET', `/sales-orders/${soId}`, undefined, d);
+  let so = await call(O, 'GET', `/sales-orders/${soId}`, undefined, d);
   if (so.state !== 'sale') return;
+  // pelanggan lama: uang muka minimal (30%, Pengaturan > Penagihan) ditransfer sebelum barang dikirim
+  if (!so.partner?.mtppIsNewCustomer && so.payment?.dpMet === false) {
+    const short = Math.ceil((so.payment.dpNeeded - so.payment.amount) * 100) / 100;
+    await call(
+      F,
+      'POST',
+      '/payments',
+      { saleId: soId, amount: short, kind: 'dp', method: 'BNK', memo: `Uang muka ${so.payment.dpPercent}%` },
+      d,
+    );
+    count('uang muka pelanggan lama');
+    so = await call(O, 'GET', `/sales-orders/${soId}`, undefined, d);
+  }
   if (so.creditHold?.blocking) {
     // Pimpinan kadang memberi izin kirim; selain itu menunggu tagihan lama dibayar
     if (chance(0.5)) {
@@ -843,6 +856,29 @@ await (async () => {
     warn.push(`kunci periode: ${e.message}`);
   }
 })();
+
+// enam pelanggan baru tanpa transaksi, siap dipakai mencoba alur proforma, uang muka, dan pelunasan
+for (const [name, city] of [
+  ['PT Cahaya Energi Madura', 'Bangkalan'],
+  ['CV Mitra Listrik Kediri', 'Kediri'],
+  ['PT Sentosa Baja Gresik', 'Gresik'],
+  ['CV Prima Daya Malang', 'Malang'],
+  ['PT Samudra Logistik Tuban', 'Tuban'],
+  ['CV Terang Abadi Mojokerto', 'Mojokerto'],
+]) {
+  try {
+    await call(
+      A,
+      'POST',
+      '/partners',
+      { kind: 'customer', name, city, email: `admin@${name.toLowerCase().replace(/[^a-z]+/g, '')}.co.id` },
+      END,
+    );
+    count('pelanggan baru tanpa transaksi');
+  } catch (e) {
+    warn.push(`pelanggan ${name}: ${e.msg || e.message}`);
+  }
+}
 
 console.log('\nRingkasan:');
 for (const [k, v] of Object.entries(stats).sort()) console.log(`  ${k}: ${v}`);

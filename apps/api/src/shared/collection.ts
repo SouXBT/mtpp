@@ -113,7 +113,13 @@ export const COLLECTION_DEFAULTS = {
   maxMonths: 12,
   // PO dari pelanggan wajib untuk sales order mulai nilai ini (Rp, termasuk PPN); 0 = semua sales order
   poMinAmount: 0,
+  // uang muka minimal pelanggan lama sebelum surat jalan (persen dari total SO); pelanggan baru tetap lunas di muka
+  dpPercent: 30,
 };
+
+// uang muka minimal (Rupiah) untuk sales order sebesar total
+export const dpNeeded = (total: number, percent: number) =>
+  Math.round(((Number(total) * Number(percent)) / 100) * 100) / 100;
 
 // PO pelanggan wajib bila total sales order mencapai batas minimal di Pengaturan
 export async function customerPoRequired(tx: any, total: number) {

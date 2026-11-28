@@ -88,6 +88,11 @@ const P = await login('pimpinan@mtpp.co.id'),
   O = await login('operasional@mtpp.co.id'),
   F = await login('finance@mtpp.co.id');
 log('Login lima grup berhasil');
+// uji penagihan di bawah ini memakai pengiriman tanpa uang muka; aturan uang muka minimal diuji di edge-flow
+await call(A, 'PUT', '/settings/collection', {
+  ...((await call(A, 'GET', '/settings')).collection || {}),
+  dpPercent: 0,
+});
 
 // ---------- persiapan: pelanggan lama dengan TOP 30 hari dan masa tenggang 5 hari ----------
 const terms = await call(P, 'GET', '/payment-terms');

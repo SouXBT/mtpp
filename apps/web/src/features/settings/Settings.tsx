@@ -596,6 +596,17 @@ export function DocumentSettings() {
                     />
                   </Col>
                   <Col>
+                    <div className="muted">Uang muka minimal pelanggan lama (%)</div>
+                    <InputNumber
+                      disabled={!w}
+                      min={0}
+                      max={100}
+                      precision={0}
+                      value={col.dpPercent ?? 30}
+                      onChange={(v) => setCol({ ...col, dpPercent: v ?? 0 })}
+                    />
+                  </Col>
+                  <Col>
                     <div className="muted">PO pelanggan wajib mulai nilai pesanan (Rp, 0 = semua)</div>
                     <InputNumber
                       disabled={!w}

@@ -9,6 +9,7 @@ import { PdfService } from '../../shared/pdf.service';
 import { salePayments } from '../../shared/status';
 import {
   customerPoRequired,
+  dpNeeded,
   poRequiredMsg,
   PROFORMA_MAX_GRACE,
   PROFORMA_MIN_GRACE,
@@ -346,10 +347,11 @@ export class SalesService {
       purchaseOrders: pos,
       payment: pay,
       emailStatus: await this.email.lastStatus(MODEL, id),
-      canDeliver: o.state === 'sale' && (!o.partner.mtppIsNewCustomer || pay.paidFull) && !hold.blocking,
+      canDeliver: o.state === 'sale' && (o.partner.mtppIsNewCustomer ? pay.paidFull : pay.dpMet) && !hold.blocking,
       deliverable: o.state === 'sale' && (await this.undelivered(id)).length > 0,
       shortage: o.state === 'sale' ? await this.shortage(id) : [],
-      readyItems: o.state === 'sale' && (!o.partner.mtppIsNewCustomer || pay.paidFull) ? await this.readyItems(id) : 0,
+      readyItems:
+        o.state === 'sale' && (o.partner.mtppIsNewCustomer ? pay.paidFull : pay.dpMet) ? await this.readyItems(id) : 0,
     };
     return stripCost(u, res);
   }
@@ -516,7 +518,13 @@ export class SalesService {
   async paid(id: number, total: number) {
     // uang muka bersih ditambah pembayaran atas invoice SO ini
     const p = await salePayments(this.db, id);
+    // pelanggan lama: surat jalan setelah uang muka minimal (persen di Pengaturan > Penagihan) masuk
+    const dpPercent = Number((await collectionSettings(this.db)).dpPercent) || 0;
+    const need = dpNeeded(Number(total), dpPercent);
     return {
+      dpPercent,
+      dpNeeded: need,
+      dpMet: p.amount >= need - 0.5,
       advance: p.advance,
       advanceAvailable: p.available,
       amount: p.amount,
@@ -849,7 +857,8 @@ export class SalesService {
     });
     const out: any[] = [];
     for (const o of orders) {
-      if (o.partner.mtppIsNewCustomer && !(await this.paid(o.id, Number(o.amountTotal))).paidFull) continue;
+      const pay = await this.paid(o.id, Number(o.amountTotal));
+      if (o.partner.mtppIsNewCustomer ? !pay.paidFull : !pay.dpMet) continue;
       // tagihan lewat masa tenggang tanpa izin kirim Pimpinan: surat jalan pasti ditolak, jadi tidak ditampilkan
       if ((await this.creditHold(o)).blocking) continue;
       const items = await this.readyItems(o.id);

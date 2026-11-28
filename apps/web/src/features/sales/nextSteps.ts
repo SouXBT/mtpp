@@ -2,7 +2,7 @@ interface Order {
   state: string;
   shortage?: { shortage: number }[];
   partner?: { mtppIsNewCustomer?: boolean };
-  payment?: { paidFull?: boolean; amount?: number };
+  payment?: { paidFull?: boolean; amount?: number; dpMet?: boolean; dpPercent?: number; dpNeeded?: number };
   mtppSettleDate?: string | null;
   readyItems?: number;
   canDeliver?: boolean;
@@ -40,6 +40,11 @@ export function nextStepItems(o: Order): Step[] {
         Number(o.payment?.amount || 0) > 0 && o.mtppSettleDate
           ? `Berikutnya: Finance menagih pelunasan sisa paling lambat ${tglPendek(o.mtppSettleDate)}, lalu mencatatnya dengan bukti transfer.`
           : 'Berikutnya: Finance mencatat pembayaran pelanggan (uang muka atau langsung lunas) beserta bukti transfer.',
+        'pay',
+      );
+    else if (!o.partner?.mtppIsNewCustomer && o.payment?.dpMet === false)
+      add(
+        `Berikutnya: Finance menagih uang muka minimal ${o.payment.dpPercent ?? 30}% lalu mencatatnya dengan bukti transfer; surat jalan setelah uang muka masuk.`,
         'pay',
       );
     else if (o.creditHold?.blocking)

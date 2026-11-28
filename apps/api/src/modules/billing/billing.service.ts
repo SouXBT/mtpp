@@ -915,9 +915,16 @@ export class BillingService {
         if (kind === 'dp') {
           if (amount >= left - 0.5) fail('Jumlah ini melunasi sales order; pilih Lunasi langsung');
           const settle = b.settleDate || so.mtppSettleDate;
-          if (!settle) fail('Isi tanggal pelunasan sisa pembayaran');
-          if (String(settle) <= date) fail('Tanggal pelunasan harus setelah tanggal pembayaran');
-          await tx.salesOrders.updateMany({ where: { id: so.id }, data: { mtppSettleDate: settle } });
+          // pelanggan baru melunasi sisa pada tanggal yang disepakati; sisa pelanggan lama ditagih lewat invoice (term)
+          const cust = await tx.partners.findFirst({
+            where: { id: so.partnerId },
+            select: { mtppIsNewCustomer: true },
+          });
+          if (!settle && cust?.mtppIsNewCustomer) fail('Isi tanggal pelunasan sisa pembayaran');
+          if (settle) {
+            if (String(settle) <= date) fail('Tanggal pelunasan harus setelah tanggal pembayaran');
+            await tx.salesOrders.updateMany({ where: { id: so.id }, data: { mtppSettleDate: settle } });
+          }
         }
         const e = await this.journal.create(tx, {
           journal: method,
